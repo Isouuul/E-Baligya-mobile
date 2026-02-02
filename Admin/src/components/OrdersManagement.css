@@ -1,0 +1,575 @@
+/* ==============================
+   ANIMATIONS
+============================== */
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ==============================
+   ORDERS MANAGEMENT CONTAINER
+============================== */
+.orders-container {
+  width: 100%;
+  max-width: 100%;
+  min-height: auto;
+  height: auto;
+  padding: 30px 35px;
+  background-color: #ffffff;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  transition: all 0.3s ease;
+  animation: slideInLeft 0.6s ease-out;
+  user-select: none;
+  caret-color: transparent;
+}
+
+.orders-container h2 {
+  margin-bottom: 20px;
+  font-size: 1.6rem;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+/* ==============================
+   FILTER & SEARCH
+============================== */
+.search-filter {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.search-input {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid #d1d5db;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.status-filter {
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid #d1d5db;
+  font-size: 0.95rem;
+  background-color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.status-filter:hover,
+.status-filter:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.count-btn {
+  padding: 10px 15px;
+  background-color: #2563eb;
+  color: #fff;
+  font-weight: 500;
+  border-radius: 12px;
+  cursor: default;
+  transition: all 0.3s ease;
+}
+
+/* ==============================
+   ORDERS TABLE
+============================== */
+.orders-table-wrapper {
+  overflow-x: auto;
+  overflow-y: visible;
+  margin-top: 20px;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e0 #f7fafc;
+  border-radius: 12px 12px 0 0;
+}
+
+.orders-table-wrapper::-webkit-scrollbar {
+  height: 8px;
+}
+
+.orders-table-wrapper::-webkit-scrollbar-track {
+  background: #f7fafc;
+  border-radius: 4px;
+}
+
+.orders-table-wrapper::-webkit-scrollbar-thumb {
+  background: #cbd5e0;
+  border-radius: 4px;
+}
+
+.orders-table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #a0aec0;
+}
+
+.orders-table {
+  width: 100%;
+  min-width: 700px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.95rem;
+  background-color: #ffffff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+  animation: slideInLeft 0.6s ease forwards;
+  table-layout: auto;
+}
+
+.orders-table th,
+.orders-table td {
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 200px;
+}
+
+/* Sticky Table Header */
+.orders-table thead tr {
+  background-color: #2563eb;
+  color: #ffffff;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.3);
+}
+
+.orders-table th,
+.orders-table td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
+}
+
+.orders-table tbody tr:nth-child(even) {
+  background-color: #f9fafb;
+}
+
+.orders-table tbody tr:hover {
+  background-color: #e0f0ff;
+  transform: translateY(-1px);
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+/* ==============================
+   VIEW BUTTON
+============================== */
+.view-btn {
+  padding: 6px 16px;
+  background: linear-gradient(135deg, #2563eb, #007bff);
+  color: white;
+  font-weight: 500;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.view-btn:hover {
+  background: linear-gradient(135deg, #1d4ed8, #0056b3);
+  transform: translateY(-2px);
+}
+
+/* ==============================
+   MODAL
+============================== */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 99;
+  padding: 15px;
+}
+
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 99;
+  padding: 15px;
+}
+
+.modal-content {
+  background: #ffffff;
+  padding: 25px 20px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 14px;
+  position: relative;
+  animation: fadeIn 0.25s ease-in-out;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.headerclose {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+}
+
+.Close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background-color: #f44336;
+  color: #fff;
+  font-weight: bold;
+  font-size: 16px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.Close:hover {
+  background-color: #d32f2f;
+  transform: scale(1.1);
+}
+
+.modal-details {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.modal-row {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 5px;
+}
+
+.modal-label {
+  font-weight: 600;
+  color: #111827;
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.modal-value {
+  color: #374151;
+  flex: 1;
+  word-break: break-word;
+  text-align: right;
+}
+
+/* ==============================
+   RESPONSIVE DESIGN
+============================== */
+
+/* Desktop (1024px and above) */
+@media (min-width: 1024px) {
+  .orders-container {
+    padding: 30px 40px;
+    max-width: 100%;
+    width: 100%;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+
+  .orders-table {
+    font-size: 1rem;
+  }
+
+  .orders-table th,
+  .orders-table td {
+    padding: 14px 18px;
+  }
+
+  .search-filter {
+    gap: 20px;
+  }
+
+  .modal-content {
+    width: 90%;
+    max-width: 600px;
+    padding: 30px 25px;
+  }
+
+  .modal-items-table {
+    font-size: 0.95rem;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .modal-items-table th,
+  .modal-items-table td {
+    padding: 10px 12px;
+    white-space: nowrap;
+  }
+}
+
+/* Tablet (768px - 1023px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .orders-container {
+    padding: 25px 30px;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .orders-table {
+    font-size: 0.9rem;
+  }
+
+  .orders-table th,
+  .orders-table td {
+    padding: 10px 12px;
+  }
+
+  .search-filter {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .search-input {
+    min-width: 200px;
+  }
+
+  .orders-table-wrapper {
+    overflow-x: auto;
+  }
+
+  .modal-content {
+    width: 90%;
+    max-width: 550px;
+    padding: 25px 20px;
+  }
+
+  .modal-items-table {
+    font-size: 0.85rem;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .modal-items-table th,
+  .modal-items-table td {
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+}
+
+/* Mobile (640px and below) */
+@media (max-width: 640px) {
+  .orders-container {
+    padding: 20px 15px;
+    max-width: 100%;
+  }
+
+  .search-filter {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .status-filter,
+  .search-input,
+  .count-btn {
+    width: 100%;
+  }
+
+  .orders-table {
+    min-width: 600px;
+  }
+
+  .orders-table th,
+  .orders-table td {
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    max-width: 150px;
+  }
+
+  .orders-table-wrapper {
+    margin-left: -15px;
+    margin-right: -15px;
+    padding: 0 15px;
+  }
+
+  .modal-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .modal-label,
+  .modal-value {
+    width: 100%;
+    text-align: left;
+  }
+
+  .modal-content {
+    width: 95%;
+    max-width: 95%;
+    padding: 20px 15px;
+  }
+
+  .modal-items-table {
+    font-size: 0.75rem;
+    width: 100%;
+    overflow-x: auto;
+    display: block;
+  }
+
+  .modal-items-table thead,
+  .modal-items-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .modal-items-table th,
+  .modal-items-table td {
+    padding: 6px 8px;
+    white-space: nowrap;
+    font-size: 0.75rem;
+  }
+
+  .modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+
+  .modal-content {
+    background: #fff;
+    padding: 20px;
+    width: 90%;
+    max-width: 800px;
+    border-radius: 8px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .items-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+  }
+
+  .items-table th, .items-table td {
+    border: 1px solid #ccc;
+    padding: 8px;
+    text-align: center;
+  }
+
+  .close-btn {
+    margin-top: 15px;
+    padding: 8px 15px;
+    cursor: pointer;
+  }
+}
+
+/* Pagination Wrapper */
+.pagination-wrapper {
+  width: 100%;
+  overflow: visible;
+  margin-top: 16px;
+  padding: 0;
+  background-color: #ffffff;
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* TablePagination Responsive */
+.pagination-wrapper .MuiTablePagination-root {
+  width: 100%;
+  overflow: visible !important;
+  max-width: 100%;
+}
+
+.pagination-wrapper .MuiTablePagination-toolbar {
+  width: 100%;
+  overflow: visible !important;
+  flex-wrap: wrap;
+  padding: 0 8px;
+}
+
+.pagination-wrapper .MuiTablePagination-actions {
+  overflow: visible !important;
+}
+
+@media (min-width: 1024px) {
+  .MuiTablePagination-root {
+    padding: 16px 24px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .MuiTablePagination-root {
+    padding: 12px 16px;
+  }
+
+  .MuiTablePagination-toolbar {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .MuiTablePagination-root {
+    padding: 8px 12px;
+  }
+
+  .MuiTablePagination-toolbar {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .MuiTablePagination-selectLabel,
+  .MuiTablePagination-displayedRows {
+    font-size: 0.875rem;
+  }
+}

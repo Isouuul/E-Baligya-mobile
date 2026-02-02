@@ -1,0 +1,454 @@
+/* ================================
+   ANIMATIONS
+=================================== */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-50px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ================================
+   EMPLOYEES CARD WRAPPER
+=================================== */
+.customers-card { /* Reusing customers-card class for employees card */
+  width: 100%;
+  max-width: 100%;
+  min-height: auto;
+  height: auto;
+  padding: 30px 35px;
+  background-color: #ffffff;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: #1f2937;
+  /* Updated animation: slide in from left */
+  animation: slideInLeft 0.6s ease-out forwards;
+}
+
+/* ================================
+   FILTER CONTAINER
+=================================== */
+.filter-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 10px 0;
+}
+
+.filter-input-text,
+.filter-input-date {
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid #d1d5db;
+  font-size: 0.95rem;
+  outline: none;
+  transition: all 0.3s ease;
+  min-width: 220px;
+}
+
+.filter-input-text:focus,
+.filter-input-date:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.25);
+}
+
+.filter-button-clear {
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(90deg, #ef4444, #b91c1c);
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.filter-button-clear:hover {
+  background: linear-gradient(90deg, #b91c1c, #991b1b);
+  transform: scale(1.05);
+}
+
+.filter-input-text::placeholder {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* ================================
+   EMPLOYEES TABLE WRAPPER
+=================================== */
+.employees-table-wrapper {
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  margin-top: 25px;
+  width: 100%;
+  background-color: #ffffff;
+  animation: fadeIn 0.5s ease-out;
+  margin-left: -20px;
+  user-select: none;
+  caret-color: transparent;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e0 #f7fafc;
+}
+
+.employees-table-wrapper::-webkit-scrollbar {
+  height: 8px;
+}
+
+.employees-table-wrapper::-webkit-scrollbar-track {
+  background: #f7fafc;
+  border-radius: 4px;
+}
+
+.employees-table-wrapper::-webkit-scrollbar-thumb {
+  background: #cbd5e0;
+  border-radius: 4px;
+}
+
+.employees-table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #a0aec0;
+}
+
+/* ================================
+   EMPLOYEES TABLE
+=================================== */
+.employees-table {
+  width: 100%;
+  min-width: 700px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.95rem;
+  background-color: #ffffff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+  table-layout: auto;
+}
+
+.employees-table th,
+.employees-table td {
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 200px;
+}
+
+.employees-table thead tr {
+  background-color: #2563eb;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.3);
+}
+
+.employees-table th,
+.employees-table td {
+  padding: 14px 16px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
+}
+
+.employees-table tbody tr:nth-child(even) {
+  background-color: #f9fafb;
+}
+
+.employees-table tbody tr:hover {
+  background-color: #dbeafe;
+  transform: scale(1.01);
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+/* ================================
+   MODAL
+=================================== */
+.employee-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height:800px;
+  background-color: rgba(0,0,0,0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease-in-out forwards;
+}
+
+.employee-modal-content {
+  background-color: #ffffff;
+  padding: 30px 40px;
+  border-radius: 15px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  max-width: 350px;
+  width: 90%;
+  text-align: left;
+  animation: slideDown 0.3s ease-in-out forwards;
+  position: relative;
+}
+
+.employee-modal-content h3 {
+  margin-bottom: 20px;
+  font-size: 1.8rem;
+  color: #333;
+  text-align: center;
+}
+
+.employee-modal-content p {
+  margin: 8px 0;
+  font-size: 1rem;
+  color: #555;
+}
+
+.employee-modal-content strong {
+  color: #111;
+}
+
+.close-btn, .view-btn {
+  cursor: pointer;
+  border: none;
+  border-radius: 10px;
+  font-weight: 500;
+  transition: all 0.25s ease;
+}
+
+.close-btn {
+  background-color: #4f46e5;
+  color: white;
+  margin-top: 20px;
+  width: 100%;
+  padding: 12px;
+}
+
+.close-btn:hover {
+  background-color: #4338ca;
+}
+
+.view-btn {
+  background: linear-gradient(to right, #3b82f6, #2563eb);
+  color: white;
+  padding: 8px 12px;
+}
+
+.view-btn:hover {
+  background: linear-gradient(to right, #2563eb, #1e40af);
+  transform: scale(1.07);
+}
+
+/* ================================
+   RESPONSIVE DESIGN
+=================================== */
+
+/* Desktop (1024px and above) */
+@media screen and (min-width: 1024px) {
+  .customers-card {
+    padding: 30px 40px;
+    max-width: 100%;
+    width: 100%;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+
+  .employees-table {
+    font-size: 1rem;
+  }
+
+  .employees-table th,
+  .employees-table td {
+    padding: 14px 18px;
+  }
+
+  .filter-container {
+    gap: 15px;
+  }
+
+  .filter-input-text,
+  .filter-input-date {
+    min-width: 250px;
+  }
+
+  .employee-modal-content {
+    max-width: 450px;
+    padding: 35px 40px;
+  }
+}
+
+/* Tablet (768px - 1023px) */
+@media screen and (min-width: 768px) and (max-width: 1023px) {
+  .customers-card {
+    padding: 25px 30px;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .employees-table {
+    font-size: 0.9rem;
+  }
+
+  .employees-table th,
+  .employees-table td {
+    padding: 10px 12px;
+  }
+
+  .filter-container {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .filter-input-text,
+  .filter-input-date {
+    min-width: 200px;
+  }
+
+  .employees-table-wrapper {
+    overflow-x: auto;
+  }
+
+  .employee-modal-content {
+    width: 90%;
+    max-width: 400px;
+    padding: 30px 25px;
+  }
+}
+
+/* Mobile (640px and below) */
+@media screen and (max-width: 640px) {
+  .customers-card {
+    padding: 20px 15px;
+    max-width: 100%;
+  }
+
+  .filter-container {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .filter-input-text,
+  .filter-input-date,
+  .filter-button-clear {
+    width: 100%;
+    min-width: unset;
+  }
+
+  .employees-table {
+    min-width: 600px;
+  }
+
+  .employees-table th,
+  .employees-table td {
+    padding: 6px 8px;
+    font-size: 0.8rem;
+    max-width: 150px;
+  }
+
+  .employees-table-wrapper {
+    margin-left: -15px;
+    margin-right: -15px;
+    padding: 0 15px;
+  }
+
+  .employee-modal-content {
+    width: 95%;
+    max-width: 95%;
+    padding: 25px 20px;
+  }
+}
+
+/* Pagination Wrapper */
+.pagination-wrapper {
+  width: 100%;
+  overflow: visible;
+  margin-top: 16px;
+  padding: 0;
+  background-color: #ffffff;
+  border-radius: 0 0 12px 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* TablePagination Responsive */
+.pagination-wrapper .MuiTablePagination-root {
+  width: 100%;
+  overflow: visible !important;
+  max-width: 100%;
+}
+
+.pagination-wrapper .MuiTablePagination-toolbar {
+  width: 100%;
+  overflow: visible !important;
+  flex-wrap: wrap;
+  padding: 0 8px;
+}
+
+.pagination-wrapper .MuiTablePagination-actions {
+  overflow: visible !important;
+}
+
+@media (min-width: 1024px) {
+  .MuiTablePagination-root {
+    padding: 16px 24px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .MuiTablePagination-root {
+    padding: 12px 16px;
+  }
+
+  .MuiTablePagination-toolbar {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .MuiTablePagination-root {
+    padding: 8px 12px;
+  }
+
+  .MuiTablePagination-toolbar {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .MuiTablePagination-selectLabel,
+  .MuiTablePagination-displayedRows {
+    font-size: 0.875rem;
+  }
+}
