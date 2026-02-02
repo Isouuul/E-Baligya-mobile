@@ -197,7 +197,7 @@ export default function Products() {
               <img
                 src={selectedProduct.imageBase64 || "https://via.placeholder.com/200"}
                 alt={selectedProduct.productName}
-                style={{ width: "100%", borderRadius: "8px", marginBottom: "10px" }}
+                style={{ width: "100%", borderRadius: "8px", marginBottom: "10px", height: "200px" }}
               />
               <div className="modal-row">
                 <span className="modal-label">Owner Name:</span>
