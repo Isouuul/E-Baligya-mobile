@@ -1,66 +1,107 @@
+import 'dotenv/config';
 import express from 'express';
 import nodemailer from 'nodemailer';
 import cors from 'cors';
-import dotenv from 'dotenv';
-import ocrRoute from './ocr.js';
-dotenv.config();
-
 
 const app = express();
+const PORT = process.env.PORT || 3000;
+
 app.use(cors());
 app.use(express.json());
-app.use('/api/ocr', ocrRoute);
 
-
-
-// ----------------- Reusable function -----------------
-const sendEmail = async ({ to, subject, text }) => {
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-  });
-
-  return transporter.sendMail({
-    from: process.env.EMAIL_USER,
-    to,
-    subject,
-    text,
-  });
-};
-// -----------------------------------------------------
-
-app.post('/send-email', async (req, res) => {
-  const { to, subject, text } = req.body;
-
-  try {
-    await sendEmail({ to, subject, text }); // <-- use the function
-    res.send({ success: true });
-  } catch (error) {
-    res.status(500).send({ error: error.message });
-  }
+// ----------------- Nodemailer Transporter -----------------
+const transporter = nodemailer.createTransport({
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true, // SSL
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS, // 16-char Gmail app password
+  },
 });
 
+// ----------------- Reusable sendEmail Function -----------------
+const sendEmail = async ({ to, subject, text, html }) => {
+  try {
+    const info = await transporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to,
+      subject,
+      text,
+      html,
+    });
+    console.log('Email sent:', info.response);
+    return info;
+  } catch (err) {
+    console.error('Error sending email:', err);
+    throw err;
+  }
+};
+
 // ----------------- OTP Functionality -----------------
-const otpStore = {}; // temporary storage for OTPs
+const otpStore = {}; // { email: { code, expires } }
 
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
+const OTP_EXPIRATION = 1 * 60 * 1000; // 1 minute
 
 app.post('/send-otp', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).send({ error: 'Email is required' });
 
   const otp = generateOTP();
-  otpStore[email] = otp; // store OTP temporarily
+  otpStore[email] = {
+    code: otp,
+    expires: Date.now() + OTP_EXPIRATION,
+  };
 
   try {
-    await sendEmail({
-      to: email,
-      subject: 'Your OTP Code',
-      text: `Your OTP code is: ${otp}`,
-    });
+await sendEmail({
+  to: email,
+  subject: 'Your E-Baligya Verification Code',
+  text: `Hello,
+
+Your One-Time Password (OTP) for E-Baligya is: ${otp}
+
+This code will expire in 1 minute.
+For security reasons, please do not share this code with anyone.
+
+If you did not request this, please ignore this email.
+
+— E-Baligya Team`,
+  html: `
+    <div style="font-family: Arial, sans-serif; background-color: #f4f6f8; padding: 20px;">
+      <div style="max-width: 500px; margin: auto; background: #ffffff; padding: 25px; border-radius: 8px;">
+        <h2 style="margin: 0 0 10px 0; color: #2563EB;">E-Baligya</h2>
+        <p style="color: #333;">Hello,</p>
+        <p style="color: #333;">Your One-Time Password (OTP) is:</p>
+        
+        <div style="text-align: center; margin: 20px 0;">
+          <span style="font-size: 28px; font-weight: bold; letter-spacing: 4px; color: #2563EB;">
+            ${otp}
+          </span>
+        </div>
+
+        <p style="color: #555;">
+            This code will expire in <strong>1 minute</strong>.
+        </p>
+        <p style="color: #555;">
+          For security reasons, please do not share this code with anyone.
+        </p>
+
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+
+        <p style="font-size: 12px; color: #888;">
+          If you did not request this email, you can safely ignore it.
+        </p>
+
+        <p style="margin-top: 20px; color: #333;">
+          — The E-Baligya Team
+        </p>
+      </div>
+    </div>
+  `,
+});
+
     res.send({ success: true, message: 'OTP sent to your email' });
   } catch (error) {
     res.status(500).send({ error: error.message });
@@ -71,13 +112,35 @@ app.post('/verify-otp', (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) return res.status(400).send({ error: 'Email and OTP required' });
 
-  if (otpStore[email] === otp) {
-    delete otpStore[email]; // remove OTP after verification
+  const record = otpStore[email];
+
+  if (!record) return res.status(400).send({ success: false, message: 'No OTP found for this email' });
+  if (record.expires < Date.now()) {
+    delete otpStore[email];
+    return res.status(400).send({ success: false, message: 'OTP expired' });
+  }
+
+  if (record.code === otp) {
+    delete otpStore[email];
     return res.send({ success: true, message: 'OTP verified!' });
   } else {
     return res.status(400).send({ success: false, message: 'Invalid OTP' });
   }
 });
-// -----------------------------------------------------
 
-app.listen(process.env.PORT, () => console.log(`Server running on port ${process.env.PORT}`));
+// ----------------- Generic Email Sending -----------------
+app.post('/send-email', async (req, res) => {
+  const { to, subject, text, html } = req.body;
+  if (!to || !subject || (!text && !html))
+    return res.status(400).send({ error: 'Missing required fields' });
+
+  try {
+    await sendEmail({ to, subject, text, html });
+    res.send({ success: true, message: 'Email sent successfully' });
+  } catch (error) {
+    res.status(500).send({ error: error.message });
+  }
+});
+
+// ----------------- Start Server -----------------
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));

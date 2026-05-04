@@ -25,9 +25,11 @@
   max-width: 100%;
   min-height: auto;
   height: auto;
-  padding: 30px 35px;
-  background-color: #ffffff;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+  padding: 28px 30px;
+  background: linear-gradient(180deg, #ffffff 0%, #fcfdff 100%);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  border: 1px solid #e6ebf5;
+  border-radius: 16px;
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   transition: all 0.3s ease;
   animation: slideInLeft 0.6s ease-out;
@@ -36,10 +38,12 @@
 }
 
 .orders-container h2 {
-  margin-bottom: 20px;
+  margin-bottom: 18px;
   font-size: 1.6rem;
-  color: #1f2937;
-  font-weight: 600;
+  color: #1f2a44;
+  font-weight: 700;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e8edf7;
 }
 
 /* ==============================
@@ -47,50 +51,51 @@
 ============================== */
 .search-filter {
   display: flex;
-  gap: 15px;
-  margin-bottom: 20px;
+  gap: 12px;
+  margin-bottom: 18px;
   flex-wrap: wrap;
 }
 
 .search-input {
   flex: 1;
-  padding: 10px 14px;
+  padding: 11px 14px;
   border-radius: 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid #d7deee;
+  background: #f9fbff;
   font-size: 0.95rem;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .search-input:focus {
   outline: none;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  border-color: #5d69f4;
+  box-shadow: 0 0 0 3px rgba(93, 105, 244, 0.16);
 }
 
 .status-filter {
-  padding: 10px 14px;
+  padding: 11px 14px;
   border-radius: 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid #d7deee;
   font-size: 0.95rem;
-  background-color: white;
+  background-color: #f9fbff;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .status-filter:hover,
 .status-filter:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  border-color: #5d69f4;
+  box-shadow: 0 0 0 3px rgba(93, 105, 244, 0.16);
 }
 
 .count-btn {
   padding: 10px 15px;
-  background-color: #2563eb;
+  background: linear-gradient(135deg, #5d69f4 0%, #6f3ff0 100%);
   color: #fff;
-  font-weight: 500;
+  font-weight: 600;
   border-radius: 12px;
   cursor: default;
-  transition: all 0.3s ease;
+  box-shadow: 0 8px 20px rgba(98, 76, 239, 0.26);
 }
 
 /* ==============================
@@ -132,9 +137,10 @@
   border-spacing: 0;
   font-size: 0.95rem;
   background-color: #ffffff;
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e8edf7;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
   transition: all 0.3s ease;
   animation: slideInLeft 0.6s ease forwards;
   table-layout: auto;
@@ -150,7 +156,7 @@
 
 /* Sticky Table Header */
 .orders-table thead tr {
-  background-color: #2563eb;
+  background: linear-gradient(135deg, #5d69f4 0%, #6f3ff0 100%);
   color: #ffffff;
   text-transform: uppercase;
   font-weight: 600;
@@ -163,18 +169,18 @@
 
 .orders-table th,
 .orders-table td {
-  padding: 12px 15px;
+  padding: 13px 15px;
   text-align: left;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #edf1fa;
   transition: all 0.2s ease;
 }
 
 .orders-table tbody tr:nth-child(even) {
-  background-color: #f9fafb;
+  background-color: #f8faff;
 }
 
 .orders-table tbody tr:hover {
-  background-color: #e0f0ff;
+  background-color: #eef3ff;
   transform: translateY(-1px);
   transition: background-color 0.2s ease, transform 0.2s ease;
 }
@@ -184,7 +190,7 @@
 ============================== */
 .view-btn {
   padding: 6px 16px;
-  background: linear-gradient(135deg, #2563eb, #007bff);
+  background: linear-gradient(135deg, #5d69f4, #6f3ff0);
   color: white;
   font-weight: 500;
   border: none;
@@ -194,14 +200,14 @@
 }
 
 .view-btn:hover {
-  background: linear-gradient(135deg, #1d4ed8, #0056b3);
+  background: linear-gradient(135deg, #4f59df, #6033dd);
   transform: translateY(-2px);
 }
 
 /* ==============================
    MODAL
 ============================== */
-.modal-overlay {
+.orders-modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -211,55 +217,42 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 99;
+  z-index: 1300;
   padding: 15px;
 }
 
-.modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 99;
-  padding: 15px;
-}
-
-.modal-content {
+.orders-modal-content {
   background: #ffffff;
-  padding: 25px 20px;
+  padding: 24px 20px;
   width: 90%;
   max-width: 600px;
   max-height: 90vh;
   overflow-y: auto;
-  border-radius: 14px;
+  border-radius: 16px;
+  border: 1px solid #e8edf7;
   position: relative;
   animation: fadeIn 0.25s ease-in-out;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
   text-align: left;
   display: flex;
   flex-direction: column;
   gap: 15px;
 }
 
-.headerclose {
+.orders-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 10px 0;
 }
 
-.Close {
+.orders-modal-close {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 30px;
   height: 30px;
-  background-color: #f44336;
+  background-color: #ef4444;
   color: #fff;
   font-weight: bold;
   font-size: 16px;
@@ -268,9 +261,32 @@
   transition: background-color 0.3s ease, transform 0.2s ease;
 }
 
-.Close:hover {
-  background-color: #d32f2f;
+.orders-modal-close:hover {
+  background-color: #dc2626;
   transform: scale(1.1);
+}
+
+.orders-modal-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  overflow-x: auto;
+}
+
+.orders-modal-items-table th,
+.orders-modal-items-table td {
+  border: 1px solid #e5e7eb;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.orders-close-btn {
+  margin-top: 10px;
+  padding: 8px 15px;
+  cursor: pointer;
+  border: 1px solid #d1d5db;
+  background-color: #f9fafb;
+  border-radius: 8px;
 }
 
 .modal-details {
@@ -330,20 +346,20 @@
     gap: 20px;
   }
 
-  .modal-content {
+  .orders-modal-content {
     width: 90%;
     max-width: 600px;
     padding: 30px 25px;
   }
 
-  .modal-items-table {
+  .orders-modal-items-table {
     font-size: 0.95rem;
     width: 100%;
     overflow-x: auto;
   }
 
-  .modal-items-table th,
-  .modal-items-table td {
+  .orders-modal-items-table th,
+  .orders-modal-items-table td {
     padding: 10px 12px;
     white-space: nowrap;
   }
@@ -380,20 +396,20 @@
     overflow-x: auto;
   }
 
-  .modal-content {
+  .orders-modal-content {
     width: 90%;
     max-width: 550px;
     padding: 25px 20px;
   }
 
-  .modal-items-table {
+  .orders-modal-items-table {
     font-size: 0.85rem;
     width: 100%;
     overflow-x: auto;
   }
 
-  .modal-items-table th,
-  .modal-items-table td {
+  .orders-modal-items-table th,
+  .orders-modal-items-table td {
     padding: 8px 10px;
     white-space: nowrap;
   }
@@ -445,71 +461,30 @@
     text-align: left;
   }
 
-  .modal-content {
+  .orders-modal-content {
     width: 95%;
     max-width: 95%;
     padding: 20px 15px;
   }
 
-  .modal-items-table {
+  .orders-modal-items-table {
     font-size: 0.75rem;
     width: 100%;
     overflow-x: auto;
     display: block;
   }
 
-  .modal-items-table thead,
-  .modal-items-table tbody {
+  .orders-modal-items-table thead,
+  .orders-modal-items-table tbody {
     display: block;
     width: 100%;
   }
 
-  .modal-items-table th,
-  .modal-items-table td {
+  .orders-modal-items-table th,
+  .orders-modal-items-table td {
     padding: 6px 8px;
     white-space: nowrap;
     font-size: 0.75rem;
-  }
-
-  .modal-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0,0,0,0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-  }
-
-  .modal-content {
-    background: #fff;
-    padding: 20px;
-    width: 90%;
-    max-width: 800px;
-    border-radius: 8px;
-    max-height: 90vh;
-    overflow-y: auto;
-  }
-
-  .items-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 10px;
-  }
-
-  .items-table th, .items-table td {
-    border: 1px solid #ccc;
-    padding: 8px;
-    text-align: center;
-  }
-
-  .close-btn {
-    margin-top: 15px;
-    padding: 8px 15px;
-    cursor: pointer;
   }
 }
 

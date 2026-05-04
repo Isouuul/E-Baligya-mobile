@@ -36,26 +36,39 @@ export default function OrdersManagement() {
 
     return () => unsubscribe();
   }, []);
-const filteredOrders = ordersData.filter((order) => {
-  const searchLower = search.toLowerCase();
+  const filteredOrders = ordersData.filter((order) => {
+    const searchLower = search.toLowerCase().trim();
 
-  // Search in main order fields
-  const inOrderFields =
-    order.userFirstName?.toLowerCase().includes(searchLower) ||
-    order.userLastName?.toLowerCase().includes(searchLower) ||
-    order.orderNumber?.toString().includes(searchLower);
+    if (!searchLower) return true;
 
-  // Search inside items array
-  const inItems = order.items?.some((item) =>
-    item.productName?.toLowerCase().includes(searchLower) ||
-    item.uploadedBy?.toLowerCase().includes(searchLower) ||
-    item.services?.some((service) =>
-      service.toLowerCase().includes(searchLower)
-    )
-  );
+    const firstName = (order.userFirstName || "").toLowerCase();
+    const lastName = (order.userLastName || "").toLowerCase();
+    const orderNumber = String(order.orderNumber || "").toLowerCase();
 
-  return inOrderFields || inItems;
-});
+    const inOrderFields =
+      firstName.includes(searchLower) ||
+      lastName.includes(searchLower) ||
+      orderNumber.includes(searchLower);
+
+    const orderItems = Array.isArray(order.items) ? order.items : [];
+
+    const inItems = orderItems.some((item) => {
+      const productName = (item.productName || "").toLowerCase();
+      const uploadedBy = (item.uploadedBy || "").toLowerCase();
+      const itemServices = Array.isArray(item.services) ? item.services : [];
+      const hasMatchingService = itemServices.some((service) =>
+        String(service || "").toLowerCase().includes(searchLower)
+      );
+
+      return (
+        productName.includes(searchLower) ||
+        uploadedBy.includes(searchLower) ||
+        hasMatchingService
+      );
+    });
+
+    return inOrderFields || inItems;
+  });
 
   // Pagination handlers
   const handleChangePage = (event, newPage) => {
@@ -72,6 +85,17 @@ const filteredOrders = ordersData.filter((order) => {
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
   );
+
+  const selectedOrderItems = Array.isArray(selectedOrder?.items)
+    ? selectedOrder.items
+    : [];
+
+  const formatValue = (value, fallback = "-") => {
+    if (value === null || value === undefined || value === "") return fallback;
+    if (Array.isArray(value)) return value.length ? value.join(", ") : fallback;
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  };
 
 
   if (loading) return <p>Loading orders...</p>;
@@ -140,20 +164,25 @@ const filteredOrders = ordersData.filter((order) => {
 
       {/* Modal for viewing order details */}
       {showModal && selectedOrder && (
-        <div className="modal">
-          <div className="modal-content">
-            <h3>Order #{selectedOrder.orderNumber}</h3>
-            <p>User: {selectedOrder.userFirstName} {selectedOrder.userLastName}</p>
-            <p>Total: ₱{selectedOrder.totalAmount}</p>
-            <p>Delivery: {selectedOrder.deliveryMethod}</p>
-            <p>Payment: {selectedOrder.paymentMethod}</p>
+        <div className="orders-modal-overlay" onClick={handleCloseModal}>
+          <div className="orders-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="orders-modal-header">
+              <h3>Order #{selectedOrder.orderNumber}</h3>
+              <button className="orders-modal-close" onClick={handleCloseModal}>
+                ×
+              </button>
+            </div>
+            <p>User: {formatValue(selectedOrder.userFirstName, "")} {formatValue(selectedOrder.userLastName, "")}</p>
+            <p>Total: ₱{formatValue(selectedOrder.totalAmount, 0)}</p>
+            <p>Delivery: {formatValue(selectedOrder.deliveryMethod)}</p>
+            <p>Payment: {formatValue(selectedOrder.paymentMethod)}</p>
             {selectedOrder.leaveNote && <p>Note: {selectedOrder.leaveNote}</p>}
             {selectedOrder.address && (
-              <p>Address: {selectedOrder.address.addressLine || ""}, {selectedOrder.address.city || ""}</p>
+              <p>Address: {formatValue(selectedOrder.address.addressLine, "")}, {formatValue(selectedOrder.address.city, "")}</p>
             )}
 
             <h4>Items:</h4>
-            <table className="modal-items-table">
+            <table className="orders-modal-items-table">
               <thead>
                 <tr>
                   <th>Product</th>
@@ -166,21 +195,27 @@ const filteredOrders = ordersData.filter((order) => {
                 </tr>
               </thead>
               <tbody>
-                {selectedOrder.items.map((item, idx) => (
+                {selectedOrderItems.map((item, idx) => {
+                  const itemServices = Array.isArray(item.services)
+                    ? item.services
+                    : [];
+
+                  return (
                   <tr key={idx}>
-                    <td>{item.productName}</td>
-                    <td>{item.quantity}</td>
-                    <td>₱{item.basePrice}</td>
-                    <td>{item.selectedVariation || "-"}</td>
-                    <td>₱{item.selectedVariationPrice || 0}</td>
-                    <td>{item.services.length > 0 ? item.services.join(", ") : "-"}</td>
-                    <td>{item.uploadedBy || "-"}</td>
+                    <td>{formatValue(item.productName)}</td>
+                    <td>{formatValue(item.quantity)}</td>
+                    <td>₱{formatValue(item.basePrice, 0)}</td>
+                    <td>{formatValue(item.selectedVariation)}</td>
+                    <td>₱{formatValue(item.selectedVariationPrice, 0)}</td>
+                    <td>{itemServices.length > 0 ? itemServices.join(", ") : "-"}</td>
+                    <td>{formatValue(item.uploadedBy)}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
 
-            <button onClick={handleCloseModal}>Close</button>
+            <button className="orders-close-btn" onClick={handleCloseModal}>Close</button>
           </div>
         </div>
       )}

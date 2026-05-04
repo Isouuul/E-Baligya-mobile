@@ -117,6 +117,16 @@ export default function VendorsRequest() {
     setModalOpen(false);
   };
 
+  const formatCreatedDate = (createdAt) => {
+    if (!createdAt) return "-";
+    try {
+      if (createdAt?.toDate) return createdAt.toDate().toLocaleDateString();
+      return new Date(createdAt).toLocaleDateString();
+    } catch {
+      return "-";
+    }
+  };
+
   // Upload Base64 to Firebase Storage
   const uploadBase64ToStorage = async (base64, filename) => {
     if (!base64 || !base64.startsWith("data:image")) return null;
@@ -226,7 +236,10 @@ export default function VendorsRequest() {
 
       <div className="search-row">
         <div className="search-row-container">
-          <div className="total-card">Total Vendors: {filteredVendors.length}</div>
+          <div className="total-card">
+            <span className="total-label">Total Vendors</span>
+            <span className="total-value">{filteredVendors.length}</span>
+          </div>
           <div className="filter-container">
             <input
               type="text"
@@ -243,6 +256,8 @@ export default function VendorsRequest() {
           </div>
         </div>
       </div>
+
+      {loading && <p className="empty">Loading vendor requests...</p>}
 
       {!loading && filteredVendors.length === 0 && (
         <p className="empty">No pending vendor requests.</p>
@@ -265,7 +280,7 @@ export default function VendorsRequest() {
               </thead>
               <tbody>
                 {paginatedVendors.map((vendor, idx) => {
-                  const date = vendor.createdAt?.toDate?.().toLocaleDateString() || "-";
+                  const date = formatCreatedDate(vendor.createdAt);
                   return (
                     <tr key={vendor.id}>
                       <td>{page * rowsPerPage + idx + 1}</td>
@@ -302,58 +317,100 @@ export default function VendorsRequest() {
 
       {modalOpen && selectedVendor && (
         <div className="modal-overlay">
-          <div className="modal-content">
-            <div className="modal-grid">
-              <div className="modal-left">
-                <h3>{selectedVendor.businessName}</h3>
-                <p><b>Owner:</b> {selectedVendor.ownerName}</p>
-                <p><b>Email:</b> {selectedVendor.email}</p>
-                <p><b>Phone:</b> {selectedVendor.phone}</p>
-                <p><b>Birthday:</b> {selectedVendor.birthday}</p>
-                <p><b>Gender:</b> {selectedVendor.gender}</p>
-                <p><b>Business Type:</b> {selectedVendor.businessType}</p>
-                <p><b>Address:</b> {selectedVendor.businessAddress}</p>
-                <p><b>Status:</b> {selectedVendor.status}</p>
-                <p><b>Agreed to Terms:</b> {selectedVendor.agreedToTerms ? "Yes" : "No"}</p>
+          <div className="modal-content" role="dialog" aria-modal="true" aria-label="Vendor details">
+            <div className="modal-header">
+              <div>
+                <h3>{selectedVendor.businessName || "Vendor Details"}</h3>
+                <p>{selectedVendor.email}</p>
+              </div>
+              <button className="icon-close" onClick={closeModal} aria-label="Close modal">×</button>
+            </div>
 
-                {selectedVendor.selfie && (
-                  <div className="image-card">
-                    <p>Selfie</p>
-                    <img src={selectedVendor.selfie} alt="Selfie" />
+            <div className="modal-body">
+              <div className="modal-grid">
+                <div className="modal-section">
+                  <h4>Business Details</h4>
+                  <div className="info-item">
+                    <label>Owner</label>
+                    <p>{selectedVendor.ownerName || "-"}</p>
                   </div>
-                )}
+                  <div className="info-item">
+                    <label>Email</label>
+                    <p>{selectedVendor.email || "-"}</p>
+                  </div>
+                  <div className="info-item">
+                    <label>Phone</label>
+                    <p>{selectedVendor.phone || "-"}</p>
+                  </div>
+                  <div className="info-item">
+                    <label>Birthday</label>
+                    <p>{selectedVendor.birthday || "-"}</p>
+                  </div>
+                  <div className="info-item">
+                    <label>Gender</label>
+                    <p>{selectedVendor.gender || "-"}</p>
+                  </div>
+                  <div className="info-item">
+                    <label>Business Type</label>
+                    <p>{selectedVendor.businessType || "-"}</p>
+                  </div>
+                  <div className="info-item">
+                    <label>Address</label>
+                    <p>{selectedVendor.businessAddress || "-"}</p>
+                  </div>
+                  <div className="info-item">
+                    <label>Status</label>
+                    <p>{selectedVendor.status || "Pending"}</p>
+                  </div>
+                  <div className="info-item">
+                    <label>Agreed to Terms</label>
+                    <p>{selectedVendor.agreedToTerms ? "Yes" : "No"}</p>
+                  </div>
+                </div>
 
-                <div className="modal-btns">
-                  <button className="btn-approve" onClick={approveVendor}>Approve</button>
-                  <button className="btn-reject" onClick={rejectVendor}>Reject</button>
-                  <button className="btn-close" onClick={closeModal}>Close</button>
+                <div className="docs-container">
+                  <div className="modal-section">
+                    <h4>Verification Documents</h4>
+                    <div className="docs-grid">
+                      {selectedVendor.selfie && (
+                        <div className="image-card">
+                          <p>Owner Selfie</p>
+                          <img src={selectedVendor.selfie} alt="Owner Selfie" />
+                        </div>
+                      )}
+                      {selectedVendor.govIDFront && (
+                        <div className="image-card">
+                          <p>ID Front</p>
+                          <img src={selectedVendor.govIDFront} alt="ID Front" />
+                        </div>
+                      )}
+                      {selectedVendor.govIDBack && (
+                        <div className="image-card">
+                          <p>ID Back</p>
+                          <img src={selectedVendor.govIDBack} alt="ID Back" />
+                        </div>
+                      )}
+                      {selectedVendor.businessPermit && (
+                        <div className="image-card">
+                          <p>Business Permit</p>
+                          <img src={selectedVendor.businessPermit} alt="Business Permit" />
+                        </div>
+                      )}
+                    </div>
+                    {!selectedVendor.selfie &&
+                      !selectedVendor.govIDFront &&
+                      !selectedVendor.govIDBack &&
+                      !selectedVendor.businessPermit && (
+                        <p className="image-empty">No verification documents uploaded.</p>
+                      )}
+                  </div>
                 </div>
               </div>
 
-              <div className="modal-middle">
-                <h4>Government IDs</h4>
-                {selectedVendor.govIDFront && (
-                  <div className="image-card">
-                    <p>Gov ID Front</p>
-                    <img src={selectedVendor.govIDFront} alt="Gov ID Front" />
-                  </div>
-                )}
-                {selectedVendor.govIDBack && (
-                  <div className="image-card">
-                    <p>Gov ID Back</p>
-                    <img src={selectedVendor.govIDBack} alt="Gov ID Back" />
-                  </div>
-                )}
-              </div>
-
-              <div className="modal-right">
-                <h4>Verification Photos</h4>
-                {selectedVendor.businessPermit && (
-                  <div className="image-card">
-                    <p>Business Permit</p>
-                    <img src={selectedVendor.businessPermit} alt="Business Permit" />
-                  </div>
-                )}
+              <div className="modal-btns">
+                <button className="btn-approve" onClick={approveVendor}>Approve</button>
+                <button className="btn-reject" onClick={rejectVendor}>Reject</button>
+                <button className="btn-close" onClick={closeModal}>Close</button>
               </div>
             </div>
           </div>

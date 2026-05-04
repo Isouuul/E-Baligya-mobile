@@ -1,10 +1,9 @@
 import React, { useState } from "react";
-import { auth } from "../firebase";
+import { auth, db } from "../firebase";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { db } from "../firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import SuccessIcon from "../assets/Success.png";
-import eBaligyaImg from "../assets/eBaligya.png"; // <-- import your image
+import eBaligyaImg from "../assets/eBaligya.png";
 import "../components/Login.css";
 
 export default function Login({ onLogin }) {
@@ -19,103 +18,95 @@ export default function Login({ onLogin }) {
     e.preventDefault();
     setError("");
     setLoading(true);
-
+    
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-
       const q = query(collection(db, "Employees"), where("uid", "==", user.uid));
       const querySnapshot = await getDocs(q);
 
-      if (querySnapshot.empty) {
-        setError("❌ No employee record found.");
-        setLoading(false);
-        return;
-      }
-
+      if (querySnapshot.empty) throw new Error("No employee record found.");
+      
       const employee = querySnapshot.docs[0].data();
-
       if (employee.jobPositionTitle !== jobPositionTitle) {
-        setError("❌ Job Position does not match registered role.");
-        setLoading(false);
-        return;
-      }
-
-      if (!["super-admin", "employee", "Compliance Officer"].includes(employee.jobPositionTitle)) {
-        setError("❌ Invalid job position.");
-        setLoading(false);
-        return;
+        throw new Error("Job Position does not match registered role.");
       }
 
       setLoading(false);
       setShowSuccess(true);
-
       setTimeout(() => {
         setShowSuccess(false);
         onLogin(employee);
       }, 1500);
-
     } catch (err) {
-      console.error(err);
-      setError("❌ Login failed. Check your email and password.");
+      setError(err.message || "Login failed. Please check your credentials.");
       setLoading(false);
     }
   };
 
   return (
-    <div className="login-wrapper">
-      {/* Left side - eBaligya image */}
-      <div className="login-image">
-        <img src={eBaligyaImg} alt="eBaligya Logo" />
-      </div>
+    <div className="auth-container">
+      <div className="auth-card">
+        <header className="auth-header">
+          <img src={eBaligyaImg} alt="eBaligya Logo" className="auth-logo" />
+          <h1>Welcome back</h1>
+          <p>Please enter your details to access the portal</p>
+        </header>
 
-      {/* Right side - Login card */}
-      <div className="login-card">
-        <h2>Login</h2>
+        {error && <div className="auth-error-alert">{error}</div>}
 
-        {error && <p className="error">{error}</p>}
+        <form onSubmit={handleLogin} className="auth-form">
+          <div className="field-group">
+            <label>Email Address</label>
+            <input
+              type="email"
+              placeholder="name@company.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
 
-        <form onSubmit={handleLogin}>
-          <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          <select
-            value={jobPositionTitle}
-            onChange={(e) => setJobPositionTitle(e.target.value)}
-            required
-          >
-            <option value="">Select Job Position</option>
-            <option value="super-admin">Super Admin</option>
-            <option value="employee">Employee</option>
-            <option value="Compliance Officer">Compliance Officer</option>
-          </select>
+          <div className="field-group">
+            <label>Password</label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
 
-          <button type="submit" disabled={loading}>
-            {loading ? <div className="button-spinner"></div> : "Login"}
+          <div className="field-group">
+            <label>Department Role</label>
+            <select
+              value={jobPositionTitle}
+              onChange={(e) => setJobPositionTitle(e.target.value)}
+              required
+            >
+              <option value="" disabled>Select your role</option>
+              <option value="super-admin">Super Admin</option>
+              <option value="employee">Employee</option>
+              <option value="Compliance Officer">Compliance Officer</option>
+            </select>
+          </div>
+
+          <button type="submit" disabled={loading} className="auth-submit-btn">
+            {loading ? <span className="loader"></span> : "Sign in"}
           </button>
         </form>
-
-        {/* Success Modal */}
-        {showSuccess && (
-          <div className="modal-overlay">
-            <div className="modal-content">
-              <img src={SuccessIcon} alt="Success" className="success-img" />
-              <p>Login Successful!</p>
-            </div>
-          </div>
-        )}
       </div>
+
+      {showSuccess && (
+        <div className="success-overlay">
+          <div className="success-modal">
+            <img src={SuccessIcon} alt="Success" />
+            <h3>Authenticated</h3>
+            <p>Redirecting to dashboard...</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

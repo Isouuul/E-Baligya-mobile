@@ -15,7 +15,6 @@
         "dotenv": "^17.2.3",
         "express": "^5.2.1",
         "multer": "^2.0.2",
-        "nodemailer": "^7.0.11",
-        "tesseract.js": "^6.0.1"
+        "nodemailer": "^7.0.11"
     }
 }
