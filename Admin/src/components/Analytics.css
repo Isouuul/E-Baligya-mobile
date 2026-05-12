@@ -10,6 +10,36 @@
 .analytics-container {
     padding-top: 30px;
     animation: slideUp 0.6s ease-out;
+    background-color: #fff;
+    height: 650px;
+    border-radius: 24px;
+    margin-top: -25px;
+}
+
+.analytics-section-title {
+    font-size: 1.5rem; /* Slightly smaller for better hierarchy */
+    font-weight: 700;
+    color: #1a1a1a; /* Darker text for readability */
+    margin-bottom: 24px;
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.8);
+    padding: 10px 20px;
+    border-radius: 12px; /* Pill shape */
+    border: 1px solid rgba(0, 0, 0, 0.08); /* Subtle border */
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05); /* Soft depth */
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.analytics-section-title::before {
+    content: '';
+    width: 12px;
+    height: 12px;
+    background: linear-gradient(135deg, #06b6d4, #3b82f6);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
 }
 
 /* Loading Box */
@@ -33,11 +63,73 @@
 
 /* KPI Section */
 
+.analytics-circular-kpi-wrapper {
+    padding: 32px !important;
+    margin-bottom: 32px;
+}
+
+.analytics-circular-kpi-flex {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 24px;
+}
+
+.circular-kpi-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    min-width: 0;
+}
+
+.circular-kpi-card:hover {
+    transform: translateY(-8px);
+    background: #fff !important;
+    box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.15) !important;
+}
+
+.circular-progress-container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+.circular-progress-text {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.circular-percentage {
+    font-size: 1.8rem !important;
+    font-weight: 800 !important;
+    color: var(--text-main);
+    letter-spacing: -0.5px;
+}
+
+.circular-kpi-label {
+    font-size: 0.85rem !important;
+    color: var(--text-muted);
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    text-align: center;
+}
+
 .analytics-kpi-flex {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
-    gap: 16px;
-    margin-bottom: 32px;
+    gap: 8px;
+    margin-bottom: 24px;
+    margin-left: 45px;
+    margin-top: 15px;
 }
 
 
@@ -46,65 +138,91 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 24px 16px !important;
+    padding: 14px 10px !important;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     min-width: 0;
+    max-width: 140px;
 }
 
 .kpi-card-centered:hover {
-    transform: translateY(-6px);
+    transform: translateY(-4px);
     background: #fff !important;
     box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.1) !important;
 }
 
 .kpi-card-centered-icon {
-    width: 52px;
-    height: 52px;
-    border-radius: 14px;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
 }
 
 .kpi-card-centered-value {
-    font-size: 1.6rem !important;
+    font-size: 1.2rem !important;
     font-weight: 800 !important;
     color: var(--text-main);
     letter-spacing: -0.5px;
 }
 
 .kpi-card-centered-label {
-    font-size: 0.8rem !important;
+    font-size: 0.7rem !important;
     color: var(--text-muted);
     font-weight: 700 !important;
     text-transform: uppercase;
-    letter-spacing: 0.8px;
+    letter-spacing: 0.6px;
 }
 
 /* Chart Header */
+.analytics-charts-container {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 32px;
+}
+
 .analytics-chart-paper {
-    padding: 32px !important;
+    padding: 24px !important;
+    width: 65%;
+    height: 400px;
+    flex: 1;
+}
+
+.analytics-pie-chart-paper {
+    padding: 24px !important;
+    width: 35%;
+    height: 400px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
 .analytics-chart-header-flex {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 30px;
+    margin-bottom: 12px;
+}
+.analytics-chart-box{
+    margin-left: 0;
+    margin-top: 15px;
+    margin-left: -50px;
+    width: 600px;
 }
 
 .analytics-chart-title {
-    font-size: 1.4rem !important;
+    font-size: 1.2rem !important;
     font-weight: 800 !important;
     color: var(--text-main);
+    margin-bottom: 2px !important;
 }
 
 .analytics-chart-caption {
-    font-size: 0.75rem !important;
+    font-size: 0.7rem !important;
     font-weight: 700 !important;
     color: var(--text-muted);
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
 }
 
 .analytics-year-select {
@@ -112,13 +230,38 @@
     background: rgba(0,0,0,0.04) !important;
     font-weight: 700 !important;
 }
-.analytics-year-select .MuiOutlinedInput-notchedOutline { border: none; }
+.analytics-pie-header {
+    margin-bottom: 12px;
+}
+
+.analytics-pie-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+}
+
+/* Pie Chart Styling */
+.custom-pie-chart .MuiPie-series {
+    filter: drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.1));
+}
+
+.custom-pie-chart .MuiPieArcLabel-root {
+    font-weight: 900 !important;
+    font-size: 0.85rem !important;
+}
+
+.no-data-message {
+    color: var(--text-muted) !important;
+    font-size: 0.95rem !important;
+    text-align: center;
+}
 
 /* --- THE CHART (THE PART YOU WANTED TO IMPROVE) --- */
 
 /* Make lines thicker and smoother */
 .custom-analytics-chart .MuiLineElement-root {
-    stroke-width: 4px !important;
+    stroke-width: 2px !important;
     filter: drop-shadow(0px 6px 4px rgba(0, 0, 0, 0.1));
 }
 
@@ -130,40 +273,28 @@
 
 /* Data Points (Dots) */
 .custom-analytics-chart .MuiMarkElement-root {
-    stroke-width: 2px !important;
+    stroke-width: 1px !important;
     scale: 1.1;
 }
 
-/* Clean up Axis */
+/* Mobile Responsiveness */
+@media (max-width: 1200px) {
+    .analytics-charts-container {
+        flex-direction: column;
+    }
+    
+    .analytics-chart-paper {
+        width: 100%;
+    }
+    
+    .analytics-pie-chart-paper {
+        width: 100%;
+    }
+}
 .custom-analytics-chart .MuiChartsAxis-line { stroke: #e2e8f0 !important; }
 .custom-analytics-chart .MuiChartsAxis-tick { display: none; }
 
 /* Summary Footer */
-.analytics-totals-box {
-    margin-top: 30px;
-    padding: 20px;
-    background: rgba(0,0,0,0.02);
-    border-radius: 16px;
-    text-align: center;
-}
-
-.analytics-totals-title {
-    font-size: 0.7rem !important;
-    font-weight: 800 !important;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    margin-bottom: 8px !important;
-}
-
-.analytics-totals-values {
-    font-size: 1rem;
-    color: var(--text-main);
-    display: flex;
-    justify-content: center;
-    gap: 15px;
-    align-items: center;
-}
-
 .analytics-totals-values .divider { color: #cbd5e1; font-weight: 300; }
 
 /* Animations */
@@ -172,21 +303,43 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 0 10px rgba(6, 182, 212, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(6, 182, 212, 0);
+    }
+}
+
 /* Mobile Responsiveness */
 
 @media (max-width: 1200px) {
+    .analytics-circular-kpi-flex {
+        grid-template-columns: repeat(2, 1fr);
+    }
     .analytics-kpi-flex {
         grid-template-columns: repeat(2, 1fr);
     }
 }
 
 @media (max-width: 800px) {
+    .analytics-circular-kpi-flex {
+        grid-template-columns: repeat(2, 1fr);
+    }
     .analytics-kpi-flex {
         grid-template-columns: 1fr;
     }
 }
 
 @media (max-width: 600px) {
+    .analytics-circular-kpi-flex {
+        grid-template-columns: 1fr;
+    }
+    .circular-kpi-card { width: 100%; }
     .kpi-card-centered { width: 100%; }
     .analytics-totals-values { flex-direction: column; gap: 4px; }
     .analytics-totals-values .divider { display: none; }

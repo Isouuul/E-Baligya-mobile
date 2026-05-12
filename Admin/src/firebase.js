@@ -19,4 +19,10 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
+// Enable persistence to keep users logged in on refresh
+import { setPersistence, browserLocalPersistence } from "firebase/auth";
+setPersistence(auth, browserLocalPersistence).catch((err) => {
+  console.error("Failed to enable persistence:", err);
+});
+
 export { auth, db, storage };

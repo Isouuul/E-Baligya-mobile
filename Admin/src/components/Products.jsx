@@ -155,55 +155,62 @@ export default function Products() {
             </tr>
           </thead>
           <tbody>
-            {filtered.slice(page * 10, page * 10 + 10).map((p, idx) => {
-              const isLowStock = Number(p.quantityKg) < 15;
-              return (
-                <tr key={p.id} className="table-row-hover">
-                  <td style={{ textAlign: 'center', fontWeight: 600, color: '#334155' }}>{(page * 10 + idx + 1).toString().padStart(2, '0')}</td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                      <img src={p.imageBase64 || "https://via.placeholder.com/50"} alt="" style={{ width: '60px', height: '60px', borderRadius: '12px', objectFit: 'cover', border: '1px solid #e0e7ef' }} />
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#1e293b' }}>{p.productName}</span>
-                        <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>#{p.id.slice(0, 8).toUpperCase()}</span>
+            {filtered.length > 0 ? (
+              filtered.slice(page * 10, page * 10 + 10).map((p, idx) => {
+                const isLowStock = Number(p.quantityKg) < 15;
+                return (
+                  <tr key={p.id} className="table-row-hover">
+                    <td style={{ textAlign: 'center', fontWeight: 600, color: '#334155' }}>{(page * 10 + idx + 1).toString().padStart(2, '0')}</td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                        <img src={p.imageBase64 || "https://via.placeholder.com/50"} alt="" style={{ width: '60px', height: '60px', borderRadius: '12px', objectFit: 'cover', border: '1px solid #e0e7ef' }} />
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: '700', fontSize: '1.05rem', color: '#1e293b' }}>{p.productName}</span>
+                          <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 500 }}>#{p.id.slice(0, 8).toUpperCase()}</span>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td><span className="vendor-pill">{p.uploadedBy?.businessName || "Independent"}</span></td>
-                  <td className="price-bold">₱{Number(p.basePrice).toLocaleString()}</td>
-                  <td>
-                    <div style={{ width: '120px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '4px', color: '#64748b', fontWeight: 600 }}>
-                        <span>{p.quantityKg}kg</span>
-                        <span>{isLowStock ? 'Low' : 'OK'}</span>
+                    </td>
+                    <td><span className="vendor-pill">{p.uploadedBy?.businessName || "Independent"}</span></td>
+                    <td className="price-bold">₱{Number(p.basePrice).toLocaleString()}</td>
+                    <td>
+                      <div style={{ width: '120px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '4px', color: '#64748b', fontWeight: 600 }}>
+                          <span>{p.quantityKg}kg</span>
+                          <span>{isLowStock ? 'Low' : 'OK'}</span>
+                        </div>
+                        <div style={{ height: '6px', background: '#f1f5fb', borderRadius: '10px', overflow: 'hidden' }}>
+                          <div style={{ 
+                            width: `${Math.min((p.quantityKg / 100) * 100, 100)}%`, 
+                            height: '100%', 
+                            background: isLowStock ? 'linear-gradient(90deg, #fbbf24, #f59e42)' : 'linear-gradient(90deg, #4ade80, #22c55e)',
+                            borderRadius: '10px'
+                          }}></div>
+                        </div>
                       </div>
-                      <div style={{ height: '6px', background: '#f1f5fb', borderRadius: '10px', overflow: 'hidden' }}>
-                        <div style={{ 
-                          width: `${Math.min((p.quantityKg / 100) * 100, 100)}%`, 
-                          height: '100%', 
-                          background: isLowStock ? 'linear-gradient(90deg, #fbbf24, #f59e42)' : 'linear-gradient(90deg, #4ade80, #22c55e)',
-                          borderRadius: '10px'
-                        }}></div>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <span className={`status-blob ${isLowStock ? 'blob-red' : 'blob-green'}`}>
-                      {isLowStock ? 'Reorder' : 'Healthy'}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'right', paddingRight: '24px' }}>
-                    <button className="btn-glass-action" onClick={() => setSelected(p)} title="View Details">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ verticalAlign: 'middle', marginRight: 6 }}>
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                        <circle cx="12" cy="12" r="3"/>
-                      </svg>
-                      View
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
+                    </td>
+                    <td>
+                      <span className={`status-blob ${p.uploadedBy?.freshness?.includes('Rotten') ? 'blob-red' : 'blob-green'}`}>
+                        {p.uploadedBy?.freshness || 'Unknown'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'center', paddingRight: '0' }}>
+                      <button className="btn-glass-action" onClick={() => setSelected(p)} title="View Details" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '8px 12px', borderRadius: '10px', border: '1.5px solid rgba(99, 102, 241, 0.3)' }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                          <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            ) : (
+              <tr>
+                <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#64748b', fontWeight: 500 }}>
+                  No data found.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
         <TablePagination

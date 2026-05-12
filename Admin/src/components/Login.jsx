@@ -34,6 +34,8 @@ export default function Login({ onLogin }) {
 
       setLoading(false);
       setShowSuccess(true);
+      // Store user data in localStorage for persistence
+      localStorage.setItem("user", JSON.stringify(employee));
       setTimeout(() => {
         setShowSuccess(false);
         onLogin(employee);

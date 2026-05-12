@@ -4,7 +4,6 @@ import { db, auth } from '../firebase';
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import "../components/Registration.css";
 
-// Initial form state
 const initialEmployeeData = {
   firstName: "",
   middleName: "",
@@ -18,19 +17,22 @@ const initialEmployeeData = {
   brgySubd: "",
   cityProvince: "",
   zipCode: "",
-  photoBase64: "", // <-- Add Base64 field
+  photoBase64: "",
 };
 
-// Success Modal
 const SuccessModal = ({ employeeId, photo, onClose }) => {
   return (
     <div className="modal-backdrop">
       <div className="modal-content">
-        {photo && <img src={photo} alt="Employee" style={{ width: 100, marginBottom: 15, borderRadius: "50%" }} />}
-        <h3>Registration Successful!</h3>
-        <p>Employee has been successfully registered.</p>
-        <p>Assigned ID: <strong>{employeeId}</strong></p>
-        <button className="close-btn" onClick={onClose}>Close</button>
+        <div className="success-icon">✓</div>
+        {photo && <img src={photo} alt="Employee" className="modal-avatar" />}
+        <h3>Registration Successful</h3>
+        <p>The employee profile has been created.</p>
+        <div className="id-badge">
+          <span>System ID:</span>
+          <strong>{employeeId}</strong>
+        </div>
+        <button className="close-btn" onClick={onClose}>Done</button>
       </div>
     </div>
   );
@@ -52,11 +54,9 @@ export default function Registration() {
     setEmployeeData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  // Handle photo upload and convert to Base64
   const handlePhotoChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onloadend = () => {
@@ -84,12 +84,11 @@ export default function Registration() {
       });
 
       setRegisteredId(uid);
-      setEmployeeData(initialEmployeeData);
       setShowModal(true);
-
+      // We don't clear the data immediately so the Modal can show the photo
     } catch (e) {
       console.error("Error registering employee: ", e);
-      setMessage(`❌ Error: ${e.message}`);
+      setMessage(`❌ ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -99,135 +98,120 @@ export default function Registration() {
     setShowModal(false);
     setRegisteredId('');
     setMessage('');
+    setEmployeeData(initialEmployeeData); // Clear data after modal closes
   };
 
   return (
-    <>
+    <div className="registration-container">
       <div className="employee-card">
-        <h2>Employee Registration</h2>
-        <p>Manage employees and assign <strong>System Access Roles</strong> and <strong>Job Positions</strong> here.</p>
+        <header className="form-header">
+          <h2>Employee Registration</h2>
+          <p>Onboard new staff and configure access permissions.</p>
+        </header>
 
-        {message && !showModal && <p className="error-message">{message}</p>}
+        {message && !showModal && <div className="error-banner">{message}</div>}
 
         <form className="employee-form" onSubmit={handleSubmit}>
-          <div className="form-columns">
-            {/* Column 1 - 6 fields */}
-            <div className="form-column">
-              <div className="form-field">
-                <label htmlFor="firstName">First Name</label>
-                <input type="text" id="firstName" name="firstName" placeholder="Enter first name" value={employeeData.firstName} onChange={handleChange} required />
+          <div className="form-grid">
+            {/* Section 1: Personal Info */}
+            <div className="form-section">
+              <h3 className="section-title">Personal Details</h3>
+              <div className="field-group">
+                <div className="form-field">
+                  <label>First Name</label>
+                  <input type="text" name="firstName" placeholder="John" value={employeeData.firstName} onChange={handleChange} required />
+                </div>
+                <div className="form-field">
+                  <label>Middle Name</label>
+                  <input type="text" name="middleName" placeholder="Quincy" value={employeeData.middleName} onChange={handleChange} />
+                </div>
+                <div className="form-field">
+                  <label>Last Name</label>
+                  <input type="text" name="lastName" placeholder="Doe" value={employeeData.lastName} onChange={handleChange} required />
+                </div>
               </div>
-              <div className="form-field">
-                <label htmlFor="middleName">Middle Name</label>
-                <input type="text" id="middleName" name="middleName" placeholder="Enter middle name" value={employeeData.middleName} onChange={handleChange} />
-              </div>
-              <div className="form-field">
-                <label htmlFor="lastName">Last Name</label>
-                <input type="text" id="lastName" name="lastName" placeholder="Enter last name" value={employeeData.lastName} onChange={handleChange} required />
-              </div>
-              <div className="form-field">
-                <label htmlFor="email">Email Address</label>
-                <input type="email" id="email" name="email" placeholder="Enter email address" value={employeeData.email} onChange={handleChange} required />
-              </div>
-              <div className="form-field">
-                <label htmlFor="password">Password</label>
-                <input type="password" id="password" name="password" placeholder="Enter password" value={employeeData.password} onChange={handleChange} required />
-              </div>
-              <div className="form-field">
-                <label htmlFor="status">Status</label>
-                <select id="status" name="status" value={employeeData.status} onChange={handleSelectChange} required>
-                  <option value="">Select Status</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
+              
+              <div className="field-group">
+                <div className="form-field">
+                  <label>Email Address</label>
+                  <input type="email" name="email" placeholder="email@company.com" value={employeeData.email} onChange={handleChange} required />
+                </div>
+                <div className="form-field">
+                  <label>Password</label>
+                  <input type="password" name="password" placeholder="••••••••" value={employeeData.password} onChange={handleChange} required />
+                </div>
               </div>
             </div>
 
-            {/* Column 2 - 6 fields */}
-            <div className="form-column">
-              <div className="form-field">
-                <label htmlFor="systemAccessRole">System Access Role</label>
-                <select id="systemAccessRole" name="systemAccessRole" value={employeeData.systemAccessRole} onChange={handleSelectChange} required>
-                  <option value="">Select Role</option>
-                  <option value="super-admin">Super Admin</option>
-                  <option value="employee">Employee</option>
-                </select>
+            {/* Section 2: Work & Address */}
+            <div className="form-section">
+              <h3 className="section-title">Work & Location</h3>
+              <div className="field-group">
+                <div className="form-field">
+                  <label>Status</label>
+                  <select name="status" value={employeeData.status} onChange={handleSelectChange} required>
+                    <option value="">Select...</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label>System Access Role</label>
+                  <select name="systemAccessRole" value={employeeData.systemAccessRole} onChange={handleSelectChange} required>
+                    <option value="">Select...</option>
+                    <option value="super-admin">Super Admin</option>
+                    <option value="employee">Employee</option>
+                  </select>
+                </div>
               </div>
+
               <div className="form-field">
-                <label htmlFor="jobPositionTitle">Job Position</label>
-                <select id="jobPositionTitle" name="jobPositionTitle" value={employeeData.jobPositionTitle} onChange={handleSelectChange} required>
-                  <option value="">Select Job Position</option>
+                <label>Job Position Title</label>
+                <select name="jobPositionTitle" value={employeeData.jobPositionTitle} onChange={handleSelectChange} required>
+                  <option value="">Select...</option>
                   <option value="super-admin">Super Admin</option>
                   <option value="employee">Employee</option>
                   <option value="Compliance Officer">Compliance Officer</option>
                 </select>
               </div>
-              <div className="form-field">
-                <label htmlFor="streetName">Street Name</label>
-                <input type="text" id="streetName" name="streetName" placeholder="Enter street name" value={employeeData.streetName} onChange={handleChange} />
-              </div>
-              <div className="form-field">
-                <label htmlFor="brgySubd">Barangay / Subdivision</label>
-                <input type="text" id="brgySubd" name="brgySubd" placeholder="Enter barangay/subdivision" value={employeeData.brgySubd} onChange={handleChange} />
-              </div>
-              <div className="form-field">
-                <label htmlFor="cityProvince">City / Province</label>
-                <input type="text" id="cityProvince" name="cityProvince" placeholder="Enter city/province" value={employeeData.cityProvince} onChange={handleChange} required />
-              </div>
-              <div className="form-field">
-                <label htmlFor="zipCode">ZIP Code</label>
-                <input type="text" id="zipCode" name="zipCode" placeholder="Enter ZIP code" value={employeeData.zipCode} onChange={handleChange} />
+
+              <div className="address-grid">
+                <div className="form-field"><label>Street</label><input type="text" name="streetName" value={employeeData.streetName} onChange={handleChange} /></div>
+                <div className="form-field"><label>Brgy/Subd</label><input type="text" name="brgySubd" value={employeeData.brgySubd} onChange={handleChange} /></div>
+                <div className="form-field"><label>City/Province</label><input type="text" name="cityProvince" value={employeeData.cityProvince} onChange={handleChange} required /></div>
+                <div className="form-field"><label>ZIP</label><input type="text" name="zipCode" value={employeeData.zipCode} onChange={handleChange} /></div>
               </div>
             </div>
           </div>
 
-          {/* Photo Upload - Full Width */}
-          <div className="form-field photo-field">
-            <label htmlFor="photo">Profile Photo (Optional)</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <input type="file" id="photo" accept="image/*" onChange={handlePhotoChange} />
-              {employeeData.photoBase64 && (
-                <div style={{ 
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '12px',
-                  backgroundColor: '#f0f9ff',
-                  borderRadius: '10px',
-                  border: '2px solid #bae6fd'
-                }}>
-                  <img 
-                    src={employeeData.photoBase64} 
-                    alt="Preview" 
-                    style={{ 
-                      width: '60px', 
-                      height: '60px', 
-                      borderRadius: '50%',
-                      objectFit: 'cover',
-                      border: '2px solid #0ea5e9'
-                    }} 
-                  />
-                  <span style={{ 
-                    fontSize: '14px',
-                    color: '#0369a1',
-                    fontWeight: '500'
-                  }}>
-                    ✓ Photo selected
-                  </span>
-                </div>
-              )}
+          <div className="photo-upload-section">
+            <label>Profile Image</label>
+            <div className={`upload-box ${employeeData.photoBase64 ? 'has-file' : ''}`}>
+              <input type="file" id="photo-input" accept="image/*" onChange={handlePhotoChange} />
+              <label htmlFor="photo-input" className="upload-label">
+                {employeeData.photoBase64 ? (
+                  <div className="preview-content">
+                    <img src={employeeData.photoBase64} alt="Preview" />
+                  </div>
+                ) : (
+                  <div className="upload-placeholder">
+                    <div className="upload-icon">+</div>
+                    <span>Click to upload photo</span>
+                  </div>
+                )}
+              </label>
             </div>
           </div>
 
-          <div className="form-row">
-            <button type="submit" disabled={loading}>
-              {loading ? 'Loading...' : 'Register Employee'}
+          <div className="form-actions">
+            <button type="submit" className="submit-btn" disabled={loading}>
+              {loading ? <span className="spinner"></span> : 'Register Employee'}
             </button>
           </div>
         </form>
       </div>
 
       {showModal && <SuccessModal employeeId={registeredId} photo={employeeData.photoBase64} onClose={closeModal} />}
-    </>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { db, storage } from "../firebase";
+import React, { useEffect, useState, useRef } from "react";
+import { db } from "../firebase";
 import {
   collection,
   getDocs,
@@ -8,7 +8,6 @@ import {
   doc,
   setDoc,
 } from "firebase/firestore";
-import { ref, uploadString, getDownloadURL } from "firebase/storage";
 import { TablePagination } from "@mui/material";
 import "./VendorsRequest.css";
 
@@ -16,13 +15,62 @@ export default function VendorsRequest() {
   const [vendors, setVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedVendor, setSelectedVendor] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFilter, setDateFilter] = useState("");
+  const [dateDropdownOpen, setDateDropdownOpen] = useState(false);
+  const dateDropdownRef = useRef(null);
   const [filteredVendors, setFilteredVendors] = useState([]);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [sileoVisible, setSileoVisible] = useState(false);
+  const [sileoConfig, setSileoConfig] = useState({
+    title: "",
+    message: "",
+    type: "info",
+    confirmText: "OK",
+    cancelText: "",
+    onConfirm: null,
+  });
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [detailVendor, setDetailVendor] = useState(null);
 
+  const imageKeyMap = {
+    selfie: "selfie",
+    selfieUri: "selfie",
+    govIDFront: "govIDFront",
+    govIDBack: "govIDBack",
+    permit: "businessPermit",
+    businessPermit: "businessPermit",
+    permitImage: "businessPermit",
+  };
+
+  const normalizeVendorData = (vendorData) => {
+    const normalized = { ...vendorData };
+    normalized.selfie = normalized.selfie || normalized.selfieUri || null;
+    normalized.govIDFront = normalized.govIDFront || normalized.govID || null;
+    normalized.govIDBack = normalized.govIDBack || null;
+    normalized.businessPermit =
+      normalized.businessPermit || normalized.permit || normalized.permitImage || null;
+    return normalized;
+  };
+
+
+  // Dropdown outside click handler
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dateDropdownRef.current && !dateDropdownRef.current.contains(event.target)) {
+        setDateDropdownOpen(false);
+      }
+    }
+    if (dateDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    } else {
+      document.removeEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [dateDropdownOpen]);
+
+  // Fetch vendors on mount
   useEffect(() => {
     const fetchVendors = async () => {
       try {
@@ -32,32 +80,27 @@ export default function VendorsRequest() {
         const pending = await Promise.all(
           snapshot.docs.map(async (docSnap) => {
             const vendorData = { id: docSnap.id, ...docSnap.data() };
-
-            // Fetch full vendor data
             try {
               const fullDataRef = doc(db, "PendingVendors", docSnap.id, "fullData", "vendorData");
               const fullDataDoc = await getDoc(fullDataRef);
               if (fullDataDoc.exists()) Object.assign(vendorData, fullDataDoc.data());
-            } catch (error) {
-              console.error("Error fetching full data:", error);
-            }
+            } catch (error) {}
 
-            // Fetch images
             try {
               const imagesRef = collection(db, "PendingVendors", docSnap.id, "images");
               const imagesSnapshot = await getDocs(imagesRef);
               imagesSnapshot.forEach((imgDoc) => {
                 const imgData = imgDoc.data();
-                vendorData[imgData.type] = imgData.image;
+                const imageValue = imgData?.image;
+                const rawType = imgData?.type || imgDoc.id;
+                const normalizedType = imageKeyMap[rawType] || rawType;
+                if (imageValue) vendorData[normalizedType] = imageValue;
               });
-            } catch (error) {
-              console.error("Error fetching images:", error);
-            }
+            } catch (error) {}
 
-            return vendorData;
+            return normalizeVendorData(vendorData);
           })
         );
-
         setVendors(pending);
         setFilteredVendors(pending);
       } catch (error) {
@@ -66,7 +109,6 @@ export default function VendorsRequest() {
         setLoading(false);
       }
     };
-
     fetchVendors();
   }, []);
 
@@ -82,336 +124,391 @@ export default function VendorsRequest() {
     if (dateFilter) {
       filtered = filtered.filter((v) => {
         if (!v.createdAt) return false;
-        const date =
-          v.createdAt.toDate?.().toISOString().split("T")[0] ||
-          new Date(v.createdAt).toISOString().split("T")[0];
-        return date === dateFilter;
+        const createdDate = v.createdAt.toDate?.() || new Date(v.createdAt);
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        createdDate.setHours(0,0,0,0);
+        if (dateFilter === "today") {
+          return createdDate.getTime() === today.getTime();
+        } else if (dateFilter === "yesterday") {
+          const yesterday = new Date(today);
+          yesterday.setDate(today.getDate() - 1);
+          return createdDate.getTime() === yesterday.getTime();
+        } else if (dateFilter === "3days") {
+          const threeDaysAgo = new Date(today);
+          threeDaysAgo.setDate(today.getDate() - 3);
+          return createdDate >= threeDaysAgo && createdDate <= today;
+        } else if (dateFilter === "7days") {
+          const sevenDaysAgo = new Date(today);
+          sevenDaysAgo.setDate(today.getDate() - 7);
+          return createdDate >= sevenDaysAgo && createdDate <= today;
+        } else if (dateFilter === "lastmonth") {
+          const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+          const thisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+          return createdDate >= lastMonth && createdDate < thisMonth;
+        } else {
+          // fallback to ISO string match for custom date
+          const date = createdDate.toISOString().split("T")[0];
+          return date === dateFilter;
+        }
       });
     }
     setFilteredVendors(filtered);
-    setPage(0); // Reset to first page when filters change
+    setPage(0);
   }, [searchTerm, dateFilter, vendors]);
 
-  // Pagination handlers
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
-  };
-
+  const handleChangePage = (event, newPage) => setPage(newPage);
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
 
-  // Get paginated data
   const paginatedVendors = filteredVendors.slice(
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
   );
 
-  const handleRowClick = (vendor) => {
-    setSelectedVendor(vendor);
-    setModalOpen(true);
-  };
-  const closeModal = () => {
-    setSelectedVendor(null);
-    setModalOpen(false);
+  const showSileo = (config) => {
+    setSileoConfig({ ...config });
+    setSileoVisible(true);
   };
 
-  const formatCreatedDate = (createdAt) => {
-    if (!createdAt) return "-";
-    try {
-      if (createdAt?.toDate) return createdAt.toDate().toLocaleDateString();
-      return new Date(createdAt).toLocaleDateString();
-    } catch {
-      return "-";
-    }
+  const closeSileo = () => {
+    setSileoVisible(false);
+    setSileoConfig((prev) => ({ ...prev, onConfirm: null }));
   };
 
-  // Upload Base64 to Firebase Storage
-  const uploadBase64ToStorage = async (base64, filename) => {
-    if (!base64 || !base64.startsWith("data:image")) return null;
-    try {
-      const base64Data = base64.split(",")[1];
-      const storageRef = ref(storage, `vendors/${filename}`);
-      await uploadString(storageRef, base64Data, "base64", { contentType: "image/jpeg" });
-      return await getDownloadURL(storageRef);
-    } catch (error) {
-      console.error(`Error uploading ${filename}:`, error);
-      return null;
-    }
+  const confirmSileo = async () => {
+    const callback = sileoConfig.onConfirm;
+    closeSileo();
+    if (typeof callback === "function") await callback();
   };
 
-  // Delete a subcollection
+  const getPermitNumber = (vendor) => {
+    return vendor?.permitNumber || vendor?.permitNo || vendor?.businessPermitNumber || vendor?.permitText?.permitNumber || "-";
+  };
+
   const deleteSubCollection = async (parentId, subCol) => {
     const subColRef = collection(db, "PendingVendors", parentId, subCol);
     const snapshot = await getDocs(subColRef);
     await Promise.all(snapshot.docs.map(docSnap => deleteDoc(doc(subColRef, docSnap.id))));
   };
 
-  // Approve vendor
-  const approveVendor = async () => {
-    if (!selectedVendor) return;
-    const vendorId = selectedVendor.id;
-    const timestamp = Date.now();
-
+  const approveVendor = async (vendorToApprove) => {
+    if (!vendorToApprove) return;
+    const vendorId = vendorToApprove.id;
     try {
-      // Upload images
-      const [govIDFrontURL, govIDBackURL, selfieURL, businessPermitURL] = await Promise.all([
-        selectedVendor.govIDFront ? uploadBase64ToStorage(selectedVendor.govIDFront, `govIDFront_${vendorId}_${timestamp}.jpg`) : null,
-        selectedVendor.govIDBack ? uploadBase64ToStorage(selectedVendor.govIDBack, `govIDBack_${vendorId}_${timestamp}.jpg`) : null,
-        selectedVendor.selfie ? uploadBase64ToStorage(selectedVendor.selfie, `selfie_${vendorId}_${timestamp}.jpg`) : null,
-        selectedVendor.businessPermit ? uploadBase64ToStorage(selectedVendor.businessPermit, `businessPermit_${vendorId}_${timestamp}.jpg`) : null,
-      ]);
-
+      // Use base64 images directly (no Firebase Storage upload)
       const approvedVendorData = {
-        userId: selectedVendor.userId || null,
-        businessName: selectedVendor.businessName || null,
-        ownerName: selectedVendor.ownerName || null,
-        email: selectedVendor.email || null,
-        phone: selectedVendor.phone || null,
-        birthday: selectedVendor.birthday || null,
-        gender: selectedVendor.gender || null,
-        businessType: selectedVendor.businessType || null,
-        businessAddress: selectedVendor.businessAddress || null,
-        govIDFront: govIDFrontURL || null,
-        govIDBack: govIDBackURL || null,
-        selfie: selfieURL || null,
-        businessPermit: businessPermitURL || null,
-        latitude: selectedVendor.latitude || null,
-        longitude: selectedVendor.longitude || null,
+        ...vendorToApprove,
+        govIDFront: vendorToApprove.govIDFront || null,
+        govIDBack: vendorToApprove.govIDBack || null,
+        selfie: vendorToApprove.selfie || null,
+        businessPermit: vendorToApprove.businessPermit || null,
         role: "Vendor",
-        subscription: "Unsubscribe",
         verified: true,
         verifiedAt: new Date(),
         status: "Approved",
-        createdAt: selectedVendor.createdAt || new Date(),
       };
 
       await setDoc(doc(db, "ApprovedVendors", vendorId), approvedVendorData);
-
-      // Delete subcollections
       await deleteSubCollection(vendorId, "images");
       await deleteSubCollection(vendorId, "fullData");
-
-      // Delete parent doc
       await deleteDoc(doc(db, "PendingVendors", vendorId));
 
       setVendors(prev => prev.filter(v => v.id !== vendorId));
-      alert("Vendor approved successfully!");
-      closeModal();
+      showSileo({ title: "Success", message: "Vendor has been onboarded.", type: "success" });
     } catch (error) {
-      console.error("Error approving vendor:", error);
-      alert("Error approving vendor: " + error.message);
+      console.error("Approval error:", error);
+      showSileo({ title: "Error", message: error.message, type: "warning" });
     }
   };
 
-  // Reject vendor
-  const rejectVendor = async () => {
-    if (!selectedVendor) return;
-    const vendorId = selectedVendor.id;
+  const rejectVendor = async (vendorToReject) => {
+    if (!vendorToReject) return;
     try {
-      await setDoc(doc(db, "RejectedVendors", vendorId), {
-        email: selectedVendor.email || null,
-        businessName: selectedVendor.businessName || null,
-        ownerName: selectedVendor.ownerName || null,
+      await setDoc(doc(db, "RejectedVendors", vendorToReject.id), {
+        email: vendorToReject.email,
+        businessName: vendorToReject.businessName,
         rejectedAt: new Date(),
       });
-
-      await deleteSubCollection(vendorId, "images");
-      await deleteSubCollection(vendorId, "fullData");
-      await deleteDoc(doc(db, "PendingVendors", vendorId));
-
-      setVendors(prev => prev.filter(v => v.id !== vendorId));
-      alert("Vendor rejected.");
-      closeModal();
-    } catch (error) {
-      console.error("Error rejecting vendor:", error);
-      alert("Error rejecting vendor.");
-    }
+      await deleteSubCollection(vendorToReject.id, "images");
+      await deleteSubCollection(vendorToReject.id, "fullData");
+      await deleteDoc(doc(db, "PendingVendors", vendorToReject.id));
+      setVendors(prev => prev.filter(v => v.id !== vendorToReject.id));
+      showSileo({ title: "Rejected", message: "Application declined.", type: "warning" });
+    } catch (error) {}
   };
 
   return (
-    <div className="vendors-wrapper">
-      <h2 className="vendors-title">Vendor Registration Requests</h2>
 
-      <div className="search-row">
-        <div className="search-row-container">
-          <div className="total-card">
-            <span className="total-label">Total Vendors</span>
-            <span className="total-value">{filteredVendors.length}</span>
-          </div>
-          <div className="filter-container">
+    <div className="vendors-wrapper">
+      <header className="premium-header" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+        <div className="header-text">
+          <h2 className="premium-title">Vendor Request</h2>
+          <p className="premium-subtitle">Manage and review incoming customer requests</p>
+        </div>
+        <div className="premium-stats-pill">
+          <div className="pill-pulse"></div>
+          <span className="pill-label">Orders:</span>
+          <span className="pill-value">{filteredVendors.length}</span>
+        </div>
+      </header>
+
+      {/* Unified toolbar row for count, search, and filters */}
+      <div className="toolbar-unified">
+
+          <div className="premium-search-bar">
+            <span className="search-icon-wrapper">
+              <svg className="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </span>
             <input
+              className="premium-search-input"
               type="text"
-              placeholder="Search business, owner, email..."
+              placeholder="Search by name, business or email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              autoComplete="off"
             />
-            <input
-              type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-            />
-            <button onClick={() => setDateFilter("")}>Clear Date</button>
           </div>
+
+
+
+
+
+
+        <div className="date-dropdown-wrapper" ref={dateDropdownRef}>
+          <button
+            className="date-dropdown-btn"
+            onClick={() => setDateDropdownOpen((open) => !open)}
+          >
+            {dateFilter === "today" ? "Today"
+              : dateFilter === "yesterday" ? "Yesterday"
+              : dateFilter === "3days" ? "3 Days Ago"
+              : dateFilter === "7days" ? "7 Days Ago"
+              : dateFilter === "lastmonth" ? "Last Month"
+              : dateFilter ? dateFilter : "Date Filter"}
+            <span className="date-dropdown-arrow">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="6 8 10 12 14 8" />
+              </svg>
+            </span>
+          </button>
+          {dateDropdownOpen && (
+            <div className="date-dropdown-menu">
+              <div className="date-dropdown-item" onClick={() => { setDateFilter("today"); setDateDropdownOpen(false); }}>Today</div>
+              <div className="date-dropdown-item" onClick={() => { setDateFilter("yesterday"); setDateDropdownOpen(false); }}>Yesterday</div>
+              <div className="date-dropdown-item" onClick={() => { setDateFilter("3days"); setDateDropdownOpen(false); }}>3 Days Ago</div>
+              <div className="date-dropdown-item" onClick={() => { setDateFilter("7days"); setDateDropdownOpen(false); }}>7 Days Ago</div>
+              <div className="date-dropdown-item" onClick={() => { setDateFilter("lastmonth"); setDateDropdownOpen(false); }}>Last Month</div>
+            </div>
+          )}
         </div>
+        
       </div>
 
-      {loading && <p className="empty">Loading vendor requests...</p>}
-
-      {!loading && filteredVendors.length === 0 && (
-        <p className="empty">No pending vendor requests.</p>
-      )}
-
-      {!loading && filteredVendors.length > 0 && (
-        <>
-          <div className="customers-table-wrapper">
-            <table className="customers-table">
-              <thead>
-                <tr>
-                  <th>Num.</th>
-                  <th>Business Name</th>
-                  <th>Owner</th>
-                  <th>Email</th>
-                  <th>Phone</th>
-                  <th>Date</th>
-                  <th>Details</th>
+      <div className="table-container">
+        <table className="premium-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Business Entity</th>
+              <th>Permit ID</th>
+              <th>Owner Name</th>
+              <th>Status</th>
+              <th className="text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!loading && filteredVendors.length > 0 ? (
+              paginatedVendors.map((vendor, idx) => (
+                <tr key={vendor.id}>
+                  <td className="text-muted">#{(page * rowsPerPage + idx + 1).toString().padStart(2, '0')}</td>
+                  <td>
+                    <div className="business-cell">
+                      <span className="b-name">{vendor.businessName || "Unnamed Business"}</span>
+                      <span className="b-email">{vendor.email}</span>
+                    </div>
+                  </td>
+                  <td><code className="permit-code">{getPermitNumber(vendor)}</code></td>
+                  <td>{vendor.ownerName || "-"}</td>
+                  <td><span className="badge-pending">Pending</span></td>
+                  <td className="actions-cell">
+                    <div className="action-group">
+                      <button className="icon-btn view" title="View Details" onClick={() => { setDetailVendor(vendor); setShowDetailModal(true); }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+                      <button className="icon-btn approve" onClick={() => showSileo({ title: "Approve Vendor", message: `Confirm approval for ${vendor.businessName}?`, type: "info", confirmText: "Approve", cancelText: "Cancel", onConfirm: () => approveVendor(vendor) })}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg></button>
+                      <button className="icon-btn reject" onClick={() => showSileo({ title: "Reject Vendor", message: `Are you sure you want to reject ${vendor.businessName}?`, type: "warning", confirmText: "Reject", cancelText: "Cancel", onConfirm: () => rejectVendor(vendor) })}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {paginatedVendors.map((vendor, idx) => {
-                  const date = formatCreatedDate(vendor.createdAt);
-                  return (
-                    <tr key={vendor.id}>
-                      <td>{page * rowsPerPage + idx + 1}</td>
-                      <td>{vendor.businessName}</td>
-                      <td>{vendor.ownerName}</td>
-                      <td>{vendor.email}</td>
-                      <td>{vendor.phone}</td>
-                      <td>{date}</td>
-                      <td>
-                        <button className="detail-button" onClick={() => handleRowClick(vendor)}>
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: '#64748b', fontWeight: 500 }}>
+                  No pending applications found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        {loading && (
+          <div className="premium-loader-state">
+            <div className="premium-spinner"></div>
           </div>
-          <div className="pagination-wrapper">
-            <TablePagination
-              rowsPerPageOptions={[10]}
-              component="div"
-              count={filteredVendors.length}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-              labelRowsPerPage="Rows:"
-            />
+        )}
+      </div>
+
+      <div className="footer-pagination">
+        <TablePagination
+          rowsPerPageOptions={[10]}
+          component="div"
+          count={filteredVendors.length}
+          rowsPerPage={rowsPerPage}
+          page={page}
+          onPageChange={handleChangePage}
+          onRowsPerPageChange={handleChangeRowsPerPage}
+        />
+      </div>
+
+      {sileoVisible && (
+        <div className="sileo-overlay">
+          <div className="sileo-card">
+            <div className={`sileo-status-bar ${sileoConfig.type}`}></div>
+            <h3>{sileoConfig.title}</h3>
+            <p>{sileoConfig.message}</p>
+            <div className="sileo-actions">
+              {sileoConfig.cancelText && <button className="s-btn-secondary" onClick={closeSileo}>{sileoConfig.cancelText}</button>}
+              <button className={`s-btn-primary ${sileoConfig.type}`} onClick={confirmSileo}>{sileoConfig.confirmText}</button>
+            </div>
           </div>
-        </>
+        </div>
       )}
 
-      {modalOpen && selectedVendor && (
-        <div className="modal-overlay">
-          <div className="modal-content" role="dialog" aria-modal="true" aria-label="Vendor details">
-            <div className="modal-header">
+      {/* Vendor Detail Modal */}
+      {showDetailModal && detailVendor && (
+        <div className="vendor-detail-overlay" onClick={() => setShowDetailModal(false)}>
+          <div className="vendor-detail-modal" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="vendor-detail-header">
               <div>
-                <h3>{selectedVendor.businessName || "Vendor Details"}</h3>
-                <p>{selectedVendor.email}</p>
+                <h2 className="vendor-detail-title">{detailVendor.businessName || "Unnamed Business"}</h2>
+                <p className="vendor-detail-subtitle">Application Details</p>
               </div>
-              <button className="icon-close" onClick={closeModal} aria-label="Close modal">×</button>
+              <button className="vendor-detail-close" onClick={() => setShowDetailModal(false)}>✕</button>
             </div>
 
-            <div className="modal-body">
-              <div className="modal-grid">
-                <div className="modal-section">
-                  <h4>Business Details</h4>
-                  <div className="info-item">
-                    <label>Owner</label>
-                    <p>{selectedVendor.ownerName || "-"}</p>
-                  </div>
-                  <div className="info-item">
-                    <label>Email</label>
-                    <p>{selectedVendor.email || "-"}</p>
-                  </div>
-                  <div className="info-item">
-                    <label>Phone</label>
-                    <p>{selectedVendor.phone || "-"}</p>
-                  </div>
-                  <div className="info-item">
-                    <label>Birthday</label>
-                    <p>{selectedVendor.birthday || "-"}</p>
-                  </div>
-                  <div className="info-item">
-                    <label>Gender</label>
-                    <p>{selectedVendor.gender || "-"}</p>
-                  </div>
-                  <div className="info-item">
-                    <label>Business Type</label>
-                    <p>{selectedVendor.businessType || "-"}</p>
-                  </div>
-                  <div className="info-item">
-                    <label>Address</label>
-                    <p>{selectedVendor.businessAddress || "-"}</p>
-                  </div>
-                  <div className="info-item">
-                    <label>Status</label>
-                    <p>{selectedVendor.status || "Pending"}</p>
-                  </div>
-                  <div className="info-item">
-                    <label>Agreed to Terms</label>
-                    <p>{selectedVendor.agreedToTerms ? "Yes" : "No"}</p>
-                  </div>
+            {/* Body */}
+            <div className="vendor-detail-body">
+              {/* Personal Information Section */}
+              <div className="vendor-section">
+                <div className="vendor-section-header">
+                  <h3 className="vendor-section-title">📋 Personal Information</h3>
                 </div>
-
-                <div className="docs-container">
-                  <div className="modal-section">
-                    <h4>Verification Documents</h4>
-                    <div className="docs-grid">
-                      {selectedVendor.selfie && (
-                        <div className="image-card">
-                          <p>Owner Selfie</p>
-                          <img src={selectedVendor.selfie} alt="Owner Selfie" />
-                        </div>
-                      )}
-                      {selectedVendor.govIDFront && (
-                        <div className="image-card">
-                          <p>ID Front</p>
-                          <img src={selectedVendor.govIDFront} alt="ID Front" />
-                        </div>
-                      )}
-                      {selectedVendor.govIDBack && (
-                        <div className="image-card">
-                          <p>ID Back</p>
-                          <img src={selectedVendor.govIDBack} alt="ID Back" />
-                        </div>
-                      )}
-                      {selectedVendor.businessPermit && (
-                        <div className="image-card">
-                          <p>Business Permit</p>
-                          <img src={selectedVendor.businessPermit} alt="Business Permit" />
-                        </div>
-                      )}
-                    </div>
-                    {!selectedVendor.selfie &&
-                      !selectedVendor.govIDFront &&
-                      !selectedVendor.govIDBack &&
-                      !selectedVendor.businessPermit && (
-                        <p className="image-empty">No verification documents uploaded.</p>
-                      )}
+                <div className="vendor-section-content">
+                  <div className="vendor-detail-row">
+                    <span className="vendor-detail-label">Full Name</span>
+                    <span className="vendor-detail-value">{detailVendor.ownerName || "—"}</span>
+                  </div>
+                  <div className="vendor-detail-row">
+                    <span className="vendor-detail-label">Email Address</span>
+                    <span className="vendor-detail-value">{detailVendor.email || "—"}</span>
+                  </div>
+                  <div className="vendor-detail-row">
+                    <span className="vendor-detail-label">Contact Number</span>
+                    <span className="vendor-detail-value">{detailVendor.phone || "—"}</span>
+                  </div>
+                  <div className="vendor-detail-row">
+                    <span className="vendor-detail-label">Birthdate</span>
+                    <span className="vendor-detail-value">{detailVendor.birthday || detailVendor.birthDate || "—"}</span>
+                  </div>
+                  <div className="vendor-detail-row">
+                    <span className="vendor-detail-label">Gender</span>
+                    <span className="vendor-detail-value">{detailVendor.gender || detailVendor.genderFromID || "—"}</span>
+                  </div>
+                  <div className="vendor-detail-row">
+                    <span className="vendor-detail-label">Home Address</span>
+                    <span className="vendor-detail-value">{detailVendor.businessAddress || detailVendor.streetName || "—"}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="modal-btns">
-                <button className="btn-approve" onClick={approveVendor}>Approve</button>
-                <button className="btn-reject" onClick={rejectVendor}>Reject</button>
-                <button className="btn-close" onClick={closeModal}>Close</button>
+              {/* Business Information Section */}
+              <div className="vendor-section">
+                <div className="vendor-section-header">
+                  <h3 className="vendor-section-title">🏢 Business Information</h3>
+                </div>
+                <div className="vendor-section-content">
+                  <div className="vendor-detail-row">
+                    <span className="vendor-detail-label">Business Name</span>
+                    <span className="vendor-detail-value">{detailVendor.businessName || "—"}</span>
+                  </div>
+                  <div className="vendor-detail-row">
+                    <span className="vendor-detail-label">Business Type</span>
+                    <span className="vendor-detail-value">{detailVendor.businessType || "—"}</span>
+                  </div>
+                  <div className="vendor-detail-row">
+                    <span className="vendor-detail-label">Permit Number</span>
+                    <span className="vendor-detail-value"><code>{getPermitNumber(detailVendor)}</code></span>
+                  </div>
+                  <div className="vendor-detail-row">
+                    <span className="vendor-detail-label">Market Location</span>
+                    <span className="vendor-detail-value">{detailVendor.marketName || detailVendor.selectedCity || "—"}</span>
+                  </div>
+                  <div className="vendor-detail-row">
+                    <span className="vendor-detail-label">Submission Date</span>
+                    <span className="vendor-detail-value">
+                      {detailVendor.createdAt
+                        ? new Date(detailVendor.createdAt.toDate?.() || detailVendor.createdAt).toLocaleDateString()
+                        : "—"}
+                    </span>
+                  </div>
+                </div>
               </div>
+
+              {/* Documents Section */}
+              {(detailVendor.govIDFront || detailVendor.govIDBack || detailVendor.businessPermit || detailVendor.selfie) && (
+                <div className="vendor-section">
+                  <div className="vendor-section-header">
+                    <h3 className="vendor-section-title">📸 Uploaded Documents</h3>
+                  </div>
+                  <div className="vendor-documents-grid">
+                    {detailVendor.govIDFront && (
+                      <div className="vendor-doc-item">
+                        <img src={detailVendor.govIDFront} alt="ID Front" className="vendor-doc-image" />
+                        <span className="vendor-doc-label">ID Front</span>
+                      </div>
+                    )}
+                    {detailVendor.govIDBack && (
+                      <div className="vendor-doc-item">
+                        <img src={detailVendor.govIDBack} alt="ID Back" className="vendor-doc-image" />
+                        <span className="vendor-doc-label">ID Back</span>
+                      </div>
+                    )}
+                    {detailVendor.businessPermit && (
+                      <div className="vendor-doc-item">
+                        <img src={detailVendor.businessPermit} alt="Business Permit" className="vendor-doc-image" />
+                        <span className="vendor-doc-label">Permit</span>
+                      </div>
+                    )}
+                    {detailVendor.selfie && (
+                      <div className="vendor-doc-item">
+                        <img src={detailVendor.selfie} alt="Selfie" className="vendor-doc-image" />
+                        <span className="vendor-doc-label">Selfie</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Actions */}
+            <div className="vendor-detail-footer">
+              <button className="vendor-action-btn cancel" onClick={() => setShowDetailModal(false)}>Close</button>
+              <button className="vendor-action-btn reject" onClick={() => { setShowDetailModal(false); showSileo({ title: "Reject Vendor", message: `Are you sure you want to reject ${detailVendor.businessName}?`, type: "warning", confirmText: "Reject", cancelText: "Cancel", onConfirm: () => rejectVendor(detailVendor) }); }}>Reject</button>
+              <button className="vendor-action-btn approve" onClick={() => { setShowDetailModal(false); showSileo({ title: "Approve Vendor", message: `Confirm approval for ${detailVendor.businessName}?`, type: "info", confirmText: "Approve", cancelText: "Cancel", onConfirm: () => approveVendor(detailVendor) }); }}>Approve</button>
             </div>
           </div>
         </div>

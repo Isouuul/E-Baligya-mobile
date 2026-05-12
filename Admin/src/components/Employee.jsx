@@ -13,11 +13,10 @@ export default function Employees() {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [user, setUser] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [dateFilter, setDateFilter] = useState("");
+  // ...removed dateFilter state...
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
-  // Auth check
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser || null);
@@ -25,44 +24,21 @@ export default function Employees() {
     return () => unsubscribe();
   }, []);
 
-  // Fetch employees
   useEffect(() => {
     if (!user) return;
-
     async function fetchEmployees() {
       setLoading(true);
       try {
         const employeesRef = collection(db, "Employees");
-        const employeesSnapshot = await getDocs(
-          query(employeesRef, orderBy("registeredAt", "desc"))
-        );
-
+        const employeesSnapshot = await getDocs(query(employeesRef, orderBy("registeredAt", "desc")));
         const employeesList = employeesSnapshot.docs.map((doc) => {
           const data = doc.data();
-          const date = data.registeredAt
-            ? data.registeredAt.toDate
-              ? data.registeredAt.toDate().toLocaleDateString()
-              : new Date(data.registeredAt).toLocaleDateString()
+          const date = data.registeredAt?.toDate 
+            ? data.registeredAt.toDate().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) 
             : "-";
 
-          return {
-            id: doc.id,
-            firstName: data.firstName || "-",
-            middleName: data.middleName || "-",
-            lastName: data.lastName || "-",
-            email: data.email || "-",
-            status: data.status || "-",
-            systemAccessRole: data.systemAccessRole || "-",
-            jobPositionTitle: data.jobPositionTitle || "-",
-            streetName: data.streetName || "-",
-            brgySubd: data.brgySubd || "-",
-            cityProvince: data.cityProvince || "-",
-            zipCode: data.zipCode || "-",
-            photoBase64: data.photoBase64 || null,
-            date,
-          };
+          return { id: doc.id, ...data, formattedDate: date };
         });
-
         setEmployees(employeesList);
         setFilteredEmployees(employeesList);
       } catch (err) {
@@ -71,223 +47,174 @@ export default function Employees() {
         setLoading(false);
       }
     }
-
     fetchEmployees();
   }, [user]);
 
-  // Search & date filter
   useEffect(() => {
-    let filtered = employees;
-
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (e) =>
-          e.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          e.middleName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          e.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          e.email.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    if (dateFilter) {
-      filtered = filtered.filter((e) => e.date === dateFilter);
-    }
-
+    let filtered = employees.filter(e => {
+      const fullName = `${e.firstName} ${e.lastName} ${e.email}`.toLowerCase();
+      return fullName.includes(searchTerm.toLowerCase());
+    });
     setFilteredEmployees(filtered);
-    setPage(0); // Reset to first page when filters change
-  }, [searchTerm, dateFilter, employees]);
-
-  // Pagination handlers
-  const handleChangePage = (event, newPage) => {
-    setPage(newPage);
-  };
-
-  const handleChangeRowsPerPage = (event) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
+  }, [searchTerm, employees]);
+
+  const toggleStatus = async () => {
+    if (!selectedEmployee) return;
+    const newStatus = selectedEmployee.status === "Active" ? "Suspended" : "Active";
+    
+    const updateState = (list) => list.map(emp => emp.id === selectedEmployee.id ? { ...emp, status: newStatus } : emp);
+    setEmployees(updateState);
+    setSelectedEmployee(prev => ({ ...prev, status: newStatus }));
+
+    try {
+      await updateDoc(doc(db, "Employees", selectedEmployee.id), { status: newStatus });
+    } catch (error) {
+      alert("Failed to update status.");
+    }
   };
 
-  // Get paginated data
-  const paginatedEmployees = filteredEmployees.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
-  );
-
-  const openModal = (employee) => {
-    setSelectedEmployee(employee);
-    setShowModal(true);
-  };
-
-  const closeModal = () => {
-    setSelectedEmployee(null);
-    setShowModal(false);
-  };
-
-  if (!user) return <div>Please log in to view employees.</div>;
-  if (loading) return <div className="loading">Loading Employees...</div>;
+  if (!user) return <div className="auth-fallback-container"><div className="auth-fallback">Please log in to access the Directory.</div></div>;
 
   return (
-    <div className="customers-card">
-      <h2>Registered Employees</h2>
-
-      <div className="filter-container">
-        <input
-          type="text"
-          className="filter-input-text"
-          placeholder="Search by name or email..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <input
-          type="date"
-          className="filter-input-date"
-          value={dateFilter}
-          onChange={(e) => setDateFilter(e.target.value)}
-        />
-        <button
-          className="filter-button-clear"
-          onClick={() => setDateFilter("")}
-        >
-          Clear Date
-        </button>
-      </div>
-
-      {filteredEmployees.length === 0 ? (
-        <div className="no-customers-message">No registered employees</div>
-      ) : (
-        <>
-          <div className="employees-table-wrapper">
-            <table className="employees-table">
-              <thead>
-                <tr>
-                  <th>Num.</th>
-                  <th>Full Name</th>
-                  <th>Email</th>
-                  <th>Status</th>
-                  <th>Role</th>
-                  <th>Position</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedEmployees.map((emp, idx) => (
-                  <tr key={emp.id}>
-                    <td>{page * rowsPerPage + idx + 1}</td>
-                    <td>{emp.lastName}, {emp.firstName} {emp.middleName}</td>
-                    <td>{emp.email}</td>
-                    <td>{emp.status}</td>
-                    <td>{emp.systemAccessRole}</td>
-                    <td>{emp.jobPositionTitle}</td>
-                    <td>
-                      <button
-                        className="view-btn"
-                        onClick={() => openModal(emp)}
-                      >
-                        View
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <div className="dashboard-wrapper">
+      <div className="dashboard-container">
+        <header className="page-header">
+          <div className="header-text">
+            <h1>Employee Directory</h1>
+            <p>Manage workforce access and organizational roles</p>
           </div>
-          <div className="pagination-wrapper">
+          
+          <div className="filter-bar">
+            <div className="input-group">
+              <input 
+                className="search-input"
+                type="text" 
+                placeholder="Search by name or email..." 
+                value={searchTerm} 
+                onChange={(e) => setSearchTerm(e.target.value)} 
+              />
+            </div>
+            {/* Date filter removed */}
+          </div>
+        </header>
+
+        {loading ? (
+          <div className="loader-container"><div className="spinner"></div></div>
+        ) : (
+          <div className="table-card">
+            <div className="table-responsive">
+              <table className="premium-table">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Role & Position</th>
+                    <th>Status</th>
+                    <th>Joined</th>
+                    <th className="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredEmployees.length > 0 ? (
+                    filteredEmployees.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((emp) => (
+                      <tr key={emp.id} className="table-row">
+                        <td>
+                          <div className="user-info">
+                            <div className="avatar-mini">
+                              {emp.photoBase64 ? <img src={emp.photoBase64} alt="" /> : <span>{emp.firstName[0]}</span>}
+                            </div>
+                            <div>
+                              <div className="user-name">{emp.lastName}, {emp.firstName}</div>
+                              <div className="user-email">{emp.email}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="role-badge">{emp.systemAccessRole}</div>
+                          <div className="position-text">{emp.jobPositionTitle}</div>
+                        </td>
+                        <td>
+                          <span className={`status-pill ${emp.status?.toLowerCase()}`}>
+                            {emp.status}
+                          </span>
+                        </td>
+                        <td className="date-text">{emp.formattedDate}</td>
+                        <td className="text-right">
+                          <button className="btn-view-profile" onClick={() => { setSelectedEmployee(emp); setShowModal(true); }}>
+                            View Profile
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="5" style={{ textAlign: 'center', padding: '2rem', color: '#64748b', fontWeight: 500 }}>
+                        No data found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            
             <TablePagination
-              rowsPerPageOptions={[10]}
               component="div"
               count={filteredEmployees.length}
               rowsPerPage={rowsPerPage}
               page={page}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-              labelRowsPerPage="Rows:"
+              onPageChange={(e, p) => setPage(p)}
+              rowsPerPageOptions={[10]}
+              className="premium-pagination"
             />
           </div>
-        </>
-      )}
+        )}
 
-      {showModal && selectedEmployee && (
-        <div className="employee-modal-overlay" onClick={closeModal}>
-          <div className="employee-modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>Employee Details</h3>
-            {selectedEmployee.photoBase64 && (
-              <img
-                src={selectedEmployee.photoBase64}
-                alt="Employee Photo"
-                style={{ width: "120px", height: "120px", borderRadius: "50%" }}
-              />
-            )}
-            <p><strong>First Name:</strong> {selectedEmployee.firstName}</p>
-            <p><strong>Middle Name:</strong> {selectedEmployee.middleName}</p>
-            <p><strong>Last Name:</strong> {selectedEmployee.lastName}</p>
-            <p><strong>Email:</strong> {selectedEmployee.email}</p>
-            <p><strong>Status:</strong> {selectedEmployee.status}</p>
-            <p><strong>Role:</strong> {selectedEmployee.systemAccessRole}</p>
-            <p><strong>Position:</strong> {selectedEmployee.jobPositionTitle}</p>
-            <p><strong>Address:</strong> {`${selectedEmployee.streetName}, ${selectedEmployee.brgySubd}, ${selectedEmployee.cityProvince}, ${selectedEmployee.zipCode}`}</p>
+        {/* MODAL */}
+        {showModal && selectedEmployee && (
+          <div className="modal-overlay" onClick={() => setShowModal(false)}>
+            <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-banner"></div>
+              <button className="modal-close-top" onClick={() => setShowModal(false)}>×</button>
+              
+              <div className="modal-header">
+                 <div className="avatar-large-wrapper">
+                    <div className="avatar-large">
+                        {selectedEmployee.photoBase64 ? <img src={selectedEmployee.photoBase64} alt="" /> : <span>{selectedEmployee.firstName[0]}</span>}
+                    </div>
+                 </div>
+                 <div className="header-details">
+                    <h2 style={{marginTop: "-6px", color: "#fff"}}>{selectedEmployee.firstName} {selectedEmployee.lastName}</h2>
+                    <span className={`status-pill ${selectedEmployee.status?.toLowerCase()}`}>{selectedEmployee.status}</span>
+                 </div>
+              </div>
 
-            {/* Toggle Status Button */}
-            <button
-              onClick={async () => {
-                if (!selectedEmployee) return;
+              <div className="modal-body">
+                <div className="info-section">
+                  <h4 className="section-title">Contact Information</h4>
+                  <div className="info-grid">
+                    <div className="info-block"><label>Email Address</label><p>{selectedEmployee.email}</p></div>
+                    <div className="info-block"><label>Location</label><p>{`${selectedEmployee.streetName}, ${selectedEmployee.cityProvince}`}</p></div>
+                  </div>
+                </div>
 
-                const previousStatus = selectedEmployee.status;
-                const newStatus = previousStatus === "Active" ? "Suspended" : "Active";
+                <div className="info-section">
+                  <h4 className="section-title">Professional Profile</h4>
+                  <div className="info-grid">
+                    <div className="info-block"><label>System Role</label><p>{selectedEmployee.systemAccessRole}</p></div>
+                    <div className="info-block"><label>Job Title</label><p>{selectedEmployee.jobPositionTitle}</p></div>
+                  </div>
+                </div>
+              </div>
 
-                // Update UI optimistically
-                setSelectedEmployee((prev) => ({ ...prev, status: newStatus }));
-                setEmployees((prev) =>
-                  prev.map((emp) =>
-                    emp.id === selectedEmployee.id ? { ...emp, status: newStatus } : emp
-                  )
-                );
-                setFilteredEmployees((prev) =>
-                  prev.map((emp) =>
-                    emp.id === selectedEmployee.id ? { ...emp, status: newStatus } : emp
-                  )
-                );
-
-                // Update Firestore
-                try {
-                  const employeeRef = doc(db, "Employees", selectedEmployee.id);
-                  await updateDoc(employeeRef, { status: newStatus });
-                  console.log(`Employee status updated to ${newStatus}`);
-                } catch (error) {
-                  console.error("Error updating status:", error);
-                  // Revert UI if error
-                  setSelectedEmployee((prev) => ({ ...prev, status: previousStatus }));
-                  setEmployees((prev) =>
-                    prev.map((emp) =>
-                      emp.id === selectedEmployee.id ? { ...emp, status: previousStatus } : emp
-                    )
-                  );
-                  setFilteredEmployees((prev) =>
-                    prev.map((emp) =>
-                      emp.id === selectedEmployee.id ? { ...emp, status: previousStatus } : emp
-                    )
-                  );
-                  alert("Failed to update status. Please try again.");
-                }
-              }}
-              style={{
-                padding: "8px 16px",
-                marginTop: "10px",
-                backgroundColor: selectedEmployee.status === "Active" ? "red" : "green",
-                color: "#fff",
-                border: "none",
-                borderRadius: "6px",
-                cursor: "pointer",
-              }}
-            >
-              {selectedEmployee.status === "Active" ? "Suspend" : "Enable"}
-            </button>
-
-            <button onClick={closeModal} style={{ marginLeft: "10px" }}>
-              Close
-            </button>
+              <div className="modal-footer">
+                <button className={`btn-toggle-status ${selectedEmployee.status === "Active" ? "danger" : "success"}`} onClick={toggleStatus}>
+                  {selectedEmployee.status === "Active" ? "Deactivate Account" : "Activate Account"}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
