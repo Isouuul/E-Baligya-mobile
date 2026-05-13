@@ -104,7 +104,7 @@ const UploadsScreen = () => {
           <TextInput
             style={styles.searchInput}
             placeholder="Search product..."
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor="#94a3b8"
             value={search}
             onChangeText={setSearch}
           />
@@ -115,16 +115,16 @@ const UploadsScreen = () => {
             selectedValue={dateFilter}
             onValueChange={setDateFilter}
             style={styles.datePicker}
-            dropdownIconColor="#1e3a8a"
+            dropdownIconColor="#0f172a"
           >
-            <Picker.Item label="All" value="All" color="#111827" style={styles.pickerItem} />
-            <Picker.Item label="Today" value="Today" color="#111827" style={styles.pickerItem} />
-            <Picker.Item label="Yesterday" value="Yesterday" color="#111827" style={styles.pickerItem} />
+            <Picker.Item label="All" value="All" color="#0f172a" style={styles.pickerItem} />
+            <Picker.Item label="Today" value="Today" color="#0f172a" style={styles.pickerItem} />
+            <Picker.Item label="Yesterday" value="Yesterday" color="#0f172a" style={styles.pickerItem} />
           </Picker>
         </View>
       </View>
 
-      {/* Category Filter */}
+      {/* Category Filter - RESTORED ORIGINAL UI LAYOUT */}
       <View style={styles.categoryContainer}>
         <FlatList
           horizontal
@@ -136,11 +136,13 @@ const UploadsScreen = () => {
             const isSelected = item.name === selectedCategory;
             return (
               <TouchableOpacity
-                style={[styles.categoryBtn, isSelected && styles.categoryBtnActive]}
+                style={styles.categoryItem}
                 onPress={() => setSelectedCategory(item.name)}
                 activeOpacity={0.8}
               >
-                <Image source={item.icon} style={[styles.categoryIcon, isSelected && { tintColor: '#fff' }]} />
+                <View style={[styles.categoryIconWrapper, isSelected && styles.categoryIconWrapperActive]}>
+                  <Image source={item.icon} style={styles.categoryIcon} />
+                </View>
                 <Text style={[styles.categoryText, isSelected && styles.categoryTextActive]}>
                   {item.name}
                 </Text>
@@ -188,7 +190,7 @@ const UploadsScreen = () => {
               setShowCreateProductModal(true);
             }}
           >
-            <Text style={styles.actionText}>🛍️  Create Product</Text>
+            <Text style={styles.actionText}>🛍️  Create Product</Text>
           </TouchableOpacity>
         </Animated.View>
       )}
@@ -274,7 +276,7 @@ export default UploadsScreen;
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: "#f8fafc" 
+    backgroundColor: "#fafafa" 
   },
   center: { 
     flex: 1, 
@@ -283,195 +285,212 @@ const styles = StyleSheet.create({
     paddingBottom: 60
   },
   header: {
-    backgroundColor: "#1e3a8a",
-    paddingTop: Platform.OS === "ios" ? 50 : 20,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    backgroundColor: "#0f172a", // Premium dark theme
+    paddingTop: Platform.OS === "ios" ? 60 : 28,
+    paddingBottom: 28,
+    paddingHorizontal: 24,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    elevation: 8,
-    shadowColor: "#1e3a8a",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    elevation: 4,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
   },
   headerTitle: { 
-    fontSize: 22, 
+    fontSize: 26, 
     fontWeight: "800", 
     color: "#ffffff",
-    letterSpacing: 0.3
+    letterSpacing: -0.5
   },
   headerSubtitle: {
-    fontSize: 12,
-    color: "#93c5fd",
-    marginTop: 2,
-    fontWeight: "500"
+    fontSize: 13,
+    color: "#94a3b8",
+    marginTop: 4,
+    fontWeight: "400"
   },
   badge: {
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     borderRadius: 99,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
   },
   headerCount: { 
-    fontSize: 13, 
-    fontWeight: "700", 
-    color: "#ffffff" 
+    fontSize: 12, 
+    fontWeight: "600", 
+    color: "#ffffff",
+    letterSpacing: 0.2
   },
   searchDateContainer: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 8,
+    marginHorizontal: 20,
+    marginTop: -20, // Overlap effect
+    marginBottom: 16,
   },
   searchBar: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#ffffff",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    height: 46,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    height: 52,
     borderWidth: 1,
     borderColor: "#e2e8f0",
-    elevation: 2,
+    elevation: 3,
     shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
   },
   searchInput: { 
     flex: 1, 
     height: "100%",
     fontSize: 14, 
-    color: "#111827",
+    color: "#0f172a",
     fontWeight: "500"
   },
   datePickerWrapper: {
-    width: 125,
+    width: 120,
     backgroundColor: "#ffffff",
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: "hidden",
-    height: 46,
+    height: 52,
     borderWidth: 1,
     borderColor: "#e2e8f0",
     justifyContent: "center",
-    marginLeft: 10,
-    elevation: 2,
+    marginLeft: 12,
+    elevation: 3,
     shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
   },
   datePicker: { 
     width: "100%", 
-    color: "#111827",
-    backgroundColor: 'transparent'
+    color: "#0f172a",
+    backgroundColor: "transparent"
   },
   pickerItem: {
     fontSize: 14,
-    color: "#111827",
+    fontWeight: "500",
+    color: "#0f172a",
   },
+  
+  /* Original Category UX Architecture Restored */
   categoryContainer: {
-    maxHeight: 45,
+    maxHeight: 75, // Safely accommodates the dynamic sizing without clipping text
     marginVertical: 12,
   },
   categoryListContent: {
-    paddingHorizontal: 16,
-    alignItems: 'center'
+    paddingHorizontal: 20,
+    alignItems: "center"
   },
-  categoryBtn: {
-    flexDirection: "row",
+  categoryItem: {
     alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    marginRight: 8,
-    backgroundColor: "#ffffff",
-    borderRadius: 99,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
+    marginRight: 20,
+    paddingBottom: 2,
   },
-  categoryBtnActive: { 
-    backgroundColor: "#1e3a8a",
-    borderColor: "#1e3a8a",
+  categoryIconWrapper: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#e2e8f0",
+    marginBottom: 6,
+    marginLeft: 5,
+    elevation: 2,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+  },
+  categoryIconWrapperActive: {
+    backgroundColor: "#f1f5f9",
+    borderColor: "#0f172a",
   },
   categoryIcon: { 
-    width: 18, 
-    height: 18, 
-    resizeMode: "contain", 
-    marginRight: 6 
+    width: 24, 
+    height: 24, 
+    resizeMode: "contain" 
   },
   categoryText: { 
-    fontSize: 13, 
-    color: "#4b5563", 
+    fontSize: 12, 
+    color: "#64748b", 
     fontWeight: "600" 
   },
   categoryTextActive: { 
-    color: "#ffffff", 
+    color: "#0f172a", 
     fontWeight: "700" 
   },
+
   list: { 
-    paddingHorizontal: 16, 
-    paddingBottom: 100 
+    paddingHorizontal: 20, 
+    paddingBottom: 110 
   },
   fab: {
     position: "absolute",
-    bottom: 24,
+    bottom: 30,
     right: 20,
-    backgroundColor: "#1e3a8a",
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    backgroundColor: "#0f172a",
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: "center",
     alignItems: "center",
     elevation: 6,
-    shadowColor: "#1e3a8a",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
     zIndex: 99,
   },
   fabText: { 
     color: "#ffffff", 
-    fontSize: 24, 
+    fontSize: 26, 
     fontWeight: "300",
     marginTop: -2
   },
   actionMenu: {
     position: "absolute",
-    bottom: 92,
+    bottom: 104,
     right: 20,
     backgroundColor: "#ffffff",
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    borderRadius: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
     elevation: 8,
     shadowColor: "#0f172a",
-    shadowOpacity: 0.15,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
+    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 16,
     zIndex: 100,
-    width: 200,
+    width: 210,
     borderWidth: 1,
     borderColor: "#f1f5f9",
   },
   actionButton: { 
-    paddingVertical: 6 
+    paddingVertical: 4 
   },
   actionText: { 
     fontSize: 14, 
-    color: "#111827", 
+    color: "#0f172a", 
     fontWeight: "600" 
   },
   floatingModalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
-    justifyContent: "flex-end", // Standard premium bottom sheet behavior
+    backgroundColor: "rgba(15, 23, 42, 0.4)",
+    justifyContent: "flex-end", 
   },
   floatingModalContentWrapper: {
     width: "100%",
@@ -479,63 +498,65 @@ const styles = StyleSheet.create({
   floatingModalContent: {
     backgroundColor: "#ffffff",
     width: "100%",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 24,
+    paddingTop: 14,
+    paddingBottom: Platform.OS === "ios" ? 40 : 28,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
     elevation: 24,
   },
   modalGrabber: {
     alignSelf: "center",
-    width: 36,
-    height: 4,
+    width: 40,
+    height: 5,
     borderRadius: 99,
-    backgroundColor: "#cbd5e1",
-    marginBottom: 16,
+    backgroundColor: "#e2e8f0",
+    marginBottom: 20,
   },
   modalHeaderRow: {
-    marginBottom: 12,
+    marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "800",
-    color: "#111827",
+    color: "#0f172a",
+    letterSpacing: -0.3,
   },
   modalSubtitle: {
-    marginTop: 2,
+    marginTop: 4,
     fontSize: 13,
-    fontWeight: "500",
-    color: "#6b7280",
+    fontWeight: "400",
+    color: "#64748b",
   },
   modalDivider: {
     height: 1,
     backgroundColor: "#f1f5f9",
-    marginBottom: 16,
+    marginBottom: 20,
   },
   modalBody: {
-    minHeight: 300,
+    minHeight: 320,
   },
   modalScroll: {
-    maxHeight: 500,
+    maxHeight: 520,
   },
   modalScrollContent: {
     paddingBottom: 16,
   },
   noProductsImage: {
-    width: 120,
-    height: 120,
+    width: 140,
+    height: 140,
     resizeMode: "contain",
-    opacity: 0.8
+    opacity: 0.6
   },
   noProductsText: {
-    color: "#6b7280", 
-    marginTop: 14,
+    color: "#64748b", 
+    marginTop: 16,
     fontSize: 15,
-    fontWeight: "500"
+    fontWeight: "500",
+    letterSpacing: -0.1
   }
 });

@@ -20,7 +20,7 @@ import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { classifyFish } from '../../../utils/nyckel';
 
-const CreateProductForm = ({ onCancel, onSubmit }) => {
+const CreateProductForm = ({ onCancel, onSubmit, visible }) => {
   const auth = getAuth();
   const user = auth.currentUser;
 
@@ -35,12 +35,6 @@ const CreateProductForm = ({ onCancel, onSubmit }) => {
   const [isClassifying, setIsClassifying] = useState(false);
   const [freshness, setFreshness] = useState(null);
   const submitLockRef = useRef(false);
-
-
-
-
-
-
 
   const [vendorData, setVendorData] = useState(null);
   const [sileoVisible, setSileoVisible] = useState(false);
@@ -79,7 +73,6 @@ const CreateProductForm = ({ onCancel, onSubmit }) => {
     fetchVendor();
   }, []);
 
-
   const pickImage = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -105,14 +98,14 @@ const CreateProductForm = ({ onCancel, onSubmit }) => {
               confidence: data.confidence,
             });
 
-let freshnessResult = 'Unknown';
+            let freshnessResult = 'Unknown';
 
-if (data.labelName?.toLowerCase().includes('fresh')) {
-  freshnessResult = 'Fresh';
-} else if (data.labelName?.toLowerCase().includes('rotten')) {
-  freshnessResult = 'Rotten';
-}
-setFreshness(freshnessResult);
+            if (data.labelName?.toLowerCase().includes('fresh')) {
+              freshnessResult = 'Fresh';
+            } else if (data.labelName?.toLowerCase().includes('rotten')) {
+              freshnessResult = 'Rotten';
+            }
+            setFreshness(freshnessResult);
             setCategory('Fish');
           } else {
             setFreshness('Freshness: Unknown');
@@ -211,8 +204,6 @@ setFreshness(freshnessResult);
       });
     }
 
-
-
     submitLockRef.current = true;
     setIsSubmitting(true);
     try {
@@ -222,11 +213,10 @@ setFreshness(freshnessResult);
         throw new Error('Image is too large to upload. Please use a smaller image.');
       }
 
-      // Calculate timestamps at submission time
       const now = Timestamp.now();
       const nowDate = now.toDate();
-      const warningDate = new Date(nowDate.getTime() + (1 * 24 * 60 * 60 * 1000)); // 1 day
-      const expiryDate = new Date(nowDate.getTime() + (1.5 * 24 * 60 * 60 * 1000)); // 1.5 days
+      const warningDate = new Date(nowDate.getTime() + (1 * 24 * 60 * 60 * 1000));
+      const expiryDate = new Date(nowDate.getTime() + (1.5 * 24 * 60 * 60 * 1000));
       const warningTimestamp = Timestamp.fromDate(warningDate);
       const expiryTimestamp = Timestamp.fromDate(expiryDate);
 
@@ -301,100 +291,108 @@ setFreshness(freshnessResult);
     }
   };
 
-
-
-const isRotten = freshness === 'Rotten';
-
+  const isRotten = freshness === 'Rotten';
 
   return (
-    <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>New Listing</Text>
-        <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-          <Text style={styles.closeButtonText}>✕</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Image Section */}
-      <View style={styles.section}>
-        <Pressable onPress={pickImage} style={styles.imagePlaceholder}>
-          {imageUri ? (
-            <Image source={{ uri: imageUri }} style={styles.fullImage} />
-          ) : (
-            <View style={styles.uploadPrompt}>
-              <Text style={styles.uploadIcon}>📸</Text>
-              <Text style={styles.uploadText}>Upload Product Photo</Text>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={handleClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+            <View style={styles.header}>
+              <Text style={styles.headerTitle}>New Listing</Text>
+              <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
             </View>
-          )}
-        </Pressable>
 
-        {isClassifying && (
-          <View style={styles.aiBadgeLoading}>
-            <ActivityIndicator size="small" color="#1e3a8a" />
-            <Text style={styles.aiText}> Analyzing Quality...</Text>
-          </View>
-        )}
+            {/* Image Section */}
+            <View style={styles.section}>
+              <Pressable onPress={pickImage} style={styles.imagePlaceholder}>
+                {imageUri ? (
+                  <Image source={{ uri: imageUri }} style={styles.fullImage} />
+                ) : (
+                  <View style={styles.uploadPrompt}>
+                    <Text style={styles.uploadIcon}>📸</Text>
+                    <Text style={styles.uploadText}>Upload Product Photo</Text>
+                  </View>
+                )}
+              </Pressable>
 
-        {prediction && !isClassifying && (
-          <View style={[styles.aiBadge, isRotten ? styles.badgeRotten : styles.badgeFresh]}>
-<Text style={styles.aiTextMain}>Freshness: {freshness}</Text>
-            <Text style={styles.aiTextSub}>{prediction.label} • {(prediction.confidence * 100).toFixed(0)}% match</Text>
-          </View>
-        )}
+              {isClassifying && (
+                <View style={styles.aiBadgeLoading}>
+                  <ActivityIndicator size="small" color="#1e3a8a" />
+                  <Text style={styles.aiText}> Analyzing Quality...</Text>
+                </View>
+              )}
+
+              {prediction && !isClassifying && (
+                <View style={[styles.aiBadge, isRotten ? styles.badgeRotten : styles.badgeFresh]}>
+                  <Text style={styles.aiTextMain}>Freshness: {freshness}</Text>
+                  <Text style={styles.aiTextSub}>{prediction.label} • {(prediction.confidence * 100).toFixed(0)}% match</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Details Section */}
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Basic Information</Text>
+              <View style={styles.pickerWrapper}>
+                <Picker selectedValue={category} onValueChange={setCategory} style={[styles.picker, { color: '#000' }]}>
+                  <Picker.Item label="Select Category" value="" color="#999" />
+                  <Picker.Item label="Fish" value="Fish" color="#000" />
+                  <Picker.Item label="Mollusk" value="Mollusk" color="#000" />
+                  <Picker.Item label="Crustacean" value="Crustacean" color="#000" />
+                  <Picker.Item label="Seasonal" value="Seasonal" color="#000" />
+                </Picker>
+              </View>
+              <TextInput style={styles.premiumInput} placeholder="Product Name" placeholderTextColor="#000" value={productName} onChangeText={setProductName} />
+              <View style={styles.inputRow}>
+                <TextInput style={[styles.premiumInput, { flex: 1, marginRight: 10 }]} placeholder="Base Price" keyboardType="numeric" placeholderTextColor="#000" value={basePrice} onChangeText={setBasePrice} />
+                <TextInput style={[styles.premiumInput, { flex: 1 }]} placeholder="Stock (kg)" keyboardType="numeric" placeholderTextColor="#000" value={quantityKg} onChangeText={setQuantityKg} />
+              </View>
+              <TextInput 
+                style={[styles.premiumInput, { minHeight: 100, textAlignVertical: 'top' }]} 
+                placeholder="Product Description (optional)" 
+                placeholderTextColor="#000" 
+                value={description} 
+                onChangeText={setDescription}
+                multiline
+              />
+            </View>
+
+            {isRotten && (
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorText}>⚠️ Quality check failed. Cannot list spoiled products.</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              onPress={handleSubmit}
+              style={[styles.submitButton, (isSubmitting || isRotten) && styles.disabledButton]}
+              disabled={isSubmitting || isRotten}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.submitButtonText}>Publish Listing</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={resetForm}
+              style={styles.resetButton}
+              disabled={isSubmitting || isClassifying}
+            >
+              <Text style={styles.resetButtonText}>Reset Form</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
       </View>
-
-      {/* Details Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Basic Information</Text>
-        <View style={styles.pickerWrapper}>
-          <Picker selectedValue={category} onValueChange={setCategory} style={[styles.picker, { color: '#000' }]}>
-            <Picker.Item label="Select Category" value="" color="#999" />
-            <Picker.Item label="Fish" value="Fish" color="#000" />
-            <Picker.Item label="Mollusk" value="Mollusk" color="#000" />
-            <Picker.Item label="Crustacean" value="Crustacean" color="#000" />
-            <Picker.Item label="Seasonal" value="Seasonal" color="#000" />
-          </Picker>
-        </View>
-        <TextInput style={styles.premiumInput} placeholder="Product Name" placeholderTextColor="#000" value={productName} onChangeText={setProductName} />
-        <View style={styles.inputRow}>
-          <TextInput style={[styles.premiumInput, { flex: 1, marginRight: 10 }]} placeholder="Base Price" keyboardType="numeric" placeholderTextColor="#000" value={basePrice} onChangeText={setBasePrice} />
-          <TextInput style={[styles.premiumInput, { flex: 1 }]} placeholder="Stock (kg)" keyboardType="numeric" placeholderTextColor="#000" value={quantityKg} onChangeText={setQuantityKg} />
-        </View>
-        <TextInput 
-          style={[styles.premiumInput, { minHeight: 100, textAlignVertical: 'top' }]} 
-          placeholder="Product Description (optional)" 
-          placeholderTextColor="#000" 
-          value={description} 
-          onChangeText={setDescription}
-          multiline
-        />
-      </View>
-
-      {isRotten && (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>⚠️ Quality check failed. Cannot list spoiled products.</Text>
-        </View>
-      )}
-
-      <TouchableOpacity
-        onPress={handleSubmit}
-        style={[styles.submitButton, (isSubmitting || isRotten) && styles.disabledButton]}
-        disabled={isSubmitting || isRotten}
-      >
-        {isSubmitting ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.submitButtonText}>Publish Listing</Text>
-        )}
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={resetForm}
-        style={styles.resetButton}
-        disabled={isSubmitting || isClassifying}
-      >
-        <Text style={styles.resetButtonText}>Reset Form</Text>
-      </TouchableOpacity>
 
       <Modal
         visible={sileoVisible}
@@ -427,16 +425,55 @@ const isRotten = freshness === 'Rotten';
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { padding: 20, backgroundColor: '#F8FAFC' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  headerTitle: { fontSize: 24, fontWeight: '800', color: '#1e3a8a' },
-  closeButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
-  closeButtonText: { fontSize: 18, color: '#64748B', fontWeight: 'bold' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '85%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  container: { 
+    padding: 24,
+    paddingBottom: 32,
+  },
+  header: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#1E3A8A' },
+  closeButton: { 
+    width: 36, 
+    height: 36, 
+    borderRadius: 18, 
+    backgroundColor: '#F1F5F9', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    padding: 4,
+  },
+  closeButtonText: { fontSize: 20, color: '#64748B', fontWeight: 'bold' },
   
   section: { marginBottom: 25 },
   sectionLabel: { fontSize: 14, fontWeight: '700', color: '#64748B', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 },

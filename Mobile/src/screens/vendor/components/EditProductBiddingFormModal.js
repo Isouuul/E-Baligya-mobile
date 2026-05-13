@@ -103,11 +103,11 @@ const EditProductBiddingFormModal = ({ visible, existingBidding, onCancel, onSub
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
+    <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalOverlay}>
         <View style={styles.cardContainer}>
           <View style={styles.modalHeader}>
-            <View style={styles.grabber} />
+            <View style={{ flex: 1 }} />
             <Text style={styles.modalTitle}>Edit Bidding Details</Text>
             <TouchableOpacity onPress={onCancel} style={styles.closeBtn}>
               <Text style={styles.closeBtnText}>✕</Text>
@@ -232,32 +232,43 @@ export default EditProductBiddingFormModal;
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.5)",
-    justifyContent: "flex-end",
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
   },
   cardContainer: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    height: "90%",
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '85%',
+    backgroundColor: '#fff',
+    borderRadius: 24,
     paddingBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 15,
   },
   modalHeader: {
     alignItems: "center",
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#F1F5F9",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
   },
-  grabber: {
-    width: 40,
-    height: 4,
-    backgroundColor: "#E2E8F0",
-    borderRadius: 2,
-    marginBottom: 12,
+  modalTitle: { fontSize: 18, fontWeight: "800", color: "#1E3A8A" },
+  closeBtn: { 
+    width: 36, 
+    height: 36, 
+    borderRadius: 18, 
+    backgroundColor: '#F1F5F9',
+    alignItems: "center", 
+    justifyContent: "center",
   },
-  modalTitle: { fontSize: 18, fontWeight: "800", color: "#0F172A" },
-  closeBtn: { position: "absolute", right: 20, top: 20 },
-  closeBtnText: { fontSize: 18, color: "#64748B" },
+  closeBtnText: { fontSize: 20, color: "#64748B", fontWeight: "bold" },
   scrollContent: { padding: 20 },
   imagePicker: {
     width: "100%",

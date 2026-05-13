@@ -131,11 +131,13 @@ const BiddingUploadsScreen = () => {
             const isSelected = item.name === selectedCategory;
             return (
               <TouchableOpacity
-                style={[styles.categoryBtn, isSelected && styles.categoryBtnActive]}
+                style={styles.categoryItem}
                 onPress={() => setSelectedCategory(item.name)}
                 activeOpacity={0.8}
               >
-                <Image source={item.icon} style={[styles.categoryIcon, isSelected && { tintColor: '#fff' }]} />
+                <View style={[styles.categoryIconWrapper, isSelected && styles.categoryIconWrapperActive]}>
+                  <Image source={item.icon} style={styles.categoryIcon} />
+                </View>
                 <Text style={[styles.categoryText, isSelected && styles.categoryTextActive]}>
                   {item.name}
                 </Text>
@@ -330,35 +332,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center'
   },
-  categoryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    marginRight: 8,
-    backgroundColor: "#ffffff",
-    borderRadius: 99,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
+  categoryItem: {
+    alignItems: 'center',
+    marginRight: 20,
+    paddingBottom: 2,
   },
-  categoryBtnActive: { 
-    backgroundColor: "#1e3a8a",
-    borderColor: "#1e3a8a",
+  categoryIconWrapper: {
+    width: 45,
+    height: 45,
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#f1f5f9',
+    marginBottom: 6,
+    marginLeft: 5,
+  },
+  categoryIconWrapperActive: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#1e3a8a',
   },
   categoryIcon: { 
-    width: 18, 
-    height: 18, 
-    resizeMode: "contain", 
-    marginRight: 6 
+    width: 25, 
+    height: 25, 
+    resizeMode: 'contain' 
   },
   categoryText: { 
-    fontSize: 13, 
-    color: "#4b5563", 
-    fontWeight: "600" 
+    fontSize: 12, 
+    color: '#64748b', 
+    fontWeight: '600' 
   },
   categoryTextActive: { 
-    color: "#ffffff", 
-    fontWeight: "700" 
+    color: '#1e3a8a', 
+    fontWeight: '700' 
   },
   list: { 
     paddingHorizontal: 16, 

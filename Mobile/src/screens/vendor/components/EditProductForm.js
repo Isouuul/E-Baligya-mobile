@@ -250,13 +250,21 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
   const isRotten = freshness === 'Rotten';
 
   return (
-    <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Edit Listing</Text>
-        <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-          <Text style={styles.closeButtonText}>✕</Text>
-        </TouchableOpacity>
-      </View>
+    <Modal
+      visible={true}
+      transparent
+      animationType="fade"
+      onRequestClose={handleClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+            <View style={styles.header}>
+              <Text style={styles.headerTitle}>Edit Listing</Text>
+              <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
 
       {/* Image Section */}
       <View style={styles.section}>
@@ -394,17 +402,59 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 };
 
 // Reusing same exact stylings as CreateProductForm for design consistency
 const styles = StyleSheet.create({
-  container: { padding: 20, backgroundColor: '#F8FAFC' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  headerTitle: { fontSize: 24, fontWeight: '800', color: '#1e3a8a' },
-  closeButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
-  closeButtonText: { fontSize: 18, color: '#64748B', fontWeight: 'bold' },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '85%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 15,
+  },
+  container: { 
+    padding: 24,
+    paddingBottom: 32,
+  },
+  header: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#1E3A8A' },
+  closeButton: { 
+    width: 36, 
+    height: 36, 
+    borderRadius: 18, 
+    backgroundColor: '#F1F5F9', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    padding: 4,
+  },
+  closeButtonText: { fontSize: 20, color: '#64748B', fontWeight: 'bold' },
   
   section: { marginBottom: 25 },
   sectionLabel: { fontSize: 14, fontWeight: '700', color: '#64748B', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 },
