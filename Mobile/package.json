@@ -12,7 +12,6 @@
     "@expo/vector-icons": "^14.1.0",
     "@google-cloud/vision": "^5.3.4",
     "@notifee/react-native": "^9.1.8",
-    "@onfido/react-native-sdk": "^15.3.0",
     "@react-native-community/datetimepicker": "^8.4.1",
     "@react-native-firebase/app": "^23.5.0",
     "@react-native-firebase/auth": "^23.5.0",
@@ -26,13 +25,13 @@
     "buffer": "^6.0.3",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "expo": "~53.0.23",
+    "expo": "~53.0.27",
     "expo-asset": "~11.1.7",
     "expo-camera": "~16.1.11",
-    "expo-constants": "~17.1.7",
+    "expo-constants": "~17.1.8",
     "expo-dev-client": "~5.2.4",
     "expo-file-system": "~18.1.11",
-    "expo-firebase-recaptcha": "^2.3.1",
+    "expo-font": "~13.3.2",
     "expo-haptics": "~14.1.4",
     "expo-image-manipulator": "~13.1.7",
     "expo-image-picker": "~16.1.4",
@@ -75,5 +74,34 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "",
+  "expo": {
+    "doctor": {
+      "prebuildCheck": false,
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "@google-cloud/vision",
+          "@notifee/react-native",
+          "@onfido/react-native-sdk",
+          "react-native-dotenv",
+          "react-native-maps-directions",
+          "assert",
+          "base64-arraybuffer",
+          "buffer",
+          "cors",
+          "dotenv",
+          "express",
+          "firebase",
+          "firebase-admin",
+          "firebase-functions",
+          "multer",
+          "node-fetch",
+          "process",
+          "stream-browserify",
+          "tesseract.js",
+          "util"
+        ]
+      }
+    }
+  }
 }

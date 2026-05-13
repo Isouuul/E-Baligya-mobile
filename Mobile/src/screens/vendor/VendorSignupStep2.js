@@ -157,7 +157,7 @@ const VendorSignupStep2 = ({ route, navigation }) => {
       setOtpSent(true);
       setOtpTimer(OTP_DURATION);
       setResendVisible(false);
-      const response = await fetch('http://10.124.143.183:3000/send-otp', {
+      const response = await fetch('https://e-baligya-mobile.onrender.com/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -177,7 +177,7 @@ const VendorSignupStep2 = ({ route, navigation }) => {
     if (otpTimer <= 0) return showNotification('OTP expired. Please resend.');
     if (!userOtp || userOtp.length !== 6) return showNotification('Enter 6-digit OTP.');
     try {
-      const response = await fetch('http://10.124.143.183:3000/verify-otp', {
+      const response = await fetch('https://e-baligya-mobile.onrender.com/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp: userOtp }),

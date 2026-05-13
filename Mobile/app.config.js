@@ -1,22 +1,15 @@
 export default {
   expo: {
-    name: "E-Baligya",
-    slug: "your-app-slug",
+    owner: "shezzowicked15",
+    name: "E-BALIGYA",
+    slug: "e-baligya",
     version: "1.0.0",
-    android: {
-      package: "com.shezzowicked15.oseafood",
-    },
-    icon: "./assets/ebaligya.png",        // <-- Your PNG icon here
-    splash: {
-      image: "./assets/ebaligya.png",   // <-- Your splash PNG here
-      resizeMode: "contain",
-      backgroundColor: "#ffffff"
-    },
+    newArchEnabled: false,
+
     extra: {
-      GOOGLE_VISION_KEY: process.env.GOOGLE_VISION_KEY,
       eas: {
-        projectId: "61b3d40d-8612-4bea-8901-1138ae1252a3"
+        projectId: "a2aa7eb2-5620-401d-9ad1-61376d5fed56"
       }
-    },
-  },
+    }
+  }
 };
