@@ -82,11 +82,6 @@ const UserSignupStep2 = ({ route, navigation }) => {
   const [selectedBarangay, setSelectedBarangay] = useState('');
   const [streetName, setStreetName] = useState('');
 
-  const [otpSent, setOtpSent] = useState(false);
-  const [userOtp, setUserOtp] = useState('');
-  const [otpVerified, setOtpVerified] = useState(false);
-  const [otpTimer, setOtpTimer] = useState(0);
-  const [resendVisible, setResendVisible] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -105,70 +100,55 @@ const UserSignupStep2 = ({ route, navigation }) => {
     }, 3000);
   };
 
-  useEffect(() => {
-    let timer;
-    if (otpTimer > 0) {
-      timer = setTimeout(() => setOtpTimer(otpTimer - 1), 1000);
-    } else if (otpTimer === 0 && otpSent && !otpVerified) {
-      setResendVisible(true);
-    }
-    return () => clearTimeout(timer);
-  }, [otpTimer, otpSent, otpVerified]);
-
-  const handleSendOtp = async () => {
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return showNotification('Valid email is required.');
-    }
-
-    try {
-      setOtpSent(true);
-      setOtpTimer(OTP_DURATION);
-      setResendVisible(false);
-
-      const response = await fetch('https://e-baligya-mobile.onrender.com/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
-      });
-
-      const data = await response.json();
-      if (response.ok && data.success) {
-        showNotification('OTP sent to your email.', 'success');
-      } else {
-        showNotification(data.message || data.error || 'Failed to send OTP.');
-      }
-    } catch {
-      showNotification('Error sending OTP. Check network.');
-    }
-  };
 
 
-  const handleVerifyOtp = async () => {
-    if (otpTimer <= 0) return showNotification('OTP expired. Please resend.');
-    if (!userOtp || userOtp.length !== 6) return showNotification('Enter 6-digit OTP.');
+  // TODO: OTP handlers to be repaired
+  // const handleSendOtp = async () => {
+  //   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  //     return showNotification('Valid email is required.');
+  //   }
+  //   try {
+  //     setOtpSent(true);
+  //     setOtpTimer(OTP_DURATION);
+  //     setResendVisible(false);
+  //     const response = await fetch('https://e-baligya-mobile.onrender.com/send-otp', {
+  //       method: 'POST',
+  //       headers: { 'Content-Type': 'application/json' },
+  //       body: JSON.stringify({ email: email.trim().toLowerCase() }),
+  //     });
+  //     const data = await response.json();
+  //     if (response.ok && data.success) {
+  //       showNotification('OTP sent to your email.', 'success');
+  //     } else {
+  //       showNotification(data.message || data.error || 'Failed to send OTP.');
+  //     }
+  //   } catch {
+  //     showNotification('Error sending OTP. Check network.');
+  //   }
+  // };
 
-    try {
-      const response = await fetch('https://e-baligya-mobile.onrender.com/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), otp: userOtp }),
-      });
-
-      const data = await response.json();
-      if (response.ok && data.success) {
-        setOtpVerified(true);
-        showNotification('Email verified successfully!', 'success');
-      } else {
-        showNotification(data.message || data.error || 'Invalid OTP.');
-      }
-    } catch {
-      showNotification('Error verifying OTP.');
-    }
-  };
+  // const handleVerifyOtp = async () => {
+  //   if (otpTimer <= 0) return showNotification('OTP expired. Please resend.');
+  //   if (!userOtp || userOtp.length !== 6) return showNotification('Enter 6-digit OTP.');
+  //   try {
+  //     const response = await fetch('https://e-baligya-mobile.onrender.com/verify-otp', {
+  //       method: 'POST',
+  //       headers: { 'Content-Type': 'application/json' },
+  //       body: JSON.stringify({ email: email.trim().toLowerCase(), otp: userOtp }),
+  //     });
+  //     const data = await response.json();
+  //     if (response.ok && data.success) {
+  //       setOtpVerified(true);
+  //       showNotification('Email verified successfully!', 'success');
+  //     } else {
+  //       showNotification(data.message || data.error || 'Invalid OTP.');
+  //     }
+  //   } catch {
+  //     showNotification('Error verifying OTP.');
+  //   }
+  // };
 
   const handleNext = () => {
-    if (!otpVerified) return showNotification('Please verify your email with OTP.');
-
     const phoneRegex = /^09\d{9}$/;
     if (!phone || !phoneRegex.test(phone)) return showNotification('Enter a valid mobile number (09XXXXXXXXX).');
     if (!password || password.length < 6) return showNotification('Password must be at least 6 characters.');
@@ -239,46 +219,14 @@ const UserSignupStep2 = ({ route, navigation }) => {
           <Text style={styles.sectionTitle}>Contact Information</Text>
 
           <Text style={styles.label}>Email Address</Text>
-          <View style={[styles.inputWrapper, otpVerified && styles.inputWrapperVerified]}>
-            <TextInput
-              style={styles.input}
-              placeholder="name@example.com"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              editable={!otpVerified}
-            />
-            {otpVerified ? (
-              <View style={styles.verifiedSealWrapper}>
-                <View style={styles.verifiedCircle}><Text style={styles.verifiedCheckText}>✓</Text></View>
-              </View>
-            ) : (
-              <TouchableOpacity style={styles.inlineButton} onPress={handleSendOtp}>
-                <Text style={styles.inlineButtonText}>{otpSent && resendVisible ? 'Resend' : 'Send OTP'}</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {otpSent && !otpVerified && (
-            <View style={styles.otpSection}>
-              <Text style={styles.label}>Enter 6-Digit OTP</Text>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="000000"
-                  value={userOtp}
-                  onChangeText={setUserOtp}
-                  keyboardType="numeric"
-                  maxLength={6}
-                />
-                <TouchableOpacity style={styles.verifyButton} onPress={handleVerifyOtp}>
-                  <Text style={styles.verifyButtonText}>Verify</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.timerText}>{otpTimer > 0 ? `Code expires in ${otpTimer}s` : 'Code expired'}</Text>
-            </View>
-          )}
+          <TextInput
+            style={styles.inputField}
+            placeholder="name@example.com"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
 
           <Text style={styles.label}>Phone Number</Text>
           <TextInput
@@ -364,7 +312,7 @@ const UserSignupStep2 = ({ route, navigation }) => {
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.nextButton, (!otpVerified || !phone || !password || !confirmPassword) && styles.nextButtonDisabled]}
+          style={[styles.nextButton, (!email || !phone || !password || !confirmPassword) && styles.nextButtonDisabled]}
           onPress={handleNext}
         >
           <Text style={styles.nextText}>Continue to Selfie</Text>
