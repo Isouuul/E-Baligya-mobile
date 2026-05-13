@@ -36,12 +36,13 @@ const ProgressSteps = ({ currentStep = 3 }) => {
                 ]}
               >
                 {isCompleted ? (
-                  <Text style={styles.circleText}>✓</Text>
+                  <Text style={[styles.circleText, { color: '#fff' }]}>✓</Text>
                 ) : (
                   <Text
                     style={[
                       styles.circleText,
                       !isActive && styles.inactiveText,
+                      { color: isActive ? '#fff' : '#1E293B' },
                     ]}
                   >
                     {stepNumber}
@@ -471,8 +472,8 @@ const styles = StyleSheet.create({
   circle: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#fff', borderWidth: 2, borderColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center' },
   activeCircle: { backgroundColor: '#2563EB', borderColor: '#2563EB' },
   completedCircle: { backgroundColor: '#2563EB', borderColor: '#2563EB' },
-  circleText: { fontSize: 12, fontWeight: 'bold', color: '#fff' },
-  inactiveText: { color: '#94A3B8' },
+  circleText: { fontSize: 12, fontWeight: 'bold', color: '#1E293B' },
+  inactiveText: { color: '#475569' },
   stepLabel: { marginTop: 6, fontSize: 10, color: '#94A3B8', fontWeight: '600' },
   activeStepLabel: { color: '#2563EB' },
   line: { height: 2, flex: 1, marginTop: -18, marginHorizontal: -5 },

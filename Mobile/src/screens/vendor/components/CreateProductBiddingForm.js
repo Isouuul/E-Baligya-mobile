@@ -375,6 +375,7 @@ const CreateProductBiddingForm = ({ onCancel, onSubmit }) => {
             style={styles.rowInput}
             placeholder="Add-on ₱"
             keyboardType="numeric"
+            placeholderTextColor="#000"
             value={services[serviceKey].price}
             onChangeText={(txt) =>
               setServices((prev) => ({ ...prev, [serviceKey]: { ...prev[serviceKey], price: txt } }))
@@ -405,6 +406,7 @@ const CreateProductBiddingForm = ({ onCancel, onSubmit }) => {
               style={styles.rowInputWide}
               placeholder="Enter minutes"
               keyboardType="numeric"
+              placeholderTextColor="#000"
               value={customDuration}
               onChangeText={setCustomDuration}
             />
@@ -464,18 +466,18 @@ const CreateProductBiddingForm = ({ onCancel, onSubmit }) => {
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Basic Information</Text>
         <View style={styles.pickerWrapper}>
-          <Picker selectedValue={category} onValueChange={setCategory} style={styles.picker}>
-            <Picker.Item label="Category" value="" color="#999" />
-            <Picker.Item label="Fish" value="Fish" />
-            <Picker.Item label="Mollusk" value="Mollusk" />
-            <Picker.Item label="Crustacean" value="Crustacean" />
-            <Picker.Item label="Trend" value="Trend" />
+          <Picker selectedValue={category} onValueChange={setCategory} style={[styles.picker, { color: '#000' }]}>
+            <Picker.Item label="Select Category" value="" color="#999" />
+            <Picker.Item label="Fish" value="Fish" color="#000" />
+            <Picker.Item label="Mollusk" value="Mollusk" color="#000" />
+            <Picker.Item label="Crustacean" value="Crustacean" color="#000" />
+            <Picker.Item label="Trend" value="Trend" color="#000" />
           </Picker>
         </View>
         <TextInput
           style={styles.premiumInput}
           placeholder="Product Name"
-          placeholderTextColor="#999"
+          placeholderTextColor="#000"
           value={productName}
           onChangeText={setProductName}
         />
@@ -483,6 +485,7 @@ const CreateProductBiddingForm = ({ onCancel, onSubmit }) => {
           style={styles.premiumInput}
           placeholder="Stock (kg)"
           keyboardType="numeric"
+          placeholderTextColor="#000"
           value={quantity}
           onChangeText={setQuantity}
         />
@@ -523,6 +526,7 @@ const CreateProductBiddingForm = ({ onCancel, onSubmit }) => {
               : "Wholesale Base Price per Bulk Unit (₱)"
           }
           keyboardType="numeric"
+          placeholderTextColor="#000"
           value={basePrice}
           onChangeText={setBasePrice}
         />

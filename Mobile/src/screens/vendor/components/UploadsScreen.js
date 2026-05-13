@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { collection, onSnapshot } from "firebase/firestore";
-import { db, auth} from "../../../firebase";
+import { db, auth } from "../../../firebase";
 
 import CreateProductForm from "./CreateProductForm";
 import EditProductForm from "./EditProductForm";
@@ -89,8 +89,13 @@ const UploadsScreen = () => {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Products</Text>
-        <Text style={styles.headerCount}>{filtered.length} Items</Text>
+        <View>
+          <Text style={styles.headerTitle}>My Products</Text>
+          <Text style={styles.headerSubtitle}>Manage your ebaligya listings</Text>
+        </View>
+        <View style={styles.badge}>
+          <Text style={styles.headerCount}>{filtered.length} Items</Text>
+        </View>
       </View>
 
       {/* Search + Date */}
@@ -99,6 +104,7 @@ const UploadsScreen = () => {
           <TextInput
             style={styles.searchInput}
             placeholder="Search product..."
+            placeholderTextColor="#9ca3af"
             value={search}
             onChangeText={setSearch}
           />
@@ -109,36 +115,40 @@ const UploadsScreen = () => {
             selectedValue={dateFilter}
             onValueChange={setDateFilter}
             style={styles.datePicker}
+            dropdownIconColor="#1e3a8a"
           >
-            <Picker.Item label="All" value="All" />
-            <Picker.Item label="Today" value="Today" />
-            <Picker.Item label="Yesterday" value="Yesterday" />
+            <Picker.Item label="All" value="All" color="#111827" style={styles.pickerItem} />
+            <Picker.Item label="Today" value="Today" color="#111827" style={styles.pickerItem} />
+            <Picker.Item label="Yesterday" value="Yesterday" color="#111827" style={styles.pickerItem} />
           </Picker>
         </View>
       </View>
 
       {/* Category Filter */}
-      <FlatList
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        data={categories}
-        keyExtractor={(item) => item.name}
-        style={styles.categoryList}
-        renderItem={({ item }) => {
-          const isSelected = item.name === selectedCategory;
-          return (
-            <TouchableOpacity
-              style={[styles.categoryBtn, isSelected && styles.categoryBtnActive]}
-              onPress={() => setSelectedCategory(item.name)}
-            >
-              <Image source={item.icon} style={styles.categoryIcon} />
-              <Text style={[styles.categoryText, isSelected && styles.categoryTextActive]}>
-                {item.name}
-              </Text>
-            </TouchableOpacity>
-          );
-        }}
-      />
+      <View style={styles.categoryContainer}>
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={categories}
+          keyExtractor={(item) => item.name}
+          contentContainerStyle={styles.categoryListContent}
+          renderItem={({ item }) => {
+            const isSelected = item.name === selectedCategory;
+            return (
+              <TouchableOpacity
+                style={[styles.categoryBtn, isSelected && styles.categoryBtnActive]}
+                onPress={() => setSelectedCategory(item.name)}
+                activeOpacity={0.8}
+              >
+                <Image source={item.icon} style={[styles.categoryIcon, isSelected && { tintColor: '#fff' }]} />
+                <Text style={[styles.categoryText, isSelected && styles.categoryTextActive]}>
+                  {item.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
 
       {/* Product List */}
       {filtered.length === 0 ? (
@@ -147,7 +157,7 @@ const UploadsScreen = () => {
             source={require("../../../../assets/no-order.png")}
             style={styles.noProductsImage}
           />
-          <Text style={{ color: "#6b7280", marginTop: 10 }}>No products found.</Text>
+          <Text style={styles.noProductsText}>No products found.</Text>
         </View>
       ) : (
         <FlatList
@@ -163,6 +173,7 @@ const UploadsScreen = () => {
             />
           )}
           contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
         />
       )}
 
@@ -171,12 +182,13 @@ const UploadsScreen = () => {
         <Animated.View style={styles.actionMenu}>
           <TouchableOpacity
             style={styles.actionButton}
+            activeOpacity={0.7}
             onPress={() => {
               setModalVisible(false);
               setShowCreateProductModal(true);
             }}
           >
-            <Text style={styles.actionText}>🛍️ Create Product</Text>
+            <Text style={styles.actionText}>🛍️  Create Product</Text>
           </TouchableOpacity>
         </Animated.View>
       )}
@@ -184,6 +196,7 @@ const UploadsScreen = () => {
       {/* FAB */}
       <TouchableOpacity
         style={styles.fab}
+        activeOpacity={0.9}
         onPress={() => setModalVisible(!modalVisible)}
       >
         <Text style={styles.fabText}>＋</Text>
@@ -211,47 +224,47 @@ const UploadsScreen = () => {
         </View>
       </Modal>
 
-{/* Edit Product Modal */}
-<Modal
-  visible={showEditProductModal}
-  transparent
-  animationType="fade"
-  onRequestClose={() => setShowEditProductModal(false)}
->
-  <TouchableOpacity
-    style={styles.floatingModalOverlay}
-    activeOpacity={1}
-    onPressOut={() => setShowEditProductModal(false)}
-  >
-    <View style={styles.floatingModalContentWrapper}>
-      <TouchableOpacity activeOpacity={1}>
-        <View style={styles.floatingModalContent}>
-          <View style={styles.modalGrabber} />
-          <View style={styles.modalHeaderRow}>
-            <Text style={styles.modalTitle}>Edit Product</Text>
-            <Text style={styles.modalSubtitle}>Update your product details</Text>
+      {/* Edit Product Modal */}
+      <Modal
+        visible={showEditProductModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEditProductModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.floatingModalOverlay}
+          activeOpacity={1}
+          onPressOut={() => setShowEditProductModal(false)}
+        >
+          <View style={styles.floatingModalContentWrapper}>
+            <TouchableOpacity activeOpacity={1}>
+              <View style={styles.floatingModalContent}>
+                <View style={styles.modalGrabber} />
+                <View style={styles.modalHeaderRow}>
+                  <Text style={styles.modalTitle}>Edit Product</Text>
+                  <Text style={styles.modalSubtitle}>Update your product details</Text>
+                </View>
+                <View style={styles.modalDivider} />
+                <ScrollView
+                  style={styles.modalScroll}
+                  contentContainerStyle={styles.modalScrollContent}
+                  showsVerticalScrollIndicator={true}
+                >
+                  <KeyboardAvoidingView
+                    behavior={Platform.OS === "ios" ? "padding" : undefined}
+                    style={{ flex: 1 }}
+                  >
+                    <EditProductForm
+                      existingProduct={editingProduct}
+                      onCancel={() => setShowEditProductModal(false)}
+                    />
+                  </KeyboardAvoidingView>
+                </ScrollView>
+              </View>
+            </TouchableOpacity>
           </View>
-          <View style={styles.modalDivider} />
-          <ScrollView
-            style={styles.modalScroll}
-            contentContainerStyle={styles.modalScrollContent}
-            showsVerticalScrollIndicator={true}
-          >
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : undefined}
-              style={{ flex: 1 }}
-            >
-              <EditProductForm
-                existingProduct={editingProduct}
-                onCancel={() => setShowEditProductModal(false)}
-              />
-            </KeyboardAvoidingView>
-          </ScrollView>
-        </View>
-      </TouchableOpacity>
-    </View>
-  </TouchableOpacity>
-</Modal>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -259,170 +272,270 @@ const UploadsScreen = () => {
 export default UploadsScreen;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f9fafb" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  container: { 
+    flex: 1, 
+    backgroundColor: "#f8fafc" 
+  },
+  center: { 
+    flex: 1, 
+    justifyContent: "center", 
+    alignItems: "center",
+    paddingBottom: 60
+  },
   header: {
     backgroundColor: "#1e3a8a",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingTop: Platform.OS === "ios" ? 50 : 20,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
-    elevation: 4,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    elevation: 8,
+    shadowColor: "#1e3a8a",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
-  headerTitle: { fontSize: 18, fontWeight: "700", color: "#fff" },
-  headerCount: { fontSize: 14, fontWeight: "600", color: "#E0E7FF" },
+  headerTitle: { 
+    fontSize: 22, 
+    fontWeight: "800", 
+    color: "#ffffff",
+    letterSpacing: 0.3
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    color: "#93c5fd",
+    marginTop: 2,
+    fontWeight: "500"
+  },
+  badge: {
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 99,
+  },
+  headerCount: { 
+    fontSize: 13, 
+    fontWeight: "700", 
+    color: "#ffffff" 
+  },
   searchDateContainer: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginHorizontal: 14,
-    marginTop: 10,
-    marginBottom: 6,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 8,
   },
   searchBar: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    paddingHorizontal: 10,
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    height: 46,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
     elevation: 2,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
-  searchInput: { flex: 1, paddingVertical: 8, paddingHorizontal: 6, fontSize: 14, color: "#111" },
+  searchInput: { 
+    flex: 1, 
+    height: "100%",
+    fontSize: 14, 
+    color: "#111827",
+    fontWeight: "500"
+  },
   datePickerWrapper: {
-    width: 120,
-    backgroundColor: "#E5E7EB",
-    borderRadius: 10,
+    width: 125,
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
     overflow: "hidden",
+    height: 46,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    justifyContent: "center",
+    marginLeft: 10,
     elevation: 2,
-    marginLeft: 8,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
   },
-  datePicker: { height: 40, width: "100%", color: "#111", fontSize: 14, textAlignVertical: "center" },
-  categoryList: { width: "100%", maxHeight: 35, marginVertical: 10, marginLeft: 8 },
+  datePicker: { 
+    width: "100%", 
+    color: "#111827",
+    backgroundColor: 'transparent'
+  },
+  pickerItem: {
+    fontSize: 14,
+    color: "#111827",
+  },
+  categoryContainer: {
+    maxHeight: 45,
+    marginVertical: 12,
+  },
+  categoryListContent: {
+    paddingHorizontal: 16,
+    alignItems: 'center'
+  },
   categoryBtn: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginRight: 10,
-    backgroundColor: "#E5E7EB",
-    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginRight: 8,
+    backgroundColor: "#ffffff",
+    borderRadius: 99,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
   },
-  categoryBtnActive: { backgroundColor: "#1e3a8a" },
-  categoryIcon: { width: 20, height: 20, resizeMode: "contain", marginRight: 6 },
-  categoryText: { fontSize: 14, color: "#111", fontWeight: "500" },
-  categoryTextActive: { color: "#fff", fontWeight: "700" },
-  list: { paddingHorizontal: 8, paddingBottom: 20 },
+  categoryBtnActive: { 
+    backgroundColor: "#1e3a8a",
+    borderColor: "#1e3a8a",
+  },
+  categoryIcon: { 
+    width: 18, 
+    height: 18, 
+    resizeMode: "contain", 
+    marginRight: 6 
+  },
+  categoryText: { 
+    fontSize: 13, 
+    color: "#4b5563", 
+    fontWeight: "600" 
+  },
+  categoryTextActive: { 
+    color: "#ffffff", 
+    fontWeight: "700" 
+  },
+  list: { 
+    paddingHorizontal: 16, 
+    paddingBottom: 100 
+  },
   fab: {
     position: "absolute",
-    bottom: 30,
-    right: 15,
+    bottom: 24,
+    right: 20,
     backgroundColor: "#1e3a8a",
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: "center",
     alignItems: "center",
-    elevation: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
+    elevation: 6,
+    shadowColor: "#1e3a8a",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    zIndex: 99,
   },
-  fabText: { color: "#fff", fontSize: 28, fontWeight: "bold" },
+  fabText: { 
+    color: "#ffffff", 
+    fontSize: 24, 
+    fontWeight: "300",
+    marginTop: -2
+  },
   actionMenu: {
     position: "absolute",
-    bottom: 100,
-    right: 25,
+    bottom: 92,
+    right: 20,
     backgroundColor: "#ffffff",
-    borderRadius: 14,
-    paddingVertical: 10,
+    borderRadius: 16,
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    elevation: 10,
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
-    zIndex: 20,
-    width: 220,
+    elevation: 8,
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.15,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    zIndex: 100,
+    width: 200,
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
   },
-  actionButton: { paddingVertical: 10 },
-  actionText: { fontSize: 16, color: "#000", fontWeight: "500" },
-floatingModalOverlay: {
-  flex: 1,
-  backgroundColor: "rgba(15,23,42,0.45)",
-  justifyContent: "center",
-  alignItems: "center",
-  paddingHorizontal: 16,
-  paddingVertical: 22,
-},
+  actionButton: { 
+    paddingVertical: 6 
+  },
+  actionText: { 
+    fontSize: 14, 
+    color: "#111827", 
+    fontWeight: "600" 
+  },
+  floatingModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    justifyContent: "flex-end", // Standard premium bottom sheet behavior
+  },
   floatingModalContentWrapper: {
     width: "100%",
-    alignItems: "center",
   },
   floatingModalContent: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#ffffff",
     width: "100%",
-    maxWidth: 390,
-    maxHeight: "92%",
-    minHeight: 560,
-    borderRadius: 24,
-    paddingHorizontal: 18,
-    paddingTop: 14,
-    paddingBottom: 16,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    elevation: 16,
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 18,
-    flexDirection: "column",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 24,
   },
   modalGrabber: {
     alignSelf: "center",
-    width: 48,
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: "#CBD5E1",
-    marginBottom: 12,
+    width: 36,
+    height: 4,
+    borderRadius: 99,
+    backgroundColor: "#cbd5e1",
+    marginBottom: 16,
   },
   modalHeaderRow: {
-    paddingHorizontal: 4,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: "800",
-    color: "#0F172A",
-    letterSpacing: 0.2,
+    color: "#111827",
   },
   modalSubtitle: {
-    marginTop: 4,
+    marginTop: 2,
     fontSize: 13,
     fontWeight: "500",
-    color: "#64748B",
+    color: "#6b7280",
   },
   modalDivider: {
     height: 1,
-    backgroundColor: "#E2E8F0",
-    marginBottom: 12,
+    backgroundColor: "#f1f5f9",
+    marginBottom: 16,
   },
   modalBody: {
-    flex: 1,
+    minHeight: 300,
   },
   modalScroll: {
-    flex: 1,
+    maxHeight: 500,
   },
   modalScrollContent: {
     paddingBottom: 16,
   },
-  
   noProductsImage: {
-    width: 150,
-    height: 150,
+    width: 120,
+    height: 120,
     resizeMode: "contain",
+    opacity: 0.8
   },
+  noProductsText: {
+    color: "#6b7280", 
+    marginTop: 14,
+    fontSize: 15,
+    fontWeight: "500"
+  }
 });

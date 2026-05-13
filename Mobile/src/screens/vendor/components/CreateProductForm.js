@@ -237,8 +237,8 @@ setFreshness(freshnessResult);
         basePrice: basePrice ? parseFloat(basePrice) : null,
         quantityKg: quantityKg ? parseFloat(quantityKg) : null,
         createdAt: Timestamp.now(),
-        warningTime: warningTimestamp, // ⏰ after 1 day → "almost not fresh"
-        expiryTime: expiryTimestamp,   // ⏰ after 1.5 days → "expired / not fresh"
+        warningTime: warningTimestamp, 
+        expiryTime: expiryTimestamp,  
         imageBase64,
 
         location: {
@@ -347,23 +347,23 @@ const isRotten = freshness === 'Rotten';
       <View style={styles.section}>
         <Text style={styles.sectionLabel}>Basic Information</Text>
         <View style={styles.pickerWrapper}>
-          <Picker selectedValue={category} onValueChange={setCategory} style={styles.picker}>
-            <Picker.Item label="Category" value="" color="#999" />
-            <Picker.Item label="Fish" value="Fish" />
-            <Picker.Item label="Mollusk" value="Mollusk" />
-            <Picker.Item label="Crustacean" value="Crustacean" />
-            <Picker.Item label="Seasonal" value="Seasonal" />
+          <Picker selectedValue={category} onValueChange={setCategory} style={[styles.picker, { color: '#000' }]}>
+            <Picker.Item label="Select Category" value="" color="#999" />
+            <Picker.Item label="Fish" value="Fish" color="#000" />
+            <Picker.Item label="Mollusk" value="Mollusk" color="#000" />
+            <Picker.Item label="Crustacean" value="Crustacean" color="#000" />
+            <Picker.Item label="Seasonal" value="Seasonal" color="#000" />
           </Picker>
         </View>
-        <TextInput style={styles.premiumInput} placeholder="Product Name" placeholderTextColor="#999" value={productName} onChangeText={setProductName} />
+        <TextInput style={styles.premiumInput} placeholder="Product Name" placeholderTextColor="#000" value={productName} onChangeText={setProductName} />
         <View style={styles.inputRow}>
-          <TextInput style={[styles.premiumInput, { flex: 1, marginRight: 10 }]} placeholder="Base Price" keyboardType="numeric" value={basePrice} onChangeText={setBasePrice} />
-          <TextInput style={[styles.premiumInput, { flex: 1 }]} placeholder="Stock (kg)" keyboardType="numeric" value={quantityKg} onChangeText={setQuantityKg} />
+          <TextInput style={[styles.premiumInput, { flex: 1, marginRight: 10 }]} placeholder="Base Price" keyboardType="numeric" placeholderTextColor="#000" value={basePrice} onChangeText={setBasePrice} />
+          <TextInput style={[styles.premiumInput, { flex: 1 }]} placeholder="Stock (kg)" keyboardType="numeric" placeholderTextColor="#000" value={quantityKg} onChangeText={setQuantityKg} />
         </View>
         <TextInput 
           style={[styles.premiumInput, { minHeight: 100, textAlignVertical: 'top' }]} 
           placeholder="Product Description (optional)" 
-          placeholderTextColor="#999" 
+          placeholderTextColor="#000" 
           value={description} 
           onChangeText={setDescription}
           multiline

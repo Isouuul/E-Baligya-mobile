@@ -132,6 +132,7 @@ const EditProductBiddingFormModal = ({ visible, existingBidding, onCancel, onSub
                 value={productName} 
                 onChangeText={setProductName} 
                 placeholder="e.g. Yellowfin Tuna"
+                placeholderTextColor="#000"
               />
             </View>
 
@@ -139,20 +140,20 @@ const EditProductBiddingFormModal = ({ visible, existingBidding, onCancel, onSub
               <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
                 <Text style={styles.label}>Category</Text>
                 <View style={styles.pickerContainer}>
-                  <Picker selectedValue={category} onValueChange={setCategory}>
-                    <Picker.Item label="Fish" value="Fish" />
-                    <Picker.Item label="Crustacean" value="Crustacean" />
-                    <Picker.Item label="Mollusk" value="Mollusk" />
+                  <Picker selectedValue={category} onValueChange={setCategory} style={{ color: '#000' }}>
+                    <Picker.Item label="Fish" value="Fish" color="#000" />
+                    <Picker.Item label="Crustacean" value="Crustacean" color="#000" />
+                    <Picker.Item label="Mollusk" value="Mollusk" color="#000" />
                   </Picker>
                 </View>
               </View>
               <View style={[styles.inputGroup, { flex: 1 }]}>
                 <Text style={styles.label}>Freshness</Text>
                 <View style={styles.pickerContainer}>
-                  <Picker selectedValue={freshness} onValueChange={setFreshness}>
-                    <Picker.Item label="Fresh" value="Fresh" />
-                    <Picker.Item label="Chilled" value="Chilled" />
-                    <Picker.Item label="Frozen" value="Frozen" />
+                  <Picker selectedValue={freshness} onValueChange={setFreshness} style={{ color: '#000' }}>
+                    <Picker.Item label="Fresh" value="Fresh" color="#000" />
+                    <Picker.Item label="Chilled" value="Chilled" color="#000" />
+                    <Picker.Item label="Frozen" value="Frozen" color="#000" />
                   </Picker>
                 </View>
               </View>
@@ -166,6 +167,7 @@ const EditProductBiddingFormModal = ({ visible, existingBidding, onCancel, onSub
                   keyboardType="numeric"
                   value={basePrice} 
                   onChangeText={setBasePrice}
+                  placeholderTextColor="#000"
                 />
               </View>
               <View style={[styles.inputGroup, { flex: 1 }]}>
@@ -175,6 +177,7 @@ const EditProductBiddingFormModal = ({ visible, existingBidding, onCancel, onSub
                   keyboardType="numeric"
                   value={totalQuantity} 
                   onChangeText={setTotalQuantity}
+                  placeholderTextColor="#000"
                 />
               </View>
             </View>
@@ -187,6 +190,7 @@ const EditProductBiddingFormModal = ({ visible, existingBidding, onCancel, onSub
                 numberOfLines={3}
                 value={description} 
                 onChangeText={setDescription}
+                placeholderTextColor="#000"
               />
             </View>
 

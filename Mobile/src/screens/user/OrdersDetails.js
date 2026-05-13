@@ -326,11 +326,14 @@ const handleSubmitRating = async (order) => {
           contentContainerStyle={styles.statusListContent}
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={[styles.statusTab, activeStatus === item && styles.activeStatusTab]}
+              style={styles.statusItem}
+              activeOpacity={0.8}
               onPress={() => setActiveStatus(item)}
             >
-              <Image source={statusImages[item]} style={styles.statusIcon} />
-              <Text style={[styles.statusTabText, activeStatus === item && styles.activeStatusTabText]}>{item}</Text>
+              <View style={[styles.statusIconWrapper, activeStatus === item && styles.statusIconWrapperActive]}>
+                <Image source={statusImages[item]} style={styles.statusIcon} />
+              </View>
+              <Text style={[styles.statusTabText, activeStatus === item && styles.statusTabTextActive]}>{item}</Text>
               <View style={[styles.countBadge, activeStatus === item ? styles.activeCountBadge : styles.inactiveCountBadge]}>
                 <Text style={[styles.countText, activeStatus === item && styles.activeCountText]}>{getStatusCount(item)}</Text>
               </View>
@@ -380,17 +383,18 @@ const styles = StyleSheet.create({
   searchSection: { paddingHorizontal: 16, marginBottom: 12 },
   searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, elevation: 1 },
   searchInput: { flex: 1, padding: 12, fontSize: 14, color: '#1E293B' },
-  statusListContent: { paddingHorizontal: 16, paddingVertical: 10 },
-  statusTab: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, backgroundColor: '#fff', marginRight: 10, elevation: 1 },
-  activeStatusTab: { backgroundColor: '#1E3A8A' },
-  statusIcon: { width: 18, height: 18, marginRight: 6 },
-  statusTabText: { fontSize: 13, color: '#64748B', fontWeight: '500' },
-  activeStatusTabText: { color: '#fff' },
-  countBadge: { marginLeft: 6, paddingHorizontal: 6, borderRadius: 10 },
-  activeCountBadge: { backgroundColor: 'rgba(255,255,255,0.2)' },
+  statusListContent: { paddingHorizontal: 16, paddingVertical: 12 },
+  statusItem: { alignItems: 'center', marginRight: 16 },
+  statusIconWrapper: { width: 50, height: 50, borderRadius: 12, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#f1f5f9', marginBottom: 6 },
+  statusIconWrapperActive: { backgroundColor: '#eff6ff', borderColor: '#1E3A8A' },
+  statusIcon: { width: 24, height: 24, resizeMode: 'contain' },
+  statusTabText: { fontSize: 12, color: '#64748B', fontWeight: '600', textAlign: 'center' },
+  statusTabTextActive: { color: '#1E3A8A', fontWeight: '700' },
+  countBadge: { marginTop: 6, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: '#F1F5F9' },
+  activeCountBadge: { backgroundColor: 'rgba(30, 58, 138, 0.2)' },
   inactiveCountBadge: { backgroundColor: '#F1F5F9' },
-  countText: { fontSize: 11, fontWeight: '700' },
-  activeCountText: { color: '#fff' },
+  countText: { fontSize: 11, fontWeight: '700', color: '#64748B' },
+  activeCountText: { color: '#1E3A8A' },
   orderCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, marginBottom: 16, elevation: 2 },
   orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   orderNumberLabel: { fontSize: 12, color: '#94A3B8' },

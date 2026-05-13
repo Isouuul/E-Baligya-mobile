@@ -141,16 +141,35 @@ export default function AddressSelection() {
         return;
       }
 
-      const loc = await Location.getCurrentPositionAsync({});
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      if (!loc || !loc.coords) {
+        Alert.alert('Error', 'Unable to get your current location. Please try again.');
+        setLocationLoading(false);
+        return;
+      }
+
+      const { latitude, longitude } = loc.coords;
+      
+      // Validate coordinates
+      if (typeof latitude !== 'number' || typeof longitude !== 'number' || 
+          latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+        Alert.alert('Error', 'Invalid coordinates received. Please try again.');
+        setLocationLoading(false);
+        return;
+      }
+
       setSelectedCoords({
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
+        latitude,
+        longitude,
       });
 
       setMapModalVisible(true);
     } catch (error) {
-      console.error(error);
-      Alert.alert('Error', 'Failed to get your location.');
+      console.error('Pin location error:', error);
+      Alert.alert('Error', 'Failed to get your location. Please check your permissions and try again.');
     } finally {
       setLocationLoading(false);
     }
@@ -352,19 +371,38 @@ export default function AddressSelection() {
                 </TouchableOpacity>
             </View>
 
-            {selectedCoords ? (
+            {selectedCoords && selectedCoords.latitude && selectedCoords.longitude ? (
               <>
                 <MapView
                   style={styles.mapView}
                   initialRegion={{
                     latitude: selectedCoords.latitude,
                     longitude: selectedCoords.longitude,
-                    latitudeDelta: 0.005,
-                    longitudeDelta: 0.005,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
                   }}
-                  onPress={(e) => setSelectedCoords(e.nativeEvent.coordinate)}
+                  zoomEnabled={true}
+                  scrollEnabled={true}
+                  pitchEnabled={false}
+                  rotateEnabled={false}
+                  onPress={(e) => {
+                    if (e && e.nativeEvent && e.nativeEvent.coordinate) {
+                      setSelectedCoords(e.nativeEvent.coordinate);
+                    }
+                  }}
                 >
-                  <Marker coordinate={selectedCoords} draggable onDragEnd={(e) => setSelectedCoords(e.nativeEvent.coordinate)} />
+                  {selectedCoords.latitude && selectedCoords.longitude && (
+                    <Marker 
+                      key={`${selectedCoords.latitude}-${selectedCoords.longitude}`}
+                      coordinate={selectedCoords} 
+                      draggable 
+                      onDragEnd={(e) => {
+                        if (e && e.nativeEvent && e.nativeEvent.coordinate) {
+                          setSelectedCoords(e.nativeEvent.coordinate);
+                        }
+                      }} 
+                    />
+                  )}
                 </MapView>
 
                 <View style={styles.mapInputArea}>

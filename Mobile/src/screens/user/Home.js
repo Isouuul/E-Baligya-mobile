@@ -312,10 +312,12 @@ export default function Home({ navigation }) {
             <TouchableOpacity 
               key={category.name} 
               activeOpacity={0.8}
-              style={styles.filterPill} 
+              style={styles.filterItem}
               onPress={() => navigation.navigate("Product", { selectedCategory: category.name })}
             >
-              <Image source={category.icon} style={styles.filterIcon} />
+              <View style={styles.filterIconWrapper}>
+                <Image source={category.icon} style={styles.filterIcon} />
+              </View>
               <Text style={styles.filterText}>{category.name}</Text>
             </TouchableOpacity>
           ))}
@@ -404,25 +406,11 @@ const styles = StyleSheet.create({
   },
   badgeText: { color: '#FFF', fontSize: 9, fontWeight: '900' },
 
-  filterContainer: { paddingHorizontal: 20, marginBottom: 24 },
-  filterPill: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    borderColor: "#F1F5F9", 
-    borderWidth: 1, 
-    paddingHorizontal: 16, 
-    paddingVertical: 10, 
-    borderRadius: 30, 
-    marginRight: 10, 
-    backgroundColor: '#FFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1
-  },
-  filterIcon: { width: 16, height: 16, resizeMode: "contain" },
-  filterText: { marginLeft: 8, fontWeight: "700", color: "#1E293B", fontSize: 13 },
+  filterContainer: { paddingHorizontal: 16, marginBottom: 24 },
+  filterItem: { alignItems: 'center', marginRight: 20, paddingBottom: 2 },
+  filterIconWrapper: { width: 45, height: 45, borderRadius: 10, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#f1f5f9', marginBottom: 6, marginLeft: 5 },
+  filterIcon: { width: 25, height: 25, resizeMode: 'contain' },
+  filterText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
 
   sliderContainer: { 
     marginHorizontal: 20, 

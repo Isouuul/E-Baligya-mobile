@@ -35,40 +35,9 @@ const { width } = Dimensions.get('window');
 function AnimatedBiddingCard({ item, index, navigation }) {
   const slideAnim = useRef(new Animated.Value(-width)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const [timeLeft, setTimeLeft] = useState('');
+  const [timeLeft, setTimeLeft] = useState('00:00:00');
   const [isExpired, setIsExpired] = useState(false);
   const [isDisabled, setIsDisabled] = useState(item.isDisabled || false);
-  const [overallTimeLeft, setOverallTimeLeft] = useState('');
-
-  // Function to move to next batch if 1 minute passes
-  const handleBatchReset = async () => {
-    try {
-      const productRef = doc(db, "Bidding_Products", item.id);
-      const nextBatch = (item.currentBatch || 1) + 1;
-      const newBatchEnd = new Date(Date.now() + 60000); // Reset for another 60s
-
-      await updateDoc(productRef, {
-        currentBatch: nextBatch,
-        currentBatchEndsAt: Timestamp.fromDate(newBatchEnd),
-      });
-    } catch (error) {
-      console.error("Batch Reset Error:", error);
-    }
-  };
-
-  // Function to disable product when overall time expires
-  const disableProduct = async () => {
-    try {
-      const productRef = doc(db, "Bidding_Products", item.id);
-      await updateDoc(productRef, {
-        isDisabled: true,
-        disabledAt: Timestamp.now(),
-      });
-      setIsDisabled(true);
-    } catch (error) {
-      console.error("Error disabling product:", error);
-    }
-  };
 
   useEffect(() => {
     Animated.parallel([
@@ -76,47 +45,39 @@ function AnimatedBiddingCard({ item, index, navigation }) {
       Animated.timing(fadeAnim, { toValue: 1, duration: 450, delay: index * 50, useNativeDriver: true }),
     ]).start();
 
-    // Check overall product expiration time
-    const overallEnd = item.endTime;
-    if (overallEnd) {
-      const end = overallEnd.seconds ? new Date(overallEnd.seconds * 1000) : new Date(overallEnd);
-      const now = new Date();
-      const overallDiff = end - now;
-
-      if (overallDiff <= 0 && !isDisabled) {
-        // Overall time expired - disable product
-        disableProduct();
-      }
-    }
-
-    // Use currentBatchEndsAt for the 1-minute logic, fallback to endTime
-    const endTimestamp = item.currentBatchEndsAt || item.endTime;
+    // Use overallAuctionEndsAt or endTime for the overall auction countdown (HH:MM:SS format)
+    const endTimestamp = item.overallAuctionEndsAt || item.endTime;
     if (!endTimestamp) return;
 
-    const end = endTimestamp.seconds ? new Date(endTimestamp.seconds * 1000) : new Date(endTimestamp);
-
-    const timer = setInterval(() => {
-      const now = new Date();
+    const calculateTimer = () => {
+      const now = new Date().getTime();
+      const end = endTimestamp.seconds 
+        ? new Date(endTimestamp.seconds * 1000).getTime() 
+        : new Date(endTimestamp).getTime();
       const diff = end - now;
 
       if (diff <= 0) {
-        setTimeLeft('Refreshing Batch...');
+        setTimeLeft('ENDED');
         setIsExpired(true);
-        if (!isDisabled) {
-          handleBatchReset(); // Trigger the 1-minute rotation logic
-        }
-        clearInterval(timer);
-      } else {
-        // Show MM:SS for the 1-minute batches
-        const m = Math.floor((diff % 3600000) / 60000);
-        const s = Math.floor((diff % 60000) / 1000);
-        setTimeLeft(`${m}:${s < 10 ? '0' : ''}${s}`);
-        setIsExpired(false);
+        return false;
       }
-    }, 1000);
+
+      const hours = Math.floor(diff / 3600000);
+      const mins = Math.floor((diff % 3600000) / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
+
+      setTimeLeft(
+        `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+      );
+      setIsExpired(false);
+      return true;
+    };
+
+    calculateTimer();
+    const timer = setInterval(calculateTimer, 1000);
 
     return () => clearInterval(timer);
-  }, [item.currentBatchEndsAt, item.endTime, isDisabled]);
+  }, [item.overallAuctionEndsAt, item.endTime, index]);
 
   const formatPrice = (p) => `₱${Number(p || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 
@@ -146,17 +107,10 @@ function AnimatedBiddingCard({ item, index, navigation }) {
               <Text style={styles.disabledText}>Bidding Closed</Text>
             </View>
           ) : (
-            <>
-              {/* Batch Indicator */}
-              <View style={styles.batchIndicator}>
-                <Text style={styles.batchIndicatorText}>Batch {item.currentBatch || 1}</Text>
-              </View>
-
-              <View style={[styles.timerBadge, isExpired && styles.timerExpired]}>
-                <Ionicons name="time-outline" size={12} color={isExpired ? "#ef4444" : "#f59e0b"} />
-                <Text style={[styles.timerText, isExpired && { color: "#ef4444" }]}>{timeLeft}</Text>
-              </View>
-            </>
+            <View style={[styles.timerBadge, isExpired && styles.timerExpired]}>
+              <Ionicons name="time-outline" size={12} color={isExpired ? "#ef4444" : "#f59e0b"} />
+              <Text style={[styles.timerText, isExpired && { color: "#ef4444" }]}>{timeLeft}</Text>
+            </View>
           )}
         </View>
 
@@ -297,8 +251,10 @@ export default function BiddingProductScreen() {
           {categories.map((cat, i) => {
             const isActive = category === parseInt(cat.name) || category === cat.name;
             return (
-              <TouchableOpacity key={i} onPress={() => setCategory(cat.name)} style={[styles.catItem, isActive && styles.catItemActive]}>
-                <Image source={cat.icon} style={styles.catIcon} />
+              <TouchableOpacity key={i} onPress={() => setCategory(cat.name)} style={styles.catItem} activeOpacity={0.8}>
+                <View style={[styles.catIconWrapper, isActive && styles.catIconWrapperActive]}>
+                  <Image source={cat.icon} style={styles.catIcon} />
+                </View>
                 <Text style={[styles.catText, isActive && styles.catTextActive]}>{cat.name}</Text>
               </TouchableOpacity>
             );
@@ -336,12 +292,13 @@ const styles = StyleSheet.create({
   customHeaderIcon: { width: 24, height: 24, resizeMode: 'contain' },
   badge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#ef4444', borderRadius: 10, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#fff' },
   badgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
-  catList: { paddingHorizontal: 20, paddingBottom: 20, paddingTop: 10 },
-  catItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, marginRight: 12, elevation: 2, borderWidth: 1, borderColor: '#f1f5f9' },
-  catItemActive: { backgroundColor: '#1e3a8a', borderColor: '#1e3a8a' },
-  catIcon: { width: 20, height: 20, resizeMode: 'contain', marginRight: 8 },
-  catText: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
-  catTextActive: { color: '#fff' },
+  catList: { paddingHorizontal: 16, paddingBottom: 14, alignItems: 'center' },
+  catItem: { alignItems: 'center', marginRight: 20, paddingBottom: 2 },
+  catIconWrapper: { width: 45, height: 45, borderRadius: 10, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#f1f5f9', marginBottom: 6, marginLeft: 5 },
+  catIconWrapperActive: { backgroundColor: '#eff6ff', borderColor: '#1e3a8a' },
+  catIcon: { width: 25, height: 25, resizeMode: 'contain' },
+  catText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
+  catTextActive: { color: '#1e3a8a', fontWeight: '700' },
   flatListContent: { padding: 16 },
   cardContainer: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 16, overflow: 'hidden', elevation: 3, shadowOpacity: 0.1 },
   imageWrapper: { height: 180, width: '100%' },
@@ -349,8 +306,6 @@ const styles = StyleSheet.create({
   noImagePlaceholder: { backgroundColor: '#f1f5f9', justifyContent: 'center', alignItems: 'center' },
   categoryBadge: { position: 'absolute', top: 12, left: 12, backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   categoryText: { fontSize: 11, fontWeight: 'bold', color: '#1e3a8a' },
-  batchIndicator: { position: 'absolute', top: 12, right: 12, backgroundColor: '#1e3a8a', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  batchIndicatorText: { color: '#fff', fontSize: 10, fontWeight: '800' },
   timerBadge: { position: 'absolute', bottom: 12, right: 12, backgroundColor: 'rgba(255,255,255,0.95)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   timerText: { color: '#1e3a8a', fontSize: 12, fontWeight: '900', marginLeft: 4 },
   timerExpired: { backgroundColor: 'rgba(239, 68, 68, 0.1)' },
