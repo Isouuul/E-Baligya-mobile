@@ -301,17 +301,17 @@ const CreateProductForm = ({ onCancel, onSubmit, visible }) => {
       onRequestClose={handleClose}
     >
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-            <View style={styles.header}>
-              <Text style={styles.headerTitle}>New Listing</Text>
-              <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
+        <View style={styles.cardModalContainer}>
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Create New Product</Text>
+            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>✕</Text>
+            </TouchableOpacity>
+          </View>
 
-            {/* Image Section */}
-            <View style={styles.section}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+            {/* Image Card Section */}
+            <View style={styles.cardSection}>
               <Pressable onPress={pickImage} style={styles.imagePlaceholder}>
                 {imageUri ? (
                   <Image source={{ uri: imageUri }} style={styles.fullImage} />
@@ -338,27 +338,51 @@ const CreateProductForm = ({ onCancel, onSubmit, visible }) => {
               )}
             </View>
 
-            {/* Details Section */}
-            <View style={styles.section}>
+            {/* Details Card Section */}
+            <View style={styles.cardSection}>
               <Text style={styles.sectionLabel}>Basic Information</Text>
+              
               <View style={styles.pickerWrapper}>
-                <Picker selectedValue={category} onValueChange={setCategory} style={[styles.picker, { color: '#000' }]}>
-                  <Picker.Item label="Select Category" value="" color="#999" />
-                  <Picker.Item label="Fish" value="Fish" color="#000" />
-                  <Picker.Item label="Mollusk" value="Mollusk" color="#000" />
-                  <Picker.Item label="Crustacean" value="Crustacean" color="#000" />
-                  <Picker.Item label="Seasonal" value="Seasonal" color="#000" />
+                <Picker selectedValue={category} onValueChange={setCategory} style={styles.picker}>
+                  <Picker.Item label="Select Category" value="" color="#94A3B8" />
+                  <Picker.Item label="Fish" value="Fish" color="#1E293B" />
+                  <Picker.Item label="Mollusk" value="Mollusk" color="#1E293B" />
+                  <Picker.Item label="Crustacean" value="Crustacean" color="#1E293B" />
+                  <Picker.Item label="Seasonal" value="Seasonal" color="#1E293B" />
                 </Picker>
               </View>
-              <TextInput style={styles.premiumInput} placeholder="Product Name" placeholderTextColor="#000" value={productName} onChangeText={setProductName} />
+
+              <TextInput 
+                style={styles.premiumInput} 
+                placeholder="Product Name" 
+                placeholderTextColor="#94A3B8" 
+                value={productName} 
+                onChangeText={setProductName} 
+              />
+
               <View style={styles.inputRow}>
-                <TextInput style={[styles.premiumInput, { flex: 1, marginRight: 10 }]} placeholder="Base Price" keyboardType="numeric" placeholderTextColor="#000" value={basePrice} onChangeText={setBasePrice} />
-                <TextInput style={[styles.premiumInput, { flex: 1 }]} placeholder="Stock (kg)" keyboardType="numeric" placeholderTextColor="#000" value={quantityKg} onChangeText={setQuantityKg} />
+                <TextInput 
+                  style={[styles.premiumInput, { flex: 1, marginRight: 12 }]} 
+                  placeholder="Base Price" 
+                  keyboardType="numeric" 
+                  placeholderTextColor="#94A3B8" 
+                  value={basePrice} 
+                  onChangeText={setBasePrice} 
+                />
+                <TextInput 
+                  style={[styles.premiumInput, { flex: 1 }]} 
+                  placeholder="Stock (kg)" 
+                  keyboardType="numeric" 
+                  placeholderTextColor="#94A3B8" 
+                  value={quantityKg} 
+                  onChangeText={setQuantityKg} 
+                />
               </View>
+
               <TextInput 
                 style={[styles.premiumInput, { minHeight: 100, textAlignVertical: 'top' }]} 
                 placeholder="Product Description (optional)" 
-                placeholderTextColor="#000" 
+                placeholderTextColor="#94A3B8" 
                 value={description} 
                 onChangeText={setDescription}
                 multiline
@@ -371,29 +395,33 @@ const CreateProductForm = ({ onCancel, onSubmit, visible }) => {
               </View>
             )}
 
-            <TouchableOpacity
-              onPress={handleSubmit}
-              style={[styles.submitButton, (isSubmitting || isRotten) && styles.disabledButton]}
-              disabled={isSubmitting || isRotten}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.submitButtonText}>Publish Listing</Text>
-              )}
-            </TouchableOpacity>
+            {/* Action Buttons */}
+            <View style={styles.actionContainer}>
+              <TouchableOpacity
+                onPress={handleSubmit}
+                style={[styles.submitButton, (isSubmitting || isRotten) && styles.disabledButton]}
+                disabled={isSubmitting || isRotten}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.submitButtonText}>Publish Listing</Text>
+                )}
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={resetForm}
-              style={styles.resetButton}
-              disabled={isSubmitting || isClassifying}
-            >
-              <Text style={styles.resetButtonText}>Reset Form</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={resetForm}
+                style={styles.resetButton}
+                disabled={isSubmitting || isClassifying}
+              >
+                <Text style={styles.resetButtonText}>Reset Form</Text>
+              </TouchableOpacity>
+            </View>
           </ScrollView>
         </View>
       </View>
 
+      {/* Sileo Custom Alert Modal */}
       <Modal
         visible={sileoVisible}
         transparent
@@ -433,37 +461,34 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.6)',
-    justifyContent: 'center',
+    justifyContent: 'flex-end', // Aligns modal to the bottom like an elegant sheet/card
     alignItems: 'center',
-    paddingHorizontal: 16,
   },
-  modalContent: {
+  cardModalContainer: {
     width: '100%',
-    maxWidth: 500,
-    maxHeight: '85%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
+    maxWidth: 550,
+    maxHeight: '90%',
+    backgroundColor: '#F8FAFC', // Slate background to separate content cards
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 15,
-  },
-  container: { 
-    padding: 24,
-    paddingBottom: 32,
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 24,
   },
   header: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
-    marginBottom: 20,
-    paddingBottom: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: '#E2E8F0',
   },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#1E3A8A' },
+  headerTitle: { fontSize: 20, fontWeight: '800', color: '#1E3A8A' },
   closeButton: { 
     width: 36, 
     height: 36, 
@@ -471,57 +496,111 @@ const styles = StyleSheet.create({
     backgroundColor: '#F1F5F9', 
     alignItems: 'center', 
     justifyContent: 'center',
-    padding: 4,
   },
-  closeButtonText: { fontSize: 20, color: '#64748B', fontWeight: 'bold' },
+  closeButtonText: { fontSize: 16, color: '#64748B', fontWeight: 'bold' },
   
-  section: { marginBottom: 25 },
-  sectionLabel: { fontSize: 14, fontWeight: '700', color: '#64748B', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+  cardSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  sectionLabel: { 
+    fontSize: 12, 
+    fontWeight: '700', 
+    color: '#64748B', 
+    marginBottom: 14, 
+    textTransform: 'uppercase', 
+    letterSpacing: 1.2 
+  },
   
-  imagePlaceholder: { width: '100%', height: 200, borderRadius: 16, backgroundColor: '#FFF', borderStyle: 'dashed', borderWidth: 2, borderColor: '#CBD5E1', overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
+  imagePlaceholder: { 
+    width: '100%', 
+    height: 180, 
+    borderRadius: 14, 
+    backgroundColor: '#F8FAFC', 
+    borderStyle: 'dashed', 
+    borderWidth: 2, 
+    borderColor: '#CBD5E1', 
+    overflow: 'hidden', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
   fullImage: { width: '100%', height: '100%' },
   uploadPrompt: { alignItems: 'center' },
-  uploadIcon: { fontSize: 40, marginBottom: 8 },
-  uploadText: { color: '#64748B', fontWeight: '600' },
+  uploadIcon: { fontSize: 36, marginBottom: 6 },
+  uploadText: { color: '#64748B', fontWeight: '600', fontSize: 14 },
   
-  aiBadge: { padding: 12, borderRadius: 12, marginTop: 12, borderLeftWidth: 5 },
-  aiBadgeLoading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 12 },
+  aiBadge: { padding: 14, borderRadius: 12, marginTop: 14, borderLeftWidth: 5 },
+  aiBadgeLoading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 14 },
   badgeFresh: { backgroundColor: '#F0FDF4', borderLeftColor: '#22C55E' },
   badgeRotten: { backgroundColor: '#FEF2F2', borderLeftColor: '#EF4444' },
-  aiTextMain: { fontWeight: 'bold', fontSize: 16, color: '#1E293B' },
-  aiTextSub: { fontSize: 12, color: '#64748B' },
+  aiTextMain: { fontWeight: 'bold', fontSize: 15, color: '#1E293B' },
+  aiTextSub: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  aiText: { color: '#1E3A8A', fontWeight: '600' },
 
-  premiumInput: { backgroundColor: '#FFF', padding: 16, borderRadius: 12, fontSize: 16, color: '#1E293B', marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  premiumInput: { 
+    backgroundColor: '#F8FAFC', 
+    padding: 14, 
+    borderRadius: 12, 
+    fontSize: 15, 
+    color: '#1E293B', 
+    marginBottom: 12, 
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
   inputRow: { flexDirection: 'row' },
   
-  pickerWrapper: { backgroundColor: '#FFF', borderRadius: 12, marginBottom: 12, overflow: 'hidden', elevation: 2 },
-  picker: { height: 55 },
+  pickerWrapper: { 
+    backgroundColor: '#F8FAFC', 
+    borderRadius: 12, 
+    marginBottom: 12, 
+    overflow: 'hidden', 
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  picker: { height: 50, color: '#1E293B' },
 
-  cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF', padding: 12, borderRadius: 12, marginBottom: 8, elevation: 1 },
-  activeRow: { borderColor: '#1e3a8a', borderWidth: 1 },
-  checkboxContainer: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  customCheckbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: '#CBD5E1', marginRight: 12, alignItems: 'center', justifyContent: 'center' },
-  customCheckboxChecked: { backgroundColor: '#1e3a8a', borderColor: '#1e3a8a' },
-  checkmark: { width: 10, height: 5, borderBottomWidth: 2, borderLeftWidth: 2, borderColor: '#FFF', transform: [{ rotate: '-45deg' }], marginTop: -2 },
-  rowLabel: { fontSize: 15, color: '#334155', fontWeight: '500' },
-  rowInput: { backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, width: 90, fontSize: 14, fontWeight: 'bold' },
-  
-  variationPriceContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  removeButton: { backgroundColor: '#FEE2E2', padding: 8, borderRadius: 8, justifyContent: 'center', alignItems: 'center', width: 36, height: 36 },
-  removeButtonText: { color: '#EF4444', fontWeight: 'bold', fontSize: 16 },
-  
-  customVariationContainer: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0', marginTop: 12 },
-  addButton: { backgroundColor: '#1e3a8a', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
-  addButtonText: { color: '#FFF', fontWeight: '700', fontSize: 15 },
+  errorBanner: { backgroundColor: '#EF4444', padding: 14, borderRadius: 14, marginBottom: 16 },
+  errorText: { color: '#FFF', fontWeight: 'bold', textAlign: 'center', fontSize: 14 },
 
-  errorBanner: { backgroundColor: '#EF4444', padding: 12, borderRadius: 12, marginBottom: 15 },
-  errorText: { color: '#FFF', fontWeight: 'bold', textAlign: 'center' },
+  actionContainer: {
+    paddingHorizontal: 4,
+    marginTop: 8,
+  },
+  submitButton: { 
+    backgroundColor: '#1E3A8A', 
+    paddingVertical: 16, 
+    borderRadius: 14, 
+    alignItems: 'center', 
+    shadowColor: '#1E3A8A', 
+    shadowOffset: { width: 0, height: 4 }, 
+    shadowOpacity: 0.2, 
+    shadowRadius: 8, 
+    elevation: 4 
+  },
+  disabledButton: { backgroundColor: '#94A3B8', shadowOpacity: 0, elevation: 0 },
+  submitButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  resetButton: { 
+    paddingVertical: 14, 
+    borderRadius: 14, 
+    alignItems: 'center', 
+    marginTop: 12, 
+    backgroundColor: 'transparent' 
+  },
+  resetButtonText: { color: '#64748B', fontSize: 15, fontWeight: '600' },
 
-  submitButton: { backgroundColor: '#1e3a8a', paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginTop: 10, shadowColor: '#1e3a8a', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
-  disabledButton: { backgroundColor: '#94A3B8', shadowOpacity: 0 },
-  submitButtonText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
-  resetButton: { borderWidth: 1.5, borderColor: '#1e3a8a', paddingVertical: 14, borderRadius: 14, alignItems: 'center', marginTop: 10, backgroundColor: '#FFFFFF' },
-  resetButtonText: { color: '#1e3a8a', fontSize: 16, fontWeight: '700' },
   sileoOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(15, 23, 42, 0.6)',
@@ -530,17 +609,19 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   sileoModal: {
-    width: '86%',
+    width: '85%',
+    maxWidth: 360,
     backgroundColor: '#fff',
     borderRadius: 24,
-    paddingHorizontal: 22,
-    paddingVertical: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
     alignItems: 'center',
+    elevation: 20,
   },
   sileoIconCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -548,14 +629,16 @@ const styles = StyleSheet.create({
   sileoSuccess: { backgroundColor: '#10B981' },
   sileoWarning: { backgroundColor: '#F59E0B' },
   sileoError: { backgroundColor: '#EF4444' },
-  sileoIconText: { color: '#fff', fontSize: 24, fontWeight: '800' },
-  sileoTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
-  sileoMessage: { fontSize: 15, color: '#64748B', textAlign: 'center', lineHeight: 21, marginBottom: 20 },
+  sileoIconText: { color: '#fff', fontSize: 22, fontWeight: '800' },
+  sileoTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
+  sileoMessage: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
   sileoButton: {
     backgroundColor: '#0F172A',
     paddingVertical: 12,
-    paddingHorizontal: 28,
+    paddingHorizontal: 32,
     borderRadius: 12,
+    width: '100%',
+    alignItems: 'center'
   },
   sileoButtonText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 });

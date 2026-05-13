@@ -203,6 +203,7 @@ export default function ViewProduct() {
 
   const getCartPayload = () => {
     return {
+      id: productId,
       userId: auth.currentUser.uid,
       productId,
       uploadedBy: product.uploadedBy,
@@ -235,12 +236,9 @@ export default function ViewProduct() {
       return Alert.alert('Quality Restriction', 'Cannot buy this listing. The seafood is no longer fresh.');
     }
     try {
-      // Step 1: Add to cart instantly in the background for consistency
       const checkoutPayload = getCartPayload();
-      await addDoc(collection(db, 'Carts', auth.currentUser.uid, 'items'), checkoutPayload);
-      
-      // Step 2: Navigate directly to checkout flow, passing parameters directly
-      navigation.navigate('CartShop', { autoCheckout: true, immediateProduct: checkoutPayload });
+      // Navigate directly to checkout with product data
+      navigation.navigate('BuyNowCheckedOut', { product: checkoutPayload });
     } catch (err) {
       Alert.alert('Error', 'Failed to initialize direct purchase');
     }
@@ -315,7 +313,10 @@ export default function ViewProduct() {
           <View style={styles.productMainInfoCard}>
             <Text style={styles.mainProductName}>{product.productName}</Text>
             <View style={styles.priceRow}>
-              <Text style={styles.mainPrice}>₱{basePrice.toLocaleString(undefined, {minimumFractionDigits: 2})}<Text style={styles.perUnit}>/kg</Text></Text>
+              <View style={styles.priceUnitWrapper}>
+                <Text style={styles.mainPrice}>₱{basePrice.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
+                <Text style={styles.perUnit}>/kg</Text>
+              </View>
               <View style={[styles.stockBadge, isExpired ? styles.stockExpired : styles.stockAvailable]}>
                 <View style={[styles.stockDot, isExpired ? styles.dotExpired : styles.dotAvailable]} />
                 <Text style={[styles.stockText, isExpired ? styles.textExpired : styles.textAvailable]}>
@@ -581,6 +582,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  priceUnitWrapper: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
   },
   mainPrice: {
     fontSize: 24,

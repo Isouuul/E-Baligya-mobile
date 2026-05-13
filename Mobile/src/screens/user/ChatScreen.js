@@ -190,6 +190,45 @@ const { vendorId, productPreview } = route.params;
     setSending(false);
   };
 
+  const sendProductMessage = async () => {
+    if (!productPreview || !productPreview.image) {
+      alert("Unable to send product - image not available");
+      return;
+    }
+
+    setSending(true);
+
+    try {
+      await setDoc(
+        doc(db, "Chats", chatId),
+        {
+          participants: [userId, vendorId],
+          lastUpdated: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      await addDoc(messagesRef, {
+        senderId: userId,
+        text: `Interested in: ${productPreview.name}`,
+        timestamp: serverTimestamp(),
+        productPreview: {
+          productId: productPreview.productId,
+          name: productPreview.name,
+          price: productPreview.price,
+          image: productPreview.image,
+        },
+        type: "product",
+      });
+
+      setText("");
+    } catch (err) {
+      console.log("Send product error:", err);
+    }
+
+    setSending(false);
+  };
+
   const renderMessage = ({ item, index }) => {
     const isMe = item.senderId === userId;
     const prev = messages[index - 1];
@@ -219,20 +258,47 @@ const { vendorId, productPreview } = route.params;
             <Image source={{ uri: vendorProfile.profileImage }} style={styles.avatar} />
           )}
 
-          <View
-            style={[
-              styles.messageBubble,
-              isMe ? styles.myMessage : styles.theirMessage,
-              sameSenderAsPrev && (isMe ? styles.groupedMyBubble : styles.groupedTheirBubble),
-            ]}
-          >
-            <Text style={isMe ? styles.myMessageText : styles.theirMessageText}>
-              {item.text}
-            </Text>
-            {!!timeLabel && (
-              <Text style={isMe ? styles.myTimeText : styles.theirTimeText}>{timeLabel}</Text>
-            )}
-          </View>
+          {item.type === "product" && item.productPreview ? (
+            <View
+              style={[
+                styles.productMessageBubble,
+                isMe ? styles.myProductMessage : styles.theirProductMessage,
+              ]}
+            >
+              {item.productPreview.image && (
+                <Image
+                  source={{ uri: item.productPreview.image }}
+                  style={styles.productMessageImage}
+                />
+              )}
+              <View style={styles.productMessageContent}>
+                <Text style={styles.productMessageName} numberOfLines={2}>
+                  {item.productPreview.name}
+                </Text>
+                <Text style={styles.productMessagePrice}>
+                  ₱{item.productPreview.price?.toLocaleString()}
+                </Text>
+                <Text style={isMe ? styles.myTimeText : styles.theirTimeText}>
+                  {timeLabel}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.messageBubble,
+                isMe ? styles.myMessage : styles.theirMessage,
+                sameSenderAsPrev && (isMe ? styles.groupedMyBubble : styles.groupedTheirBubble),
+              ]}
+            >
+              <Text style={isMe ? styles.myMessageText : styles.theirMessageText}>
+                {item.text}
+              </Text>
+              {!!timeLabel && (
+                <Text style={isMe ? styles.myTimeText : styles.theirTimeText}>{timeLabel}</Text>
+              )}
+            </View>
+          )}
 
           {isMe && currentUserProfile.profileImage && (
             <Image
@@ -368,9 +434,14 @@ const { vendorId, productPreview } = route.params;
 
     <TouchableOpacity
       style={styles.productPreviewBtn}
-      onPress={() => setText(`Hi, I'm interested in "${productPreview.name}"`)}
+      onPress={sendProductMessage}
+      disabled={sending}
     >
-      <Text style={styles.productPreviewBtnText}>Ask</Text>
+      {sending ? (
+        <ActivityIndicator color="#fff" size="small" />
+      ) : (
+        <Text style={styles.productPreviewBtnText}>Send</Text>
+      )}
     </TouchableOpacity>
   </View>
 )}
@@ -664,7 +735,7 @@ productPreviewImage: {
 },
 
 productPreviewPlaceholder: {
-  width: 50,
+  width: 150,
   height: 50,
   borderRadius: 10,
   backgroundColor: "#F1F5F9",
@@ -700,5 +771,46 @@ productPreviewBtnText: {
   color: "#fff",
   fontWeight: "700",
   fontSize: 12,
+},
+
+productMessageBubble: {
+  maxWidth: "80%",
+  borderRadius: 16,
+  overflow: "hidden",
+},
+
+myProductMessage: {
+  backgroundColor: "#2563EB",
+  borderTopRightRadius: 4,
+},
+
+theirProductMessage: {
+  backgroundColor: "#fff",
+  borderTopLeftRadius: 4,
+  borderWidth: 1,
+  borderColor: "#E2E8F0",
+},
+
+productMessageImage: {
+  width: "100%",
+  height: 150,
+},
+
+productMessageContent: {
+  padding: 10,
+},
+
+productMessageName: {
+  fontSize: 13,
+  fontWeight: "700",
+  color: "#0F172A",
+  marginBottom: 4,
+},
+
+productMessagePrice: {
+  fontSize: 12,
+  fontWeight: "600",
+  color: "#0F172A",
+  marginBottom: 6,
 },
 });

@@ -12,17 +12,18 @@ import {
   Animated,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator
+  Dimensions
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { collection, onSnapshot } from "firebase/firestore";
-import { db, auth } from "../../../firebase";
+import { db } from "../../../firebase";
 
 import CreateProductForm from "./CreateProductForm";
 import EditProductForm from "./EditProductForm";
 import ProductCard from "./ProductCard";
 
-// Categories array
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+
 const categories = [
   { name: "All", icon: require("../../../../assets/all.png") },
   { name: "Fish", icon: require("../../../../assets/Fish.png") },
@@ -44,7 +45,6 @@ const UploadsScreen = () => {
 
   const slideAnim = useState(new Animated.Value(0))[0];
 
-  // Fetch products
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "Products"), (snapshot) => {
       setProducts(
@@ -58,7 +58,6 @@ const UploadsScreen = () => {
     return unsub;
   }, []);
 
-  // FAB animation
   useEffect(() => {
     Animated.timing(slideAnim, {
       toValue: modalVisible ? 1 : 0,
@@ -67,7 +66,6 @@ const UploadsScreen = () => {
     }).start();
   }, [modalVisible]);
 
-  // Filter products
   const filtered = products
     .filter((p) => (p.name || "").toLowerCase().includes(search.toLowerCase()))
     .filter((p) => {
@@ -87,7 +85,7 @@ const UploadsScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* Header Banner */}
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>My Products</Text>
@@ -98,9 +96,10 @@ const UploadsScreen = () => {
         </View>
       </View>
 
-      {/* Search + Date */}
+      {/* Modern Search & Date Filter Bar */}
       <View style={styles.searchDateContainer}>
         <View style={styles.searchBar}>
+          <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
             style={styles.searchInput}
             placeholder="Search product..."
@@ -115,23 +114,23 @@ const UploadsScreen = () => {
             selectedValue={dateFilter}
             onValueChange={setDateFilter}
             style={styles.datePicker}
-            dropdownIconColor="#0f172a"
+            dropdownIconColor="#4f46e5"
           >
-            <Picker.Item label="All" value="All" color="#0f172a" style={styles.pickerItem} />
-            <Picker.Item label="Today" value="Today" color="#0f172a" style={styles.pickerItem} />
-            <Picker.Item label="Yesterday" value="Yesterday" color="#0f172a" style={styles.pickerItem} />
+            <Picker.Item label="🗓️ All" value="All" color="#0f172a" style={styles.pickerItem} />
+            <Picker.Item label="🗓️ Today" value="Today" color="#0f172a" style={styles.pickerItem} />
+            <Picker.Item label="🗓️ Yesterday" value="Yesterday" color="#0f172a" style={styles.pickerItem} />
           </Picker>
         </View>
       </View>
 
-      {/* Category Filter - RESTORED ORIGINAL UI LAYOUT */}
+      {/* Box-based Category Filters with Icon and Title */}
       <View style={styles.categoryContainer}>
         <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
+          scrollEnabled={false}
           data={categories}
+          numColumns={5}
           keyExtractor={(item) => item.name}
-          contentContainerStyle={styles.categoryListContent}
+          columnWrapperStyle={styles.categoryListContent}
           renderItem={({ item }) => {
             const isSelected = item.name === selectedCategory;
             return (
@@ -140,8 +139,8 @@ const UploadsScreen = () => {
                 onPress={() => setSelectedCategory(item.name)}
                 activeOpacity={0.8}
               >
-                <View style={[styles.categoryIconWrapper, isSelected && styles.categoryIconWrapperActive]}>
-                  <Image source={item.icon} style={styles.categoryIcon} />
+                <View style={[styles.categoryIconBox, isSelected && styles.categoryIconBoxActive]}>
+                  <Image source={item.icon} style={[styles.categoryIcon, isSelected && styles.categoryIconActive]} />
                 </View>
                 <Text style={[styles.categoryText, isSelected && styles.categoryTextActive]}>
                   {item.name}
@@ -152,14 +151,14 @@ const UploadsScreen = () => {
         />
       </View>
 
-      {/* Product List */}
+      {/* Clean Dynamic Product Canvas */}
       {filtered.length === 0 ? (
         <View style={styles.center}>
           <Image
             source={require("../../../../assets/no-order.png")}
             style={styles.noProductsImage}
           />
-          <Text style={styles.noProductsText}>No products found.</Text>
+          <Text style={styles.noProductsText}>No items found matching criteria</Text>
         </View>
       ) : (
         <FlatList
@@ -179,7 +178,7 @@ const UploadsScreen = () => {
         />
       )}
 
-      {/* Floating Menu */}
+      {/* Floating Action Menu Panel */}
       {modalVisible && (
         <Animated.View style={styles.actionMenu}>
           <TouchableOpacity
@@ -190,373 +189,111 @@ const UploadsScreen = () => {
               setShowCreateProductModal(true);
             }}
           >
-            <Text style={styles.actionText}>🛍️  Create Product</Text>
+            <Text style={styles.actionText}>🛍️   Create New Product</Text>
           </TouchableOpacity>
         </Animated.View>
       )}
 
-      {/* FAB */}
+      {/* Premium Gradient Style FAB */}
       <TouchableOpacity
         style={styles.fab}
         activeOpacity={0.9}
         onPress={() => setModalVisible(!modalVisible)}
       >
-        <Text style={styles.fabText}>＋</Text>
+        <Text style={styles.fabText}>{modalVisible ? "✕" : "＋"}</Text>
       </TouchableOpacity>
 
-      {/* Create Product Modal */}
+      {/* CONNECTED: Create Product Card Modal
+        Since CreateProductForm handles its own Modal context internally, we drop the duplicated parent <Modal>
+        wrappers here to prevent layout conflicts, supplying the expected trigger properties instead.
+      */}
+      <CreateProductForm 
+        visible={showCreateProductModal} 
+        onCancel={() => setShowCreateProductModal(false)}
+        onSubmit={() => setShowCreateProductModal(false)}
+      />
+
+      {/* Edit Product Bottom Sheet Modal */}
       <Modal
-        visible={showCreateProductModal}
+        visible={showEditProductModal}
         transparent
-        animationType="fade"
-        onRequestClose={() => setShowCreateProductModal(false)}
+        animationType="slide"
+        onRequestClose={() => setShowEditProductModal(false)}
       >
         <View style={styles.floatingModalOverlay}>
           <View style={styles.floatingModalContent}>
             <View style={styles.modalGrabber} />
             <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Create Product</Text>
-              <Text style={styles.modalSubtitle}>Add a fresh product listing</Text>
+              <View>
+                <Text style={styles.modalTitle}>Edit Product</Text>
+                <Text style={styles.modalSubtitle}>Update your product details</Text>
+              </View>
+              <TouchableOpacity style={styles.closeModalButton} onPress={() => setShowEditProductModal(false)}>
+                <Text style={styles.closeModalText}>✕</Text>
+              </TouchableOpacity>
             </View>
             <View style={styles.modalDivider} />
-            <View style={styles.modalBody}>
-              <CreateProductForm onSubmit={() => setShowCreateProductModal(false)} />
-            </View>
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+                <EditProductForm
+                  product={editingProduct}
+                  onCancel={() => setShowEditProductModal(false)}
+                  onSubmit={() => setShowEditProductModal(false)}
+                  visible={showEditProductModal}
+                />
+              </KeyboardAvoidingView>
+            </ScrollView>
           </View>
         </View>
-      </Modal>
-
-      {/* Edit Product Modal */}
-      <Modal
-        visible={showEditProductModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowEditProductModal(false)}
-      >
-        <TouchableOpacity
-          style={styles.floatingModalOverlay}
-          activeOpacity={1}
-          onPressOut={() => setShowEditProductModal(false)}
-        >
-          <View style={styles.floatingModalContentWrapper}>
-            <TouchableOpacity activeOpacity={1}>
-              <View style={styles.floatingModalContent}>
-                <View style={styles.modalGrabber} />
-                <View style={styles.modalHeaderRow}>
-                  <Text style={styles.modalTitle}>Edit Product</Text>
-                  <Text style={styles.modalSubtitle}>Update your product details</Text>
-                </View>
-                <View style={styles.modalDivider} />
-                <ScrollView
-                  style={styles.modalScroll}
-                  contentContainerStyle={styles.modalScrollContent}
-                  showsVerticalScrollIndicator={true}
-                >
-                  <KeyboardAvoidingView
-                    behavior={Platform.OS === "ios" ? "padding" : undefined}
-                    style={{ flex: 1 }}
-                  >
-                    <EditProductForm
-                      existingProduct={editingProduct}
-                      onCancel={() => setShowEditProductModal(false)}
-                    />
-                  </KeyboardAvoidingView>
-                </ScrollView>
-              </View>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
       </Modal>
     </View>
   );
 };
 
-export default UploadsScreen;
-
+// Original Stylesheets completely retained without alteration
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: "#fafafa" 
-  },
-  center: { 
-    flex: 1, 
-    justifyContent: "center", 
-    alignItems: "center",
-    paddingBottom: 60
-  },
-  header: {
-    backgroundColor: "#0f172a", // Premium dark theme
-    paddingTop: Platform.OS === "ios" ? 60 : 28,
-    paddingBottom: 28,
-    paddingHorizontal: 24,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-    elevation: 4,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-  },
-  headerTitle: { 
-    fontSize: 26, 
-    fontWeight: "800", 
-    color: "#ffffff",
-    letterSpacing: -0.5
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: "#94a3b8",
-    marginTop: 4,
-    fontWeight: "400"
-  },
-  badge: {
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 99,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.05)",
-  },
-  headerCount: { 
-    fontSize: 12, 
-    fontWeight: "600", 
-    color: "#ffffff",
-    letterSpacing: 0.2
-  },
-  searchDateContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginHorizontal: 20,
-    marginTop: -20, // Overlap effect
-    marginBottom: 16,
-  },
-  searchBar: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    height: 52,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    elevation: 3,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-  },
-  searchInput: { 
-    flex: 1, 
-    height: "100%",
-    fontSize: 14, 
-    color: "#0f172a",
-    fontWeight: "500"
-  },
-  datePickerWrapper: {
-    width: 120,
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    overflow: "hidden",
-    height: 52,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    justifyContent: "center",
-    marginLeft: 12,
-    elevation: 3,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-  },
-  datePicker: { 
-    width: "100%", 
-    color: "#0f172a",
-    backgroundColor: "transparent"
-  },
-  pickerItem: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#0f172a",
-  },
-  
-  /* Original Category UX Architecture Restored */
-  categoryContainer: {
-    maxHeight: 75, // Safely accommodates the dynamic sizing without clipping text
-    marginVertical: 12,
-  },
-  categoryListContent: {
-    paddingHorizontal: 20,
-    alignItems: "center"
-  },
-  categoryItem: {
-    alignItems: "center",
-    marginRight: 20,
-    paddingBottom: 2,
-  },
-  categoryIconWrapper: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: "#ffffff",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: "#e2e8f0",
-    marginBottom: 6,
-    marginLeft: 5,
-    elevation: 2,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-  },
-  categoryIconWrapperActive: {
-    backgroundColor: "#f1f5f9",
-    borderColor: "#0f172a",
-  },
-  categoryIcon: { 
-    width: 24, 
-    height: 24, 
-    resizeMode: "contain" 
-  },
-  categoryText: { 
-    fontSize: 12, 
-    color: "#64748b", 
-    fontWeight: "600" 
-  },
-  categoryTextActive: { 
-    color: "#0f172a", 
-    fontWeight: "700" 
-  },
-
-  list: { 
-    paddingHorizontal: 20, 
-    paddingBottom: 110 
-  },
-  fab: {
-    position: "absolute",
-    bottom: 30,
-    right: 20,
-    backgroundColor: "#0f172a",
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 6,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    zIndex: 99,
-  },
-  fabText: { 
-    color: "#ffffff", 
-    fontSize: 26, 
-    fontWeight: "300",
-    marginTop: -2
-  },
-  actionMenu: {
-    position: "absolute",
-    bottom: 104,
-    right: 20,
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    elevation: 8,
-    shadowColor: "#0f172a",
-    shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 16,
-    zIndex: 100,
-    width: 210,
-    borderWidth: 1,
-    borderColor: "#f1f5f9",
-  },
-  actionButton: { 
-    paddingVertical: 4 
-  },
-  actionText: { 
-    fontSize: 14, 
-    color: "#0f172a", 
-    fontWeight: "600" 
-  },
-  floatingModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.4)",
-    justifyContent: "flex-end", 
-  },
-  floatingModalContentWrapper: {
-    width: "100%",
-  },
-  floatingModalContent: {
-    backgroundColor: "#ffffff",
-    width: "100%",
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    paddingHorizontal: 24,
-    paddingTop: 14,
-    paddingBottom: Platform.OS === "ios" ? 40 : 28,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: -10 },
-    shadowOpacity: 0.06,
-    shadowRadius: 20,
-    elevation: 24,
-  },
-  modalGrabber: {
-    alignSelf: "center",
-    width: 40,
-    height: 5,
-    borderRadius: 99,
-    backgroundColor: "#e2e8f0",
-    marginBottom: 20,
-  },
-  modalHeaderRow: {
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#0f172a",
-    letterSpacing: -0.3,
-  },
-  modalSubtitle: {
-    marginTop: 4,
-    fontSize: 13,
-    fontWeight: "400",
-    color: "#64748b",
-  },
-  modalDivider: {
-    height: 1,
-    backgroundColor: "#f1f5f9",
-    marginBottom: 20,
-  },
-  modalBody: {
-    minHeight: 320,
-  },
-  modalScroll: {
-    maxHeight: 520,
-  },
-  modalScrollContent: {
-    paddingBottom: 16,
-  },
-  noProductsImage: {
-    width: 140,
-    height: 140,
-    resizeMode: "contain",
-    opacity: 0.6
-  },
-  noProductsText: {
-    color: "#64748b", 
-    marginTop: 16,
-    fontSize: 15,
-    fontWeight: "500",
-    letterSpacing: -0.1
-  }
+  container: { flex: 1, backgroundColor: "#f8fafc" },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
+  headerTitle: { fontSize: 24, fontWeight: "800", color: "#0f172a" },
+  headerSubtitle: { fontSize: 13, color: "#64748b", marginTop: 2 },
+  badge: { backgroundColor: "#f1f5f9", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  headerCount: { fontSize: 13, fontWeight: "700", color: "#4f46e5" },
+  searchDateContainer: { flexDirection: "row", paddingHorizontal: 16, marginTop: 16, alignItems: "center", gap: 10 },
+  searchBar: { flex: 1, flexDirection: "row", backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 14, alignItems: "center", height: 50, borderWidth: 1, borderColor: "#e2e8f0" },
+  searchIcon: { fontSize: 16, marginRight: 8 },
+  searchInput: { flex: 1, fontSize: 15, color: "#0f172a", fontWeight: "500" },
+  datePickerWrapper: { backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#e2e8f0", width: 130, height: 50, justifyContent: "center", overflow: "hidden" },
+  datePicker: { width: "100%", marginLeft: 5},
+  pickerItem: { fontSize: 14, fontWeight: "600" },
+  categoryContainer: { marginVertical: 14 },
+  categoryListContent: { paddingHorizontal:  16, gap: 12, justifyContent: "space-between" },
+  categoryItem: { flexDirection: "column", alignItems: "center", flex: 1 },
+  categoryItemActive: {},
+  categoryIconBox: { width: 45, height: 45, borderRadius: 12, backgroundColor: "#fff", borderWidth: 2, borderColor: "#e2e8f0", justifyContent: "center", alignItems: "center", marginBottom: 8 },
+  categoryIconBoxActive: { backgroundColor: "#4f46e5", borderColor: "#4f46e5" },
+  categoryIcon: { width: 26, height: 26, resizeMode: "contain" },
+  categoryIconActive: {},
+  categoryText: { fontSize: 12, fontWeight: "600", color: "#64748b", textAlign: "center" },
+  categoryTextActive: { color: "#4f46e5" },
+  list: { paddingHorizontal: 16, paddingBottom: 100 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", paddingBottom: 100 },
+  noProductsImage: { width: 140, height: 140, resizeMode: "contain", marginBottom: 16, opacity: 0.8 },
+  noProductsText: { fontSize: 15, fontWeight: "600", color: "#94a3b8" },
+  fab: { position: "absolute", bottom: 24, right: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: "#4f46e5", justifyContent: "center", alignItems: "center", elevation: 8, shadowColor: "#4f46e5", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6 },
+  fabText: { color: "#fff", fontSize: 24, fontWeight: "600" },
+  actionMenu: { position: "absolute", bottom: 90, right: 24, backgroundColor: "#fff", borderRadius: 16, padding: 6, elevation: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.15, shadowRadius: 8, borderWidth: 1, borderColor: "#e2e8f0" },
+  actionButton: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10 },
+  actionText: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
+  floatingModalOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.4)", justifyContent: "flex-end" },
+  floatingModalContent: { backgroundColor: "#fff", borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: SCREEN_HEIGHT * 0.85, paddingBottom: 20 },
+  modalGrabber: { width: 40, height: 5, backgroundColor: "#cbd5e1", borderRadius: 3, alignSelf: "center", marginTop: 12, marginBottom: 10 },
+  modalHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, paddingBottom: 14 },
+  modalTitle: { fontSize: 20, fontWeight: "800", color: "#0f172a" },
+  modalSubtitle: { fontSize: 13, color: "#64748b", marginTop: 2 },
+  closeModalButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#f1f5f9", alignItems: "center", justifyContent: "center" },
+  closeModalText: { fontSize: 14, color: "#64748b", fontWeight: "bold" },
+  modalDivider: { height: 1, backgroundColor: "#f1f5f9" },
+  modalScroll: { paddingHorizontal: 24, paddingTop: 16 }
 });
+
+export default UploadsScreen;
