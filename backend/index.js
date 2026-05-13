@@ -9,26 +9,20 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// ----------------- Nodemailer Transporter -----------------
+
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // Use TLS, not SSL
+  port: 465,         // CHANGED: Use 465 instead of 587
+  secure: true,      // CHANGED: Must be true for port 465
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  connectionTimeout: 30000, // Increased to 30s for Render
+  connectionTimeout: 30000, 
   greetingTimeout: 30000,
   socketTimeout: 30000,
-  pool: {
-    maxConnections: 1,
-    maxMessages: 5,
-    rateDelta: 2000,
-    rateLimit: true,
-  },
   tls: {
-    rejectUnauthorized: false, // Required for some Render environments
+    rejectUnauthorized: false, 
     minVersion: 'TLSv1.2',
   },
 });

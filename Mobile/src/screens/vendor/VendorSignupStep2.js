@@ -149,50 +149,57 @@ const VendorSignupStep2 = ({ route, navigation }) => {
     return () => clearTimeout(timer);
   }, [otpTimer, otpSent, otpVerified]);
 
-  const handleSendOtp = async () => {
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return showNotification('Valid email is required.');
-    }
-    try {
-      setOtpSent(true);
-      setOtpTimer(OTP_DURATION);
-      setResendVisible(false);
-      const response = await fetch('https://e-baligya-mobile.onrender.com/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        showNotification('OTP sent to your email.', 'success');
-      } else {
-        showNotification('Failed to send OTP.');
-      }
-    } catch (err) {
-      showNotification('Error sending OTP. Check network.');
-    }
-  };
+const handleSendOtp = async () => {
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return showNotification('Valid email is required.');
+  }
+  try {
+    setOtpSent(true);
+    setOtpTimer(OTP_DURATION);
+    setResendVisible(false);
+    
+    const response = await fetch('https://e-baligya-mobile.onrender.com/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
 
-  const handleVerifyOtp = async () => {
-    if (otpTimer <= 0) return showNotification('OTP expired. Please resend.');
-    if (!userOtp || userOtp.length !== 6) return showNotification('Enter 6-digit OTP.');
-    try {
-      const response = await fetch('https://e-baligya-mobile.onrender.com/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, otp: userOtp }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        setOtpVerified(true);
-        showNotification('Email verified successfully!', 'success');
-      } else {
-        showNotification(data.message || 'Invalid OTP.');
-      }
-    } catch (err) {
-      showNotification('Error verifying OTP.');
+    const data = await response.json();
+
+    // Checked response.ok alongside data.success
+    if (response.ok && data.success) {
+      showNotification('OTP sent to your email.', 'success');
+    } else {
+      // Gracefully show whatever error string the backend provided
+      showNotification(data.message || data.error || 'Failed to send OTP.');
     }
-  };
+  } catch (err) {
+    showNotification('Error sending OTP. Check network.');
+  }
+};
+
+const handleVerifyOtp = async () => {
+  if (otpTimer <= 0) return showNotification('OTP expired. Please resend.');
+  if (!userOtp || userOtp.length !== 6) return showNotification('Enter 6-digit OTP.');
+  try {
+    const response = await fetch('https://e-baligya-mobile.onrender.com/verify-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp: userOtp }),
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok && data.success) {
+      setOtpVerified(true);
+      showNotification('Email verified successfully!', 'success');
+    } else {
+      showNotification(data.message || data.error || 'Invalid OTP.');
+    }
+  } catch (err) {
+    showNotification('Error verifying OTP.');
+  }
+};
 
   const handleNext = () => {
     if (!otpVerified) return showNotification('Please verify your email with OTP.');
