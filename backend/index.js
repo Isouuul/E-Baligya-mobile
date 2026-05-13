@@ -11,14 +11,26 @@ app.use(express.json());
 
 // ----------------- Nodemailer Transporter -----------------
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // Use TLS, not SSL
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
+  connectionTimeout: 30000, // Increased to 30s for Render
+  greetingTimeout: 30000,
+  socketTimeout: 30000,
+  pool: {
+    maxConnections: 1,
+    maxMessages: 5,
+    rateDelta: 2000,
+    rateLimit: true,
+  },
+  tls: {
+    rejectUnauthorized: false, // Required for some Render environments
+    minVersion: 'TLSv1.2',
+  },
 });
 
 // ----------------- Reusable sendEmail Function -----------------
@@ -45,6 +57,11 @@ transporter.verify((error, success) => {
   } else {
     console.log("Email server is ready");
   }
+});
+
+// ----------------- Health Check -----------------
+app.get('/', (req, res) => {
+  res.status(200).json({ message: 'E-Baligya Backend is running', status: 'OK' });
 });
 
 // ----------------- OTP Functionality -----------------
