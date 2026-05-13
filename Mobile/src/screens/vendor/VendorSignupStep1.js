@@ -221,11 +221,17 @@ const VendorSignupStep1 = ({ route, navigation }) => {
                 const market = marketOptions.find((m) => m.name === value);
                 setSelectedMarket(market || null);
               }}
+              style={{ color: '#1E293B' }}
             >
               <Picker.Item label="Select market location" value="" color="#94A3B8" />
-              {marketOptions.map((m, i) => <Picker.Item key={i} label={m.name} value={m.name} />)}
+              {marketOptions.map((m, i) => <Picker.Item key={i} label={m.name} value={m.name} color="#1E293B" />)}
             </Picker>
           </View>
+          {selectedMarket && (
+            <View style={styles.selectedMarketDisplay}>
+              <Text style={styles.selectedMarketText}>{selectedMarket.name}</Text>
+            </View>
+          )}
 
           {selectedMarket && (
             <View style={styles.coordBox}>
@@ -476,6 +482,19 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     marginBottom: 12,
     overflow: 'hidden',
+  },
+  selectedMarketDisplay: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+  },
+  selectedMarketText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2563EB',
   },
   coordBox: {
     flexDirection: 'row',

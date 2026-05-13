@@ -37,6 +37,8 @@ function AnimatedBiddingCard({ item, index, navigation }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [timeLeft, setTimeLeft] = useState('');
   const [isExpired, setIsExpired] = useState(false);
+  const [isDisabled, setIsDisabled] = useState(item.isDisabled || false);
+  const [overallTimeLeft, setOverallTimeLeft] = useState('');
 
   // Function to move to next batch if 1 minute passes
   const handleBatchReset = async () => {
@@ -54,11 +56,38 @@ function AnimatedBiddingCard({ item, index, navigation }) {
     }
   };
 
+  // Function to disable product when overall time expires
+  const disableProduct = async () => {
+    try {
+      const productRef = doc(db, "Bidding_Products", item.id);
+      await updateDoc(productRef, {
+        isDisabled: true,
+        disabledAt: Timestamp.now(),
+      });
+      setIsDisabled(true);
+    } catch (error) {
+      console.error("Error disabling product:", error);
+    }
+  };
+
   useEffect(() => {
     Animated.parallel([
       Animated.timing(slideAnim, { toValue: 0, duration: 450, delay: index * 50, useNativeDriver: true }),
       Animated.timing(fadeAnim, { toValue: 1, duration: 450, delay: index * 50, useNativeDriver: true }),
     ]).start();
+
+    // Check overall product expiration time
+    const overallEnd = item.endTime;
+    if (overallEnd) {
+      const end = overallEnd.seconds ? new Date(overallEnd.seconds * 1000) : new Date(overallEnd);
+      const now = new Date();
+      const overallDiff = end - now;
+
+      if (overallDiff <= 0 && !isDisabled) {
+        // Overall time expired - disable product
+        disableProduct();
+      }
+    }
 
     // Use currentBatchEndsAt for the 1-minute logic, fallback to endTime
     const endTimestamp = item.currentBatchEndsAt || item.endTime;
@@ -73,7 +102,9 @@ function AnimatedBiddingCard({ item, index, navigation }) {
       if (diff <= 0) {
         setTimeLeft('Refreshing Batch...');
         setIsExpired(true);
-        handleBatchReset(); // Trigger the 1-minute rotation logic
+        if (!isDisabled) {
+          handleBatchReset(); // Trigger the 1-minute rotation logic
+        }
         clearInterval(timer);
       } else {
         // Show MM:SS for the 1-minute batches
@@ -85,20 +116,21 @@ function AnimatedBiddingCard({ item, index, navigation }) {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [item.currentBatchEndsAt, item.endTime]);
+  }, [item.currentBatchEndsAt, item.endTime, isDisabled]);
 
   const formatPrice = (p) => `₱${Number(p || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 
   return (
     <Animated.View style={{ transform: [{ translateX: slideAnim }], opacity: fadeAnim }}>
       <TouchableOpacity
-        activeOpacity={0.9}
-        style={styles.cardContainer}
-        onPress={() => navigation.navigate('ViewBiddingProduct', { productId: item.id })}
+        activeOpacity={isDisabled ? 0.5 : 0.9}
+        style={[styles.cardContainer, isDisabled && styles.cardContainerDisabled]}
+        onPress={() => !isDisabled && navigation.navigate('ViewBiddingProduct', { productId: item.id })}
+        disabled={isDisabled}
       >
-        <View style={styles.imageWrapper}>
+        <View style={[styles.imageWrapper, isDisabled && styles.imageWrapperDisabled]}>
           {item.imageBase64 ? (
-            <Image source={{ uri: item.imageBase64 }} style={styles.cardImage} />
+            <Image source={{ uri: item.imageBase64 }} style={[styles.cardImage, isDisabled && styles.cardImageDisabled]} />
           ) : (
             <View style={[styles.cardImage, styles.noImagePlaceholder]}>
               <Ionicons name="image-outline" size={32} color="#cbd5e1" />
@@ -108,22 +140,31 @@ function AnimatedBiddingCard({ item, index, navigation }) {
             <Text style={styles.categoryText}>{item.category || 'General'}</Text>
           </View>
           
-          {/* Batch Indicator */}
-          <View style={styles.batchIndicator}>
-            <Text style={styles.batchIndicatorText}>Batch {item.currentBatch || 1}</Text>
-          </View>
+          {isDisabled ? (
+            <View style={styles.disabledOverlay}>
+              <Ionicons name="lock-closed-outline" size={32} color="#fff" />
+              <Text style={styles.disabledText}>Bidding Closed</Text>
+            </View>
+          ) : (
+            <>
+              {/* Batch Indicator */}
+              <View style={styles.batchIndicator}>
+                <Text style={styles.batchIndicatorText}>Batch {item.currentBatch || 1}</Text>
+              </View>
 
-          <View style={[styles.timerBadge, isExpired && styles.timerExpired]}>
-            <Ionicons name="time-outline" size={12} color={isExpired ? "#ef4444" : "#f59e0b"} />
-            <Text style={[styles.timerText, isExpired && { color: "#ef4444" }]}>{timeLeft}</Text>
-          </View>
+              <View style={[styles.timerBadge, isExpired && styles.timerExpired]}>
+                <Ionicons name="time-outline" size={12} color={isExpired ? "#ef4444" : "#f59e0b"} />
+                <Text style={[styles.timerText, isExpired && { color: "#ef4444" }]}>{timeLeft}</Text>
+              </View>
+            </>
+          )}
         </View>
 
-        <View style={styles.detailsWrapper}>
+        <View style={[styles.detailsWrapper, isDisabled && styles.detailsWrapperDisabled]}>
           <View style={styles.titleRow}>
-            <Text style={styles.productTitle} numberOfLines={1}>{item.productName}</Text>
-            <View style={styles.stockBadge}>
-              <Text style={styles.stockText}>{item.remainingQuantity || 0}kg left</Text>
+            <Text style={[styles.productTitle, isDisabled && styles.productTitleDisabled]} numberOfLines={1}>{item.productName}</Text>
+            <View style={[styles.stockBadge, isDisabled && styles.stockBadgeDisabled]}>
+              <Text style={[styles.stockText, isDisabled && styles.stockTextDisabled]}>{item.remainingQuantity || 0}kg left</Text>
             </View>
           </View>
 
@@ -151,8 +192,8 @@ function AnimatedBiddingCard({ item, index, navigation }) {
                 {item.uploadedBy?.businessName || 'Unknown Vendor'}
               </Text>
             </View>
-            <View style={styles.bidButton}>
-              <Text style={styles.bidButtonText}>View Deal</Text>
+            <View style={[styles.bidButton, isDisabled && styles.bidButtonDisabled]}>
+              <Text style={[styles.bidButtonText, isDisabled && styles.bidButtonTextDisabled]}>{isDisabled ? 'Closed' : 'View Deal'}</Text>
             </View>
           </View>
         </View>
@@ -205,6 +246,7 @@ export default function BiddingProductScreen() {
     let filtered = biddingProducts.filter(p => {
       const matchesCat = category === "All" || p.category === category;
       const matchesSearch = p.productName?.toLowerCase().includes(searchText.toLowerCase());
+      // Show all products, including disabled ones (they'll appear grayed out)
       return matchesCat && matchesSearch;
     });
     setFilteredBidding(filtered);
@@ -312,11 +354,20 @@ const styles = StyleSheet.create({
   timerBadge: { position: 'absolute', bottom: 12, right: 12, backgroundColor: 'rgba(255,255,255,0.95)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   timerText: { color: '#1e3a8a', fontSize: 12, fontWeight: '900', marginLeft: 4 },
   timerExpired: { backgroundColor: 'rgba(239, 68, 68, 0.1)' },
+  imageWrapperDisabled: { opacity: 0.5 },
+  cardImageDisabled: { opacity: 0.6 },
+  cardContainerDisabled: { opacity: 0.7 },
+  disabledOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' },
+  disabledText: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginTop: 8 },
   detailsWrapper: { padding: 16 },
+  detailsWrapperDisabled: { opacity: 0.6 },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   productTitle: { fontSize: 18, fontWeight: 'bold', color: '#1e293b', flex: 1 },
+  productTitleDisabled: { color: '#94a3b8' },
   stockBadge: { backgroundColor: '#f0fdf4', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  stockBadgeDisabled: { backgroundColor: '#f1f5f9' },
   stockText: { fontSize: 12, color: '#16a34a', fontWeight: '600' },
+  stockTextDisabled: { color: '#94a3b8' },
   pricingSection: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16, backgroundColor: '#f8fafc', padding: 10, borderRadius: 12 },
   label: { fontSize: 11, color: '#64748b' },
   mainPrice: { fontSize: 18, fontWeight: 'bold', color: '#1e293b' },
@@ -329,7 +380,9 @@ const styles = StyleSheet.create({
   vendorAvatar: { width: 24, height: 24, borderRadius: 12, marginRight: 8 },
   vendorName: { fontSize: 13, color: '#64748b', fontWeight: '500' },
   bidButton: { backgroundColor: '#1e3a8a', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 },
+  bidButtonDisabled: { backgroundColor: '#cbd5e1' },
   bidButtonText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+  bidButtonTextDisabled: { color: '#94a3b8' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyContainer: { alignItems: 'center', marginTop: 100 },
   noDataImage: { width: 150, height: 150, marginBottom: 20 },

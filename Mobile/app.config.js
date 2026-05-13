@@ -5,6 +5,22 @@ export default {
     slug: "e-baligya",
     version: "1.0.0",
     newArchEnabled: false,
+    
+    icon: "./assets/ebaligya-logo.png",
+    
+    android: {
+      icon: "./assets/ebaligya-logo.png",
+      adaptiveIcon: {
+        foregroundImage: "./assets/ebaligya-logo.png",
+        backgroundColor: "#ffffff"
+      },
+      package: "com.ebaligya.app"
+    },
+    
+    ios: {
+      icon: "./assets/ebaligya-logo.png",
+      bundleIdentifier: "com.ebaligya.app"
+    },
 
     extra: {
       eas: {
