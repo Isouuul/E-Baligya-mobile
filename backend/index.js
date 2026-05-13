@@ -38,6 +38,14 @@ const sendEmail = async ({ to, subject, text, html }) => {
   }
 };
 
+transporter.verify((error, success) => {
+  if (error) {
+    console.error("Email transporter error:", error);
+  } else {
+    console.log("Email server is ready");
+  }
+});
+
 // ----------------- OTP Functionality -----------------
 const otpStore = {}; // { email: { code, expires } }
 
