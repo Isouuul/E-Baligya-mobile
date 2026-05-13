@@ -125,17 +125,17 @@ const UserSignupStep2 = ({ route, navigation }) => {
       setOtpTimer(OTP_DURATION);
       setResendVisible(false);
 
-      const response = await fetch('http://10.124.143.183:3000/send-otp', {
+      const response = await fetch('https://e-baligya-mobile.onrender.com/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
 
       const data = await response.json();
-      if (data.success) {
+      if (response.ok && data.success) {
         showNotification('OTP sent to your email.', 'success');
       } else {
-        showNotification('Failed to send OTP.');
+        showNotification(data.message || data.error || 'Failed to send OTP.');
       }
     } catch {
       showNotification('Error sending OTP. Check network.');
@@ -148,18 +148,18 @@ const UserSignupStep2 = ({ route, navigation }) => {
     if (!userOtp || userOtp.length !== 6) return showNotification('Enter 6-digit OTP.');
 
     try {
-      const response = await fetch('http://10.124.143.183:3000/verify-otp', {
+      const response = await fetch('https://e-baligya-mobile.onrender.com/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase(), otp: userOtp }),
       });
 
       const data = await response.json();
-      if (data.success) {
+      if (response.ok && data.success) {
         setOtpVerified(true);
         showNotification('Email verified successfully!', 'success');
       } else {
-        showNotification(data.message || 'Invalid OTP.');
+        showNotification(data.message || data.error || 'Invalid OTP.');
       }
     } catch {
       showNotification('Error verifying OTP.');
