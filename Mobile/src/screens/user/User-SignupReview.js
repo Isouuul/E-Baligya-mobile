@@ -248,13 +248,18 @@ const handleSubmit = async () => {
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.btn, (!agreed || loading) && styles.btnDisabled]}
-          onPress={handleSubmit}
-          disabled={!agreed || loading}
-        >
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Submit Application</Text>}
-        </TouchableOpacity>
+<TouchableOpacity
+  style={styles.sileoButton}
+  onPress={() => {
+    setShowSuccess(false);
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Login' }],
+    });
+  }}
+>
+  <Text style={styles.sileoButtonText}>Continue</Text>
+</TouchableOpacity>
       </View>
 
       {showSuccess && (

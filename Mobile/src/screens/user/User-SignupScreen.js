@@ -17,6 +17,9 @@ import * as ImageManipulator from 'expo-image-manipulator';
 
 const { width } = Dimensions.get('window');
 
+Text.defaultProps = Text.defaultProps || {};
+Text.defaultProps.style = { color: '#1E293B' };
+
 /* ------------------------- PROGRESS STEPS UI ------------------------- */
 const ProgressSteps = ({ currentStep = 1 }) => {
   const steps = ['Verify', 'Information', 'Selfie', 'Review'];

@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { Text, TextInput } from 'react-native';
+import { Platform } from 'react-native';
 
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
@@ -68,6 +70,16 @@ import VendorSignupBusPermit from './src/screens/vendor/VendorSignupBusPermit';
 import AllReviews from './src/screens/user/AllReview';
 
 const Stack = createNativeStackNavigator();
+Text.defaultProps = Text.defaultProps || {};
+Text.defaultProps.style = {
+  color: baseTextColor,
+};
+TextInput.defaultProps = TextInput.defaultProps || {};
+TextInput.defaultProps.style = {
+  color: baseTextColor,
+};
+
+const baseTextColor = Platform.OS === 'android' ? '#1E293B' : '#1E293B';
 
 
 export default function App() {
