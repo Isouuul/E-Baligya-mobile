@@ -66,39 +66,36 @@ export default function ViewShop() {
   const [category, setCategory] = useState("All");
 
   // --- Follow / Unfollow Logic ---
-const handleToggleFollow = async () => {
-  if (!auth.currentUser) {
-    showSileo({
-      title: 'Login Required',
-      message: 'Please sign in to follow this shop.',
-      type: 'info'
-    });
-    return;
-  }
-
-  try {
-    // 1. Find the Vendor Document ID first
-    const vendorQuery = query(collection(db, "ApprovedVendors"), where("userId", "==", vendorId));
-    const vendorSnap = await getDocs(vendorQuery);
-    
-    if (vendorSnap.empty) return;
-    const vendorDocId = vendorSnap.docs[0].id;
-    const followRef = doc(db, "ApprovedVendors", vendorDocId, "followers", auth.currentUser.uid);
-
-    if (isFollowing) {
-      // UNFOLLOW: Delete the user's ID from the followers subcollection
-      await deleteDoc(followRef);
-    } else {
-      // FOLLOW: Add the user's ID and timestamp
-      await setDoc(followRef, {
-        followedAt: new Date(),
-        userEmail: auth.currentUser.email
+  const handleToggleFollow = async () => {
+    if (!auth.currentUser) {
+      showSileo({
+        title: 'Login Required',
+        message: 'Please sign in to follow this shop.',
+        type: 'info'
       });
+      return;
     }
-  } catch (error) {
-    console.error("Follow error:", error);
-  }
-};
+
+    try {
+      const vendorQuery = query(collection(db, "ApprovedVendors"), where("userId", "==", vendorId));
+      const vendorSnap = await getDocs(vendorQuery);
+      
+      if (vendorSnap.empty) return;
+      const vendorDocId = vendorSnap.docs[0].id;
+      const followRef = doc(db, "ApprovedVendors", vendorDocId, "followers", auth.currentUser.uid);
+
+      if (isFollowing) {
+        await deleteDoc(followRef);
+      } else {
+        await setDoc(followRef, {
+          followedAt: new Date(),
+          userEmail: auth.currentUser.email
+        });
+      }
+    } catch (error) {
+      console.error("Follow error:", error);
+    }
+  };
 
   // --- Helper Functions ---
   const Base64Image = ({ base64, productId, style }) => {
@@ -219,25 +216,40 @@ const handleToggleFollow = async () => {
                     <View style={styles.ratingBox}><Ionicons name="star" size={12} color="#FBBF24" /><Text style={styles.ratingText}>{averageRating.toFixed(1)} ({totalRatings})</Text></View>
                   </View>
                 </View>
-<TouchableOpacity 
-  onPress={handleToggleFollow} // Updated this
-  style={[styles.followBtn, isFollowing && styles.followingBtn]}
->
-  <Text style={[styles.followText, isFollowing && styles.followingText]}>
-    {isFollowing ? "Following" : "Follow"}
-  </Text>
-</TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={handleToggleFollow}
+                  style={[styles.followBtn, isFollowing && styles.followingBtn]}
+                >
+                  <Text style={[styles.followText, isFollowing && styles.followingText]}>
+                    {isFollowing ? "Following" : "Follow"}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
 
+            {/* CATEGORIES - BOX WITH TITLE BELOW */}
             <View style={styles.categoryContainer}>
               <Text style={[styles.sectionLabel, { marginLeft: 16, marginBottom: 10 }]}>Categories</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroll}>
-                {[{ name: "All", icon: require("../../../assets/all.png") }, { name: "Fish", icon: require("../../../assets/Fish.png") }, { name: "Mollusk", icon: require("../../../assets/mollusk.png") }, { name: "Crustacean", icon: require("../../../assets/Crustacean.png") }].map((cat, i) => (
-                  <TouchableOpacity key={i} style={[styles.categoryButton, category === cat.name && styles.activeCategoryButton]} onPress={() => setCategory(cat.name)}>
-                    <Image source={cat.icon} style={styles.categoryIcon} /><Text style={[styles.categoryButtonText, category === cat.name && styles.activeCategoryText]}>{cat.name}</Text>
-                  </TouchableOpacity>
-                ))}
+                {[
+                  { name: "All", icon: require("../../../assets/all.png") }, 
+                  { name: "Fish", icon: require("../../../assets/Fish.png") }, 
+                  { name: "Mollusk", icon: require("../../../assets/mollusk.png") }, 
+                  { name: "Crustacean", icon: require("../../../assets/Crustacean.png") },
+                  { name: "Trend", icon: require("../../../assets/Trend.png") },
+                ].map((cat, i) => {
+                  const isActive = category === cat.name;
+                  return (
+                    <TouchableOpacity key={i} style={styles.categoryItem} onPress={() => setCategory(cat.name)} activeOpacity={0.8}>
+                      <View style={[styles.categoryIconWrapper, isActive && styles.activeCategoryIconWrapper]}>
+                        <Image source={cat.icon} style={styles.categoryIcon} />
+                      </View>
+                      <Text style={[styles.categoryButtonText, isActive && styles.activeCategoryText]}>
+                        {cat.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
             </View>
             <Text style={[styles.sectionLabel, { marginLeft: 16, marginTop: 10 }]}>Available Products</Text>
@@ -245,79 +257,71 @@ const handleToggleFollow = async () => {
         )}
         renderItem={({ item }) => (
           <View style={[styles.productCardRow, { marginHorizontal: 16 }]}>
-{/* 1. Wrap the image and the badge in a View */}
-  <View style={styles.imageContainer}>
-    <Base64Image 
-      base64={item.imageBase64} 
-      productId={item.id} 
-      style={styles.productImageRow} 
-    />
-    {/* 2. Move the category here */}
-    <View style={styles.categoryBadge}>
-      <Text style={styles.productCategoryText}>{item.category}</Text>
-    </View>
-  </View>
-              <View style={styles.productInfoRow}>
+            <View style={styles.imageContainer}>
+              <Base64Image 
+                base64={item.imageBase64} 
+                productId={item.id} 
+                style={styles.productImageRow} 
+              />
+              <View style={styles.categoryBadge}>
+                <Text style={styles.productCategoryText}>{item.category}</Text>
+              </View>
+            </View>
+            <View style={styles.productInfoRow}>
               <Text numberOfLines={1} style={styles.productNameRow}>{item.productName}</Text>
               <Text style={styles.productPriceRow}>₱{item.basePrice}<Text style={styles.unitText}>/kg</Text></Text>
             </View>
             <View style={styles.buttonColumnRow}>
-  {/* Add to Cart Button */}
-  <TouchableOpacity 
-    style={styles.addToCartBtnRow} 
-    onPress={() => { setSelectedProduct(item); setModalVisible(true); }}
-  >
-    <Text style={[styles.buyNowText, { color: '#3B82F6' }]}>Add to Cart</Text>
-  </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.addToCartBtnRow} 
+                onPress={() => { setSelectedProduct(item); setModalVisible(true); }}
+              >
+                <Text style={[styles.buyNowText, { color: '#3B82F6' }]}>Add to Cart</Text>
+              </TouchableOpacity>
 
-  {/* Buy Now Button */}
-  <TouchableOpacity 
-    style={styles.buyNowBtn} 
-    onPress={() => navigation.navigate("BuyNowCheckedOut", { product: item, quantity: 1 })}
-  >
-    <Text style={styles.buyNowText}>Buy Now</Text>
-  </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.buyNowBtn} 
+                onPress={() => navigation.navigate("BuyNowCheckedOut", { product: item, quantity: 1 })}
+              >
+                <Text style={styles.buyNowText}>Buy Now</Text>
+              </TouchableOpacity>
 
-  {/* Report Button */}
-  <TouchableOpacity 
-    style={styles.reportBtn}
-    onPress={() => { setReportProduct(item); setReportModalVisible(true); }}
-  >
-    <Ionicons name="flag-outline" size={14} color="#EF4444" />
-  </TouchableOpacity>
-</View>
+              <TouchableOpacity 
+                style={styles.reportBtn}
+                onPress={() => { setReportProduct(item); setReportModalVisible(true); }}
+              >
+                <Ionicons name="flag-outline" size={14} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
           </View>
         )}
-ListFooterComponent={() => (
-  <View style={styles.reviewsSection}>
-    <View style={styles.reviewSectionHeader}>
-      <Text style={styles.sectionLabel}>Customer Reviews</Text>
-      
-      {/* clickable See All button */}
-      {reviews.length > 0 && (
-        <TouchableOpacity 
-          onPress={() => navigation.navigate("AllReviews", {
-            reviews: reviews,
-            averageRating: averageRating,
-            totalRatings: totalRatings,
-            businessName: businessName
-          })}
-        >
-          <Text style={styles.seeAllText}>See All ({totalRatings})</Text>
-        </TouchableOpacity>
-      )}
-    </View>
+        ListFooterComponent={() => (
+          <View style={styles.reviewsSection}>
+            <View style={styles.reviewSectionHeader}>
+              <Text style={styles.sectionLabel}>Customer Reviews</Text>
+              {reviews.length > 0 && (
+                <TouchableOpacity 
+                  onPress={() => navigation.navigate("AllReviews", {
+                    reviews: reviews,
+                    averageRating: averageRating,
+                    totalRatings: totalRatings,
+                    businessName: businessName
+                  })}
+                >
+                  <Text style={styles.seeAllText}>See All ({totalRatings})</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
-    {reviews.length > 0 ? (
-      // We use .slice(0, 3) to only show the 3 most recent reviews here
-      reviews.slice(0, 3).map(renderReviewItem)
-    ) : (
-      <View style={styles.emptyReviewBox}>
-        <Text style={styles.emptyReviewText}>No reviews yet.</Text>
-      </View>
-    )}
-  </View>
-)}
+            {reviews.length > 0 ? (
+              reviews.slice(0, 3).map(renderReviewItem)
+            ) : (
+              <View style={styles.emptyReviewBox}>
+                <Text style={styles.emptyReviewText}>No reviews yet.</Text>
+              </View>
+            )}
+          </View>
+        )}
       />
 
       <AddingCartModal visible={modalVisible} onClose={() => setModalVisible(false)} product={selectedProduct} selectedVariation={selectedVariation} setSelectedVariation={setSelectedVariation} selectedServices={selectedServices} setSelectedServices={setSelectedServices} />
@@ -337,7 +341,7 @@ ListFooterComponent={() => (
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF",marginTop: 30 },
+  container: { flex: 1, backgroundColor: "#FFFFFF", marginTop: 30 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   customHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
   headerTitleWrap: { alignItems: 'center' },
@@ -364,13 +368,28 @@ const styles = StyleSheet.create({
   followingBtn: { backgroundColor: '#F1F5F9' },
   followText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
   followingText: { color: '#64748B' },
+  
+  // FIXED CATEGORIES LOGIC SPECIFICALLY
   categoryContainer: { marginTop: 10 },
-  categoryScroll: { paddingLeft: 16, paddingRight: 8 },
-  categoryButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, marginRight: 8, borderWidth: 1, borderColor: '#F1F5F9' },
-  activeCategoryButton: { backgroundColor: '#1E3A8A', borderColor: '#1E3A8A' },
-  categoryIcon: { width: 20, height: 20, marginRight: 8 },
-  categoryButtonText: { fontSize: 13, color: '#64748B', fontWeight: '500' },
-  activeCategoryText: { color: '#FFF' },
+  categoryScroll: { paddingLeft: 16, paddingRight: 8, marginLeft: 18},
+  categoryItem: { alignItems: 'center', marginRight: 12 },
+  categoryIconWrapper: { 
+    width: 52, 
+    height: 52, 
+    borderRadius: 14, 
+    backgroundColor: '#F8FAFC', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    borderWidth: 1, 
+    borderColor: '#F1F5F9',
+    marginBottom: 6
+  },
+  activeCategoryIconWrapper: {     backgroundColor: '#eff6ff', borderColor: '#3b82f6',},
+  categoryIcon: { width: 22, height: 22, resizeMode: 'contain' },
+  categoryButtonText: { fontSize: 12, color: '#000', fontWeight: '500', textAlign: 'center' },
+  activeCategoryText: { color: '#1E3A8A', fontWeight: '700' },
+
+  // RESTORED AVAILABLE PRODUCTS ORIGINAL LOGIC & VISUALS
   productCardRow: { flexDirection: 'row', backgroundColor: '#FFF', padding: 12, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#F1F5F9' },
   productImageRow: { width: 80, height: 80, borderRadius: 12 },
   productInfoRow: { flex: 1, marginLeft: 12, justifyContent: 'center' },
@@ -378,27 +397,28 @@ const styles = StyleSheet.create({
   productCategory: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
   productPriceRow: { fontSize: 16, fontWeight: '800', color: '#1E3A8A', marginTop: 6 },
   unitText: { fontSize: 11, color: '#64748B', fontWeight: '400' },
-buttonColumnRow: { justifyContent: 'center',width: 100},
-addToCartBtnRow: {
-    width: '100%',             // Make it fill the 100px width
+  buttonColumnRow: { justifyContent: 'center', width: 100 },
+  addToCartBtnRow: {
+    width: '100%',
     paddingVertical: 8,
     backgroundColor: "#EFF6FF",
     borderRadius: 8,
-    marginBottom: 6,           // Gap between buttons
+    marginBottom: 6,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#DBEAFE'
-  },  addIconRow: { width: 20, height: 20 },
-buyNowBtn: { 
-    width: '100%',             // Match the width of the Add to Cart button
+  },
+  addIconRow: { width: 20, height: 20 },
+  buyNowBtn: { 
+    width: '100%',
     backgroundColor: '#1E3A8A', 
     paddingVertical: 8, 
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
-buyNowText: { 
+  buyNowText: { 
     color: '#FFF', 
     fontSize: 11, 
     fontWeight: '700' 
@@ -413,7 +433,7 @@ buyNowText: {
     borderWidth: 1,
     borderColor: '#FECACA'
   },
-    reviewsSection: { padding: 16, marginTop: 10 },
+  reviewsSection: { padding: 16, marginTop: 10 },
   reviewSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   seeAllText: { fontSize: 12, color: '#3B82F6', fontWeight: '600' },
   reviewCard: { backgroundColor: '#F8FAFC', padding: 16, borderRadius: 16, marginBottom: 12 },
@@ -427,14 +447,12 @@ buyNowText: {
   noCommentText: { fontSize: 12, color: '#94A3B8', fontStyle: 'italic' },
   emptyReviewBox: { padding: 20, alignItems: 'center', borderStyle: 'dashed', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 12 },
   emptyReviewText: { color: '#94A3B8', fontSize: 13 },
-imageContainer: {
-    position: 'relative', // Keeps the absolute child inside these bounds
-  },
+  imageContainer: { position: 'relative' },
   categoryBadge: {
     position: 'absolute',
-    marginTop: 70,      // 8 pixels from the top of the image
-    left: 25,     // 8 pixels from the left of the image
-    backgroundColor: "#1e3a8a", // Semi-transparent black
+    marginTop: 70,
+    left: 25,
+    backgroundColor: "#1e3a8a",
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -445,5 +463,4 @@ imageContainer: {
     fontWeight: 'bold',
     textTransform: 'uppercase',
   },
-  
 });

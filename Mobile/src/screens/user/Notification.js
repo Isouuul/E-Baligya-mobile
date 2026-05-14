@@ -8,19 +8,25 @@ import {
   StyleSheet,
   ActivityIndicator,
   Modal,
-  Alert,
   SafeAreaView,
   StatusBar,
 } from "react-native";
 import { getAuth } from "firebase/auth";
-import { collection, query, where, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  doc,
+  updateDoc,
+  serverTimestamp
+} from "firebase/firestore";
 import { db } from "../../firebase";
 import { Ionicons } from "@expo/vector-icons";
 
-// Asset Imports
 import MessageIcon from '../../../assets/message.png';
 import BasketIcon from '../../../assets/basket.png';
-import NoOrderImg from '../../../assets/no-order.png'; 
+import NoOrderImg from '../../../assets/no-order.png';
 
 const UserNotificationsBidding = ({ navigation }) => {
   const [notifications, setNotifications] = useState([]);
@@ -32,52 +38,68 @@ const UserNotificationsBidding = ({ navigation }) => {
   const auth = getAuth();
   const currentUser = auth.currentUser;
 
-  // 1. Real-time UNREAD Notifications Logic (Removes read items immediately)
+  // ---------------- REALTIME NOTIFICATIONS ----------------
   useEffect(() => {
     if (!currentUser) return;
 
     const notifRef = collection(db, "User_Notifications_Bidding");
-    // UPDATED: Filter out read items directly via the Firestore query 
+
     const notifQuery = query(
-      notifRef, 
-      where("userId", "==", currentUser.uid),
-      where("read", "==", false)
+      notifRef,
+      where("userId", "==", currentUser.uid)
     );
 
-    const unsubscribe = onSnapshot(
-      notifQuery,
-      (snapshot) => {
-        const list = snapshot.docs.map((docSnap) => ({
+    const unsubscribe = onSnapshot(notifQuery, (snapshot) => {
+      const now = Date.now();
+
+      const list = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+
+        const readAt = data.readAt?.toDate?.()?.getTime();
+        let isExpired = false;
+
+        if (readAt) {
+          const diffMin = (now - readAt) / (1000 * 60);
+          if (diffMin > 60) isExpired = true;
+        }
+
+        return {
           id: docSnap.id,
-          ...docSnap.data(),
-        }));
-        setNotifications(list);
-        setLoading(false);
-      },
-      (err) => {
-        console.error("User notifications error:", err);
-        setLoading(false);
-      }
-    );
+          ...data,
+          isExpired,
+        };
+      }).filter(item => !item.isExpired);
+
+      setNotifications(list);
+      setLoading(false);
+    });
 
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Real-time Cart Count Logic
+  // ---------------- CART COUNT ----------------
   useEffect(() => {
     if (!currentUser) return;
+
     const q = collection(db, 'Carts', currentUser.uid, 'items');
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setCartCount(snapshot.size);
     });
+
     return () => unsubscribe();
   }, [currentUser]);
 
+  // ---------------- MARK AS READ ----------------
   const markAsRead = async (notifId) => {
     try {
       const notifDoc = doc(db, "User_Notifications_Bidding", notifId);
-      await updateDoc(notifDoc, { read: true });
-      setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+
+      await updateDoc(notifDoc, {
+        read: true,
+        readAt: serverTimestamp(),
+      });
+
     } catch (err) {
       console.error("Failed to mark as read:", err);
     }
@@ -89,62 +111,115 @@ const UserNotificationsBidding = ({ navigation }) => {
     setModalVisible(true);
   };
 
-const handleAccept = (item) => {
-    setModalVisible(false);
-    const selectedItems = [
-      {
-        id: item.id, // This represents the unique bidding notification document ID
-        notificationId: item.id, // ✅ Explicitly store notification ID
-        source: 'notification', // ✅ Flag to indicate this came from a notification, not cart
-        productId: item.productId || item.id,
-        productName: item.productName || "Unnamed Product",
-        productImage: item.productImage || null,
-        basePrice: item.basePrice || 0,
-        quantity: 1,
-        selectedVariation: item.variation || null,
-        selectedVariationPrice: item.variationPrice || 0,
-        selectedServices: item.services || [],
-        uploadedBy: {
-          uid: item.vendorId || item.userId || null,
-          businessName: item.vendorBusinessName || "Unknown Vendor",
-          profileImage: item.vendorProfileImage || null,
-        },
-        category: item.category || item.productCategory || "Uncategorized",
-      },
-    ];
-    
-    // ✅ PASS THE NOTIFICATION ID HERE SO CHECKOUT CAN ACCESS IT
-    navigation.navigate("CheckedOutBidding", { 
-      selectedItems,
-      notificationIds: [item.id] 
+  const formatPeso = (amount) => {
+    return Number(amount || 0).toLocaleString("en-PH", {
+      style: "currency",
+      currency: "PHP",
+      minimumFractionDigits: 0,
     });
   };
 
+const handleAccept = (item) => {
+    setModalVisible(false);
+
+    // 1. Structure the selected item data clearly
+    const formattedItem = {
+      id: item.id,                        // Notification Document ID
+      productId: item.productId,          // Underlying Product Doc ID
+      productName: item.productName,
+      category: item.category,
+      imageBase64: item.imageBase64,
+      
+      // Financial Data Snapshot
+      bidAmount: item.bidAmount,          // The winning price per kg (₱)
+      quantity: item.quantity,            // Total kg bid for by the user
+      totalAmount: item.totalAmount,      // Pre-calculated total: bidAmount * quantity
+      basePrice: item.basePrice,
+      
+      // Vendor Information Snapshot
+      vendorId: item.vendorId,
+      vendorBusinessName: item.vendorBusinessName,
+      vendorEmail: item.vendorEmail,
+      vendorProfileImage: item.vendorProfileImage,
+
+      // Flags and Arrays
+      premiumServices: item.premiumServices || [],
+      source: "notification",
+    };
+
+    // 2. Route seamlessly to CheckedOutBidding with full snapshots
+    navigation.navigate("CheckedOutBidding", {
+      selectedItems: [formattedItem],
+      notificationIds: [item.id],
+      grandTotal: item.totalAmount,       // Sending total aggregate cost as top-level param if needed
+    });
+  };
+  // ---------------- FIXED IMAGE RESOLVER ----------------
+  const getProductImage = (item) => {
+    if (item?.productImage) return { uri: item.productImage };
+
+    if (item?.imageUrl) return { uri: item.imageUrl };
+
+    if (item?.imageBase64) {
+      // supports base64 OR full data uri
+      return {
+        uri: item.imageBase64.startsWith("data:")
+          ? item.imageBase64
+          : `data:image/jpeg;base64,${item.imageBase64}`
+      };
+    }
+
+    return require("../../../assets/Trash.png");
+  };
+
+  // ---------------- RENDER ITEM ----------------
   const renderItem = ({ item }) => (
     <TouchableOpacity
-      style={styles.notifItem}
+      style={[styles.notifItem, item.read && { opacity: 0.6 }]}
       onPress={() => handleNotificationPress(item)}
       activeOpacity={0.85}
     >
       <Image
-        source={item.productImage ? { uri: item.productImage } : require("../../../assets/Trash.png")}
+        source={getProductImage(item)}
         style={styles.productImage}
       />
 
       <View style={styles.notifInfo}>
         <View style={styles.notifHeaderRow}>
-            <Text style={styles.productName} numberOfLines={1}>{item.productName}</Text>
+          <Text
+            style={[
+              styles.productName,
+              item.read && { color: "#94A3B8" }
+            ]}
+            numberOfLines={1}
+          >
+            {item.productName}
+          </Text>
+
+          {!item.read && (
             <View style={styles.newBadge}>
-                <Text style={styles.newBadgeText}>NEW</Text>
+              <Text style={styles.newBadgeText}>NEW</Text>
             </View>
+          )}
         </View>
-        <Text style={styles.vendorName}>{item.vendorBusinessName}</Text>
-        <Text numberOfLines={2} style={styles.message}>{item.message}</Text>
-        <Text style={styles.amount}>₱{item.totalAmount}</Text>
+
+        <Text style={styles.vendorName}>
+          {item.vendorBusinessName}
+        </Text>
+
+        <Text numberOfLines={2} style={styles.message}>
+          {item.message ||
+            `You won the bid for ${item.productName}. Total: ${formatPeso(item.totalAmount)}`}
+        </Text>
+
+        <Text style={styles.amount}>
+          {formatPeso(item.totalAmount)}
+        </Text>
       </View>
     </TouchableOpacity>
   );
 
+  // ---------------- UI ----------------
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -157,74 +232,49 @@ const handleAccept = (item) => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      <View style={styles.headerSafe}>
-        <View style={styles.customHeader}>
-          <View style={styles.headerTitleWrap}>
-            <Text style={styles.headerTitle}>Notifications</Text>
-            <Text style={styles.headerSubTitle}>Bidding Updates</Text>
-          </View>
-
-          <View style={[styles.headerSideContainer, styles.headerRightGroup]}>
-            <TouchableOpacity 
-              onPress={() => navigation.navigate("CartShop")} 
-              style={styles.iconCircle}
-              activeOpacity={0.7}
-            >
-              <Image source={BasketIcon} style={styles.headerAssetIcon} />
-              {cartCount > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{cartCount > 99 ? '99+' : cartCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              onPress={() => navigation.navigate("InboxScreen")} 
-              style={[styles.iconCircle, { marginLeft: 10 }]}
-              activeOpacity={0.7}
-            >
-              <Image source={MessageIcon} style={styles.headerAssetIcon} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-
       <FlatList
-        data={notifications} // No longer requires client-side filter computation since query manages it
+        data={notifications}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
         ListEmptyComponent={() => (
           <View style={styles.emptyWrap}>
             <Image source={NoOrderImg} style={styles.emptyImg} />
             <Text style={styles.emptyTitle}>You're all caught up</Text>
-            <Text style={styles.emptySubText}>No new bidding notifications right now.</Text>
+            <Text style={styles.emptySubText}>
+              No new bidding notifications right now.
+            </Text>
           </View>
         )}
       />
 
-      <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
+      {/* MODAL (unchanged UI) */}
+      <Modal visible={modalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             {selectedNotification && (
               <>
                 <Image
-                  source={selectedNotification.productImage ? { uri: selectedNotification.productImage } : require("../../../assets/Trash.png")}
+                  source={getProductImage(selectedNotification)}
                   style={styles.modalImage}
                 />
-                <Text style={styles.modalTitle}>{selectedNotification.productName}</Text>
-                <Text style={styles.modalVendor}>{selectedNotification.vendorBusinessName}</Text>
-                <Text style={styles.modalMessage}>{selectedNotification.message}</Text>
-                {selectedNotification.variation && (
-                  <Text style={styles.modalText}>Variation: {selectedNotification.variation}</Text>
-                )}
-                {selectedNotification.services?.length > 0 && (
-                  <Text style={styles.modalText}>
-                    Services: {selectedNotification.services.map((service) => (service.label || service)).join(", ")}
-                  </Text>
-                )}
-                <Text style={styles.modalAmount}>₱{selectedNotification.totalAmount}</Text>
+
+                <Text style={styles.modalTitle}>
+                  {selectedNotification.productName}
+                </Text>
+
+                <Text style={styles.modalVendor}>
+                  {selectedNotification.vendorBusinessName}
+                </Text>
+
+                <Text style={styles.modalMessage}>
+                  {selectedNotification.message}
+                </Text>
+
+                <Text style={styles.modalAmount}>
+                  {formatPeso(selectedNotification.totalAmount)}
+                </Text>
+
                 <View style={styles.modalActions}>
                   <TouchableOpacity
                     style={[styles.modalButton, styles.acceptButton]}
@@ -232,9 +282,12 @@ const handleAccept = (item) => {
                   >
                     <Text style={styles.modalButtonText}>Accept Bid</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setModalVisible(false)}>
-                    {/* FIXED: Changed to explicit cancelButtonText style so typography text is visible against background */}
-                    <Text style={styles.cancelButtonText}>Close</Text> 
+
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.cancelButton]}
+                    onPress={() => setModalVisible(false)}
+                  >
+                    <Text style={styles.cancelButtonText}>Close</Text>
                   </TouchableOpacity>
                 </View>
               </>

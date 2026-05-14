@@ -157,34 +157,53 @@ const ViewClickBid = ({ route, navigation }) => {
     if (!selectedBidder || processingConfirm) return;
     setProcessingConfirm(true);
     try {
-      // Build notification payload 
-      const payload = {
-        read: false,
-        createdAt: serverTimestamp(),
-        userId: selectedBidder.userId,
-        userName: selectedBidder.userName,
-        productId: bidding.id,
-        productName: bidding.productName,
-        productImage: bidding.imageBase64 || null,
-        bidId: selectedBidder.id,
-        bidAmount: selectedBidder.bidAmount,
-        quantityOrdered: selectedBidder.quantity || 1,
-        totalAmount: selectedBidder.totalAmount,
-        basePrice: selectedBidder.bidAmount || 0,
-        category: bidding.category || "Uncategorized",
-        vendorId: currentUser.uid,
-        vendorBusinessName: bidding.uploadedBy?.businessName || "Vendor",
-        vendorProfileImage: bidding.uploadedBy?.vendorProfileImage || null,
-        type: "BID_WINNER",
-      };
+const payload = {
+  read: false,
+  createdAt: serverTimestamp(),
+
+  type: "BID_WINNER",
+
+  // USER (bidder)
+  userId: selectedBidder.userId,
+  userName: selectedBidder.userName,
+
+  // PRODUCT SNAPSHOT (IMPORTANT)
+  productId: bidding.id,
+  productName: bidding.productName,
+  category: bidding.category,
+  imageBase64: bidding.imageBase64,
+
+  basePrice: bidding.basePrice,
+  bidType: bidding.bidType,
+
+  remainingQuantity: bidding.remainingQuantity,
+  minQtyPerBid: bidding.minQtyPerBid || 1,
+
+  overallAuctionEndsAt: bidding.overallAuctionEndsAt,
+
+  premiumServices: bidding.premiumServices || [],
+
+  // BID DATA
+  bidAmount: selectedBidder.bidAmount,
+  quantity: selectedBidder.quantity,
+  totalAmount: selectedBidder.totalAmount,
+
+  // VENDOR SNAPSHOT
+  vendorId: bidding.uploadedBy?.uid || "",
+  vendorBusinessName: bidding.uploadedBy?.businessName || "",
+  vendorEmail: bidding.uploadedBy?.email || "",
+  vendorProfileImage: bidding.uploadedBy?.vendorProfileImage || "",
+
+  message: `🎉 You won the bid for ${bidding.productName}! Total: ₱${selectedBidder.totalAmount}`
+};
 
       // Push document to notifications collection
       await addDoc(collection(db, "User_Notifications_Bidding"), payload);
 
-      // Decrement the physical stock on the original active post
-      const productRef = doc(db, "Bidding_Products", bidding.id);
-      const newQty = Math.max(0, bidding.remainingQuantity - selectedBidder.quantity);
-      await updateDoc(productRef, { remainingQuantity: newQty });
+      // // Decrement the physical stock on the original active post
+      // const productRef = doc(db, "Bidding_Products", bidding.id);
+      // const newQty = Math.max(0, bidding.remainingQuantity - selectedBidder.quantity);
+      // await updateDoc(productRef, { remainingQuantity: newQty });
 
       setSuccessMessage(`Deal locked! ${selectedBidder.userName} has been notified.`);
       setShowSuccessModal(true);

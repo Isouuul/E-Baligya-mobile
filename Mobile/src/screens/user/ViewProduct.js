@@ -742,9 +742,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',    borderWidth: 0.5,
+
     paddingVertical: 8,
     borderRadius: 10,
     gap: 6,
@@ -885,7 +885,10 @@ const styles = StyleSheet.create({
   },
   buyNowBtn: {
     flex: 1.3,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
+    borderWidth: 1,
+    
     alignItems: 'center',
     justifyContent: 'center',
     height: 48,
@@ -899,7 +902,7 @@ const styles = StyleSheet.create({
   buyNowText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: '#000',
   },
   disabledBtn: {
     backgroundColor: '#F1F5F9',

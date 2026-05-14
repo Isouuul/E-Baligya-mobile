@@ -183,7 +183,7 @@ export default function Home({ navigation }) {
           onPress={() => handleBuyNow(item)}
         >
           <Text style={styles.buyBtnText}>Quick Buy</Text>
-          <Feather name="arrow-right" size={13} color="#FFF" style={{ marginLeft: 4 }} />
+          <Feather name="arrow-right" size={13} color="#000" style={{ marginLeft: 4 }} />
         </TouchableOpacity>
       </Animated.View>
     );
@@ -497,7 +497,8 @@ const styles = StyleSheet.create({
   productPrice: { color: "#2563EB", fontSize: 16, fontWeight: "900" },
   stockText: { color: '#64748B', fontSize: 11, fontWeight: '700' },
   buyBtn: { 
-    backgroundColor: '#0F172A', 
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
     marginHorizontal: 10, 
     marginBottom: 10, 
     paddingVertical: 9, 
@@ -506,7 +507,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     justifyContent: 'center'
   },
-  buyBtnText: { color: '#FFF', fontWeight: '800', fontSize: 11, letterSpacing: 0.2 },
+  buyBtnText: { color: '#000', fontWeight: '800', fontSize: 11, letterSpacing: 0.2 },
 
   paginationRow: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 12 },
   pageDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#E2E8F0' },

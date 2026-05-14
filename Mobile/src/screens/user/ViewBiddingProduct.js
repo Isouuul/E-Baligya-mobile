@@ -148,86 +148,119 @@ const ViewBiddingProduct = ({ route, navigation }) => {
   };
 
   // 3. SECURE BID PLACEMENT TRANSACTION
+// PLACE BID
   const handlePlaceBid = async () => {
     const bidValue = parseFloat(bidAmount);
-    
-    // Core validations
+
     if (isNaN(bidValue) || bidValue <= 0) {
-      return Alert.alert("Invalid Entry", "Please enter a valid pricing value.");
+      return Alert.alert("Invalid Entry", "Please enter a valid bid.");
     }
+
     if (isExpired) {
-      return Alert.alert("Bidding Closed", "This auction has expired and is no longer accepting bids.");
+      return Alert.alert("Bidding Closed", "Auction has ended.");
     }
+
     if (quantity < minQtyPerBid) {
-      return Alert.alert("Minimum Limit", `You must order at least ${minQtyPerBid}kg.`);
+      return Alert.alert("Minimum Quantity", `Minimum is ${minQtyPerBid}kg.`);
     }
 
     try {
-      // 1. Fetch User details outside the Firestore database transactional lock
-      const userDocRef = doc(db, 'Users', auth.currentUser.uid);
-      const userSnap = await getDoc(userDocRef);
-      
+      const userRef = doc(db, 'Users', auth.currentUser.uid);
+      const userSnap = await getDoc(userRef);
+
       if (!userSnap.exists()) {
-        throw "User profile data was not found. Please setup your profile.";
+        throw "User profile missing.";
       }
 
       const userData = userSnap.data();
       const fullName = `${userData.firstName} ${userData.lastName}`;
       const userRole = userData.role || 'Consumer';
 
-      // 2. Transact atomic updates on shared fields
       await runTransaction(db, async (transaction) => {
         const productRef = doc(db, 'Bidding_Products', productId);
         const pSnap = await transaction.get(productRef);
-        
-        if (!pSnap.exists()) {
-          throw "Product listing does not exist.";
-        }
+
+        if (!pSnap.exists()) throw "Product not found.";
 
         const currentData = pSnap.data();
+
         const currentHighest = currentData.currentHighestBid || 0;
         const basePrice = currentData.basePrice || 0;
-        
-        // Determine increment based on current highest bid or base price
+
         const priceToCheck = currentHighest > 0 ? currentHighest : basePrice;
         const increment = getIncrementAmount(priceToCheck);
-        
-        const minValidBid = currentHighest > 0 
-          ? currentHighest + increment 
+
+        const minValidBid = currentHighest > 0
+          ? currentHighest + increment
           : basePrice;
 
-        if (bidValue < minValidBid) {
-          throw `The current highest bid has updated. Minimum offer accepted is ₱${minValidBid}/kg.`;
+        // ✅ STOCK CHECK (FIXED LOCATION)
+        if (currentData.remainingQuantity < quantity) {
+          throw `Only ${currentData.remainingQuantity}kg remaining.`;
         }
 
-        // 3. Push values into the main item metadata index
-        transaction.update(productRef, { 
+        if (bidValue < minValidBid) {
+          throw `Minimum bid is ₱${minValidBid}/kg`;
+        }
+
+        transaction.update(productRef, {
           currentHighestBid: bidValue,
           lastBidderId: auth.currentUser.uid,
           lastBidderName: fullName,
-          lastBidTime: serverTimestamp()
+          lastBidTime: serverTimestamp(),
         });
 
-        // 4. Log historic entry into sub-collection
         const newBidRef = doc(collection(db, 'RequestBidding', productId, 'Bids'));
+
         transaction.set(newBidRef, {
           userId: auth.currentUser.uid,
           userName: fullName,
-          userRole: userRole,
+          userRole,
+
           bidAmount: bidValue,
-          quantity: quantity,
-          totalAmount: bidValue * quantity,
+          quantity,
+          totalAmount: Number((bidValue * quantity).toFixed(2)),
           createdAt: serverTimestamp(),
+
+          productId,
+
+          productSnapshot: {
+            productName: currentData.productName,
+            category: currentData.category,
+            imageBase64: currentData.imageBase64,
+            basePrice: currentData.basePrice,
+            bidType: currentData.bidType,
+            remainingQuantity: currentData.remainingQuantity,
+            minQtyPerBid: currentData.minQtyPerBid || 1,
+            overallAuctionEndsAt: currentData.overallAuctionEndsAt,
+            premiumServices: currentData.premiumServices || []
+          },
+
+          vendorSnapshot: {
+            uid: currentData.uploadedBy?.uid || "",
+            email: currentData.uploadedBy?.email || "",
+            businessName: currentData.uploadedBy?.businessName || "",
+            vendorProfileImage: currentData.uploadedBy?.vendorProfileImage || ""
+          }
         });
       });
-      
-      Alert.alert("Offer Placed!", "You are now officially leading the auction.");
-      setBidAmount(''); 
-      
+
+      Alert.alert("Success", "Bid placed successfully!");
+      setBidAmount('');
+
     } catch (e) {
-      Alert.alert("Bid Rejected", e.toString().replace('Error: ', ''));
+      console.log("Bid error:", e);
+      Alert.alert("Bid Rejected", e.toString());
     }
   };
+
+  if (loading) {
+    return (
+      <View style={[styles.masterContainer, styles.centered]}>
+        <ActivityIndicator size="large" color="#38bdf8" />
+      </View>
+    );
+  }
 
   if (loading) {
     return (

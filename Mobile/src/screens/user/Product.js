@@ -25,6 +25,19 @@ import * as FileSystem from "expo-file-system";
 const { width } = Dimensions.get('window');
 const ITEMS_PER_PAGE = 16;
 
+// MARKET OPTIONS DATA
+const marketOptions = [
+  { name: 'All Markets', latitude: 0, longitude: 0 }, // Added default option
+  { name: 'Bacolod Central Market', latitude: 10.66761, longitude: 122.94719 },
+  { name: 'Libertad Public Market', latitude: 10.66012, longitude: 122.94971 },
+  { name: 'Bacolod North (Burgos) Market', latitude: 10.66891, longitude: 122.95498 },
+  { name: 'Sum-ag Public Market', latitude: 10.60353, longitude: 122.92110 },
+  { name: 'Granada Public Market', latitude: 10.66576, longitude: 123.03425 },
+  { name: 'Mansilingan Public Market', latitude: 10.63160, longitude: 122.97520 },
+  { name: 'Villamonte Public Market', latitude: 10.66879, longitude: 122.96470 },
+  { name: 'North Capitol Road (Pala-Pala Market)', latitude: 10.66369, longitude: 122.93918 },
+];
+
 /* ---------------------------
    IMAGE BASE64 HANDLER
 ----------------------------*/
@@ -34,29 +47,23 @@ const Base64Image = ({ base64, productId, style }) => {
   useEffect(() => {
     const saveToFile = async () => {
       if (!base64) return;
-
       const fileUri = FileSystem.cacheDirectory + `${productId}.jpg`;
-
       try {
         const cleanBase64 = base64.replace(/^data:image\/\w+;base64,/, '');
-
         await FileSystem.writeAsStringAsync(fileUri, cleanBase64, {
           encoding: FileSystem.EncodingType.Base64,
         });
-
         setLocalUri(fileUri);
       } catch (err) {
         console.error(err);
       }
     };
-
     saveToFile();
   }, [base64]);
 
   if (!localUri) {
     return <View style={[style, { backgroundColor: '#f1f5f9' }]} />;
   }
-
   return <Image source={{ uri: localUri }} style={style} />;
 };
 
@@ -94,7 +101,6 @@ function AnimatedProductCard({ item, index, navigation, status }) {
         onPress={() => navigation.navigate('ViewProduct', { productId: item.id })}
       >
         <View style={styles.imageWrapper}>
-          {/* PRODUCT IMAGE */}
           {item.imageBase64 ? (
             <Base64Image base64={item.imageBase64} productId={item.id} style={styles.productImage} />
           ) : (
@@ -103,7 +109,6 @@ function AnimatedProductCard({ item, index, navigation, status }) {
             </View>
           )}
 
-          {/* DYNAMIC LABELS OVERLAY */}
           <View style={styles.badgeOverlayContainer}>
             {item.category && (
               <View style={styles.categoryBadge}>
@@ -111,7 +116,6 @@ function AnimatedProductCard({ item, index, navigation, status }) {
               </View>
             )}
 
-            {/* ⚠️ HIGHLY VISUAL WARNING BADGE */}
             {status === 'warning' && (
               <View style={styles.warningBadge}>
                 <Ionicons name="time-outline" size={11} color="#d97706" style={{ marginRight: 2 }} />
@@ -125,6 +129,16 @@ function AnimatedProductCard({ item, index, navigation, status }) {
           <Text style={styles.productName} numberOfLines={1}>
             {item.productName}
           </Text>
+
+          {/* MARKET TAG ADDED TO CARD DETALIS */}
+{item.marketName && (
+  <View style={styles.marketTagContainer}>
+    <Ionicons name="location-outline" size={12} color="#64748b" />
+    <Text style={styles.marketTagText} numberOfLines={1}>
+      {item.marketName}
+    </Text>
+  </View>
+)}
 
           <View style={styles.cardFooter}>
             <View style={styles.priceContainer}>
@@ -151,11 +165,9 @@ function AnimatedProductCard({ item, index, navigation, status }) {
 ----------------------------*/
 const getProductStatus = (product) => {
   if (!product.warningTime || !product.expiryTime) return 'fresh';
-
   const now = new Date();
   const warning = product.warningTime.toDate();
   const expiry = product.expiryTime.toDate();
-
   if (now >= expiry) return 'expired';
   if (now >= warning) return 'warning';
   return 'fresh';
@@ -173,6 +185,7 @@ export default function Product() {
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [searchText, setSearchText] = useState('');
   const [category, setCategory] = useState(initialCategory);
+  const [selectedMarket, setSelectedMarket] = useState('All Markets'); // Market State Tracker
   const [currentPage, setCurrentPage] = useState(1);
   const [refreshing, setRefreshing] = useState(false);
   const [cartItems, setCartItems] = useState([]);
@@ -185,16 +198,47 @@ export default function Product() {
     { name: "Trend", icon: require("../../../assets/Trend.png") },
   ];
 
-  const fetchProducts = async () => {
-    try {
-      const q = query(collection(db, 'Products'), orderBy('createdAt', 'desc'));
-      const snapshot = await getDocs(q);
-      let list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setProducts(list);
-    } catch (error) {
-      console.log(error);
-    }
-  };
+const fetchProducts = async () => {
+  try {
+    // 1. GET APPROVED VENDORS
+    const approvedSnapshot = await getDocs(collection(db, 'ApprovedVendors'));
+
+    const vendorMap = {};
+
+    approvedSnapshot.docs.forEach(doc => {
+      const email = doc.id.replace(/_/g, '.'); // convert back
+      vendorMap[email] = doc.data(); // store full vendor data
+    });
+
+    // 2. GET PRODUCTS
+    const q = query(collection(db, 'Products'), orderBy('createdAt', 'desc'));
+    const snapshot = await getDocs(q);
+
+    let list = snapshot.docs.map(doc => {
+      const data = doc.data();
+
+      const vendor = vendorMap[data.vendorEmail];
+
+      return {
+        id: doc.id,
+        ...data,
+
+        // ✅ attach marketName from ApprovedVendors
+        marketName: vendor?.marketName || "Unknown Market",
+
+        // (optional extras if you want later)
+        vendorLatitude: vendor?.latitude,
+        vendorLongitude: vendor?.longitude,
+        vendorStatus: vendor?.penaltyStatus,
+      };
+    });
+
+    setProducts(list);
+
+  } catch (error) {
+    console.log(error);
+  }
+};
 
   const fetchCartItems = async () => {
     const uid = auth.currentUser?.uid;
@@ -226,7 +270,7 @@ export default function Product() {
   };
 
   /* ---------------------------
-      FILTER
+      FILTER LOGIC UPDATE
   ----------------------------*/
   useEffect(() => {
     let filtered = products.filter(p => {
@@ -237,13 +281,16 @@ export default function Product() {
 
       const matchesCat = category === "All" || p.category === category;
       const matchesSearch = p.productName?.toLowerCase().includes(searchText.toLowerCase());
+      
+      // Market Match Condition
+      const matchesMarket = selectedMarket === "All Markets" || p.marketName === selectedMarket;
 
-      return matchesCat && matchesSearch;
+      return matchesCat && matchesSearch && matchesMarket;
     });
 
     setFilteredProducts(filtered);
     setCurrentPage(1);
-  }, [category, searchText, products]);
+  }, [category, searchText, selectedMarket, products]);
 
   const paginatedProducts = filteredProducts.slice(0, currentPage * ITEMS_PER_PAGE);
 
@@ -267,7 +314,6 @@ export default function Product() {
           </View>
 
           <View style={styles.headerIcons}>
-            {/* BASKET / CART */}
             <TouchableOpacity 
               onPress={() => navigation.navigate('CartShop')} 
               style={styles.iconCircle}
@@ -283,7 +329,6 @@ export default function Product() {
               )}
             </TouchableOpacity>
 
-            {/* MESSAGES / INBOX */}
             <TouchableOpacity 
               onPress={() => navigation.navigate("InboxScreen")} 
               style={[styles.iconCircle, { marginLeft: 10 }]}
@@ -292,6 +337,40 @@ export default function Product() {
               <Image source={MessageIcon} style={styles.customHeaderIcon} />
             </TouchableOpacity>
           </View>
+        </View>
+
+        {/* NEW: HORIZONTAL MARKET FILTER SCROLL */}
+        <View style={styles.marketFilterContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.marketScrollContent}
+          >
+            {marketOptions.map((market, index) => {
+              const isMarketActive = selectedMarket === market.name;
+              return (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => setSelectedMarket(market.name)}
+                  style={[
+                    styles.marketChip,
+                    isMarketActive && styles.marketChipActive
+                  ]}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons 
+                    name={market.name === 'All Markets' ? "business-outline" : "location-outline"} 
+                    size={14} 
+                    color={isMarketActive ? '#ffffff' : '#64748b'} 
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text style={[styles.marketChipText, isMarketActive && styles.marketChipTextActive]}>
+                    {market.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
         {/* ELEGANT SCROLLABLE CATEGORIES LIST */}
@@ -351,7 +430,7 @@ export default function Product() {
 }
 
 /* ---------------------------
-   STYLES (PREMIUM DESIGN UPDATE)
+   STYLES
 ----------------------------*/
 const styles = StyleSheet.create({
   container: {
@@ -373,7 +452,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingTop: 10,
-    paddingBottom: 12,
+    paddingBottom: 8,
     marginTop: 35
   },
   searchWrapper: {
@@ -437,8 +516,52 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '800',
   },
+  /* NEW MARKET FILTER STYLES */
+  marketFilterContainer: {
+    paddingVertical: 6,
+  },
+  marketScrollContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  marketChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  marketChipActive: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
+  },
+  marketChipText: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  marketChipTextActive: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  marketTagContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    gap: 2,
+  },
+  marketTagText: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '500',
+    flex: 1,
+  },
   catList: {
     paddingHorizontal: 16,
+    paddingTop: 4,
     paddingBottom: 14,
     alignItems: 'center',
   },
@@ -557,7 +680,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
     color: '#0f172a',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   cardFooter: {
     flexDirection: 'row',
