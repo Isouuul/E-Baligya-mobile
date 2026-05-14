@@ -71,10 +71,29 @@ const UserSignupStep3 = ({ route, navigation }) => {
       return;
     }
 
-    navigation.navigate('SignupReview', {
+    // Create a complete payload with all previous data plus selfie
+    const completeData = {
       ...allDataFromPreviousSteps,
       selfieUri: selfie,
-    });
+      // Ensure all critical fields are present with defaults
+      firstName: allDataFromPreviousSteps.firstName || '',
+      middleName: allDataFromPreviousSteps.middleName || '',
+      lastName: allDataFromPreviousSteps.lastName || '',
+      email: allDataFromPreviousSteps.email || '',
+      phone: allDataFromPreviousSteps.phone || '',
+      password: allDataFromPreviousSteps.password || '',
+      selectedCity: allDataFromPreviousSteps.selectedCity || '',
+      selectedBarangay: allDataFromPreviousSteps.selectedBarangay || '',
+      streetName: allDataFromPreviousSteps.streetName || '',
+      govIDFront: allDataFromPreviousSteps.govIDFront || '',
+      govIDBack: allDataFromPreviousSteps.govIDBack || '',
+      govIDFrontText: allDataFromPreviousSteps.govIDFrontText || {},
+      govIDBackText: allDataFromPreviousSteps.govIDBackText || {},
+      birthDateFromID: allDataFromPreviousSteps.birthDateFromID || '',
+      genderFromID: allDataFromPreviousSteps.genderFromID || '',
+    };
+
+    navigation.navigate('SignupReview', completeData);
   };
 
   return (

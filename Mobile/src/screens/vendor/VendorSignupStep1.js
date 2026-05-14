@@ -152,41 +152,45 @@ const VendorSignupStep1 = ({ route, navigation }) => {
       console.error('Pick Back ID Error:', err);
     }
   };
+const handleNext = () => {
+  if (isLoading) return;
 
-  const handleNext = () => {
-    if (isLoading) return;
+  if (!selectedMarket) {
+    return showSileo({
+      title: 'Missing Field',
+      message: 'Please select your market.',
+      type: 'warning',
+    });
+  }
 
-    if (!selectedMarket) {
-      return showSileo({
-        title: 'Missing Field',
-        message: 'Please select your market.',
-        type: 'warning',
-      });
-    }
-    if (!govIDFront || !govIDBack) {
-      return showSileo({
-        title: 'Missing Photos',
-        message: 'Upload both sides of your ID.',
-        type: 'warning',
-      });
-    }
+  if (!govIDFront || !govIDBack) {
+    return showSileo({
+      title: 'Missing Photos',
+      message: 'Upload both sides of your ID.',
+      type: 'warning',
+    });
+  }
 
+  setIsLoading(true);
 
+  try {
+    const formData = {
+      businessType,
+      marketName: selectedMarket.name,
+      latitude: selectedMarket.latitude,
+      longitude: selectedMarket.longitude,
+      govIDFront,
+      govIDBack,
+    };
 
-    setIsLoading(true);
-    try {
-      navigation.navigate('VendorSignupBusPermit', {
-        businessType,
-        marketName: selectedMarket.name,
-        latitude: selectedMarket.latitude,
-        longitude: selectedMarket.longitude,
-        govIDFront,
-        govIDBack,
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    navigation.navigate('VendorSignupBusPermit', {
+      formData,
+    });
+
+  } finally {
+    setIsLoading(false);
+  }
+};
 
 
   return (
@@ -227,11 +231,7 @@ const VendorSignupStep1 = ({ route, navigation }) => {
               {marketOptions.map((m, i) => <Picker.Item key={i} label={m.name} value={m.name} color="#1E293B" />)}
             </Picker>
           </View>
-          {selectedMarket && (
-            <View style={styles.selectedMarketDisplay}>
-              <Text style={styles.selectedMarketText}>{selectedMarket.name}</Text>
-            </View>
-          )}
+
 
           {selectedMarket && (
             <View style={styles.coordBox}>

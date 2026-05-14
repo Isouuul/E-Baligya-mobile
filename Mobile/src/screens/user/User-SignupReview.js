@@ -64,7 +64,8 @@ const UserSignupReview = ({ route, navigation }) => {
   const data = route.params || {};
   const fullName = [data.firstName, data.middleName, data.lastName].filter(Boolean).join(' ');
   const homeAddress = [data.streetName, data.selectedBarangay, data.selectedCity].filter(Boolean).join(', ');
-  const gender = data.genderFromID || data.gender || data.govIDBackText?.sex || '—';
+  const birthDateValue = data.birthDateFromID || data.birthDate || '—';
+  const gender = data.genderFromID || data.gender || '—';
 
   const convertImageToBase64 = async (uri) => {
     if (!uri) return null;
@@ -95,6 +96,20 @@ const UserSignupReview = ({ route, navigation }) => {
     setLoading(true);
 
     try {
+      // Utility function to remove undefined values from objects (Firestore requirement)
+      const removeUndefinedValues = (obj) => {
+        const cleaned = {};
+        for (const key in obj) {
+          if (obj[key] !== undefined && obj[key] !== null) {
+            cleaned[key] = obj[key];
+          } else if (obj[key] === null) {
+            // Keep null values but filter out undefined
+            cleaned[key] = null;
+          }
+        }
+        return cleaned;
+      };
+
       const email = (data.email || '').trim().toLowerCase();
       const emailLower = email;
 
@@ -117,28 +132,43 @@ const UserSignupReview = ({ route, navigation }) => {
 
       const { password, ...safeFormData } = data;
 
-      await setDoc(doc(db, 'Users', userCred.user.uid), {
-        address: {
+      const userPayload = removeUndefinedValues({
+        address: removeUndefinedValues({
           barangay: data.selectedBarangay || '',
           city: data.selectedCity || '',
           region: "Region VI - Western Visayas",
           street: data.streetName || '',
-          birthdate: data.birthDateFromID || '',
-          createdAt: Timestamp.now(),
-        },
+          birthdate: birthDateValue !== '—' ? birthDateValue : '',
+        }),
         email: email,
+        emailLower: emailLower,
         firstName: data.firstName || '',
         lastName: data.lastName || '',  
         middleName: data.middleName || '',
-        gender: data.genderFromID || data.gender || '',
-        idImage: idFrontB64,
+        phone: data.phone || '',
+        gender: gender !== '—' ? gender : '',
+        idImage: idFrontB64 || '',
+        idImageBack: idBackB64 || '',
         profileImage: data.profileImage || '',
-        selfieImage: selfieB64,
+        selfieImage: selfieB64 || '',
         role: 'Consumer',
         selectedIDType: data.selectedIDType || 'National ID',
         uid: userCred.user.uid,
+        createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       });
+
+      await setDoc(doc(db, 'Users', userCred.user.uid), userPayload);
+
+      // Store full data in subcollection for record keeping
+      const fullDataPayload = removeUndefinedValues({
+        ...safeFormData,
+        ...userPayload,
+        email: email,
+        emailLower: emailLower,
+      });
+
+      await setDoc(doc(db, 'Users', userCred.user.uid, 'userData', 'details'), fullDataPayload);
 
       await signOut(auth);
       setShowSuccess(true);
@@ -189,7 +219,7 @@ const UserSignupReview = ({ route, navigation }) => {
           <View style={styles.profileDetailsBox}>
             <ReviewItem label="Contact Number" value={data.phone} />
             <ReviewItem label="Email Address" value={data.email} />
-            <ReviewItem label="Birth Date" value={data.birthDateFromID} />
+            <ReviewItem label="Birth Date" value={birthDateValue} />
             <ReviewItem label="Gender" value={gender} />
             <ReviewItem label="Home Address" value={homeAddress} />
           </View>

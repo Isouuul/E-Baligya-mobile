@@ -8,8 +8,10 @@ import {
   ScrollView,
   StatusBar,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const { width } = Dimensions.get('window');
 const OTP_DURATION = 60;
@@ -80,24 +82,27 @@ const ProgressSteps = ({ currentStep = 3 }) => {
 };
 
 const VendorSignupStep2 = ({ route, navigation }) => {
-  // Extract data from Step 1 (ID & Business Permit)
-  const {
-    businessType,
-    marketName,
-    latitude,
-    longitude,
-    govIDFront,
-    govIDBack,
-    govIDFrontText,
-    govIDBackText,
-    permitImage,
-    permitText,
-    ownerName,
-    birthDate,
-    genderFromID,
-  } = route.params || {};
+const prevData = route.params?.formData || {};
+const {
+  businessType,
+  marketName,
+  latitude,
+  longitude,
+  govIDFront,
+  govIDBack,
+  permitImage,
+} = route.params || {};
+
+
 
   // Form State
+const [ownerName, setOwnerName] = useState('');
+const [dateOfBirth, setDateOfBirth] = useState(new Date());
+const [dateOfBirthString, setDateOfBirthString] = useState('');
+const [showDatePicker, setShowDatePicker] = useState(false);
+const [gender, setGender] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [permitNumber, setPermitNumber] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -132,6 +137,25 @@ const VendorSignupStep2 = ({ route, navigation }) => {
       type,
     });
     setSileoVisible(true);
+  };
+
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${month}/${day}/${year}`;
+  };
+
+
+
+  const handleDateChange = (event, selectedDate) => {
+    if (event.type === 'set' && selectedDate) {
+      setDateOfBirth(selectedDate);
+      setDateOfBirthString(formatDate(selectedDate));
+      setShowDatePicker(false);
+    } else if (event.type === 'dismissed') {
+      setShowDatePicker(false);
+    }
   };
 
 
@@ -182,25 +206,55 @@ const VendorSignupStep2 = ({ route, navigation }) => {
 //   }
 // };
 
-  const handleNext = () => {
-    const phoneRegex = /^09\d{9}$/;
-    if (!phone || !phoneRegex.test(phone)) return showNotification('Enter a valid mobile number (09XXXXXXXXX).');
-    if (!password || password.length < 6) return showNotification('Password must be at least 6 characters.');
-    if (!selectedBarangay) return showNotification('Please select your barangay.');
-    if (!streetName.trim()) return showNotification('Street address is required.');
+const handleNext = () => {
+  // Validate personal information
+  if (!ownerName.trim()) return showNotification('Full name is required.');
+  if (!dateOfBirthString) return showNotification('Date of birth is required.');
+  if (!gender) return showNotification('Please select your gender.');
 
-    // Move to Selfie Step
-    navigation.navigate('VendorSignupStep3', {
-      ...route.params, // Carries all previous step data
-      email,
-      phone,
-      password,
-      selectedProvince,
-      selectedCity,
-      selectedBarangay,
-      streetName,
-    });
+  // Business info
+  if (!businessName.trim()) return showNotification('Business name is required.');
+  if (!permitNumber.trim()) return showNotification('Permit number is required.');
+
+  // Contact
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return showNotification('Valid email is required.');
+
+  const phoneRegex = /^09\d{9}$/;
+  if (!phone || !phoneRegex.test(phone))
+    return showNotification('Enter a valid mobile number (09XXXXXXXXX).');
+
+  if (!password || password.length < 6)
+    return showNotification('Password must be at least 6 characters.');
+
+  // Address
+  if (!selectedBarangay)
+    return showNotification('Please select your barangay.');
+
+  if (!streetName.trim())
+    return showNotification('Street address is required.');
+
+  // 🔥 MERGE ALL DATA
+  const updatedData = {
+    ...prevData, // Step1 + BusPermit
+    ownerName,
+    dateOfBirth: dateOfBirthString,
+    gender,
+    businessName,
+    permitNumber,
+    email,
+    phone,
+    password,
+    selectedProvince,
+    selectedCity,
+    selectedBarangay,
+    streetName,
   };
+
+  navigation.navigate('VendorSignupStep3', {
+    formData: updatedData,
+  });
+};
 
   return (
     <View style={styles.mainWrapper}>
@@ -213,22 +267,68 @@ const VendorSignupStep2 = ({ route, navigation }) => {
         </TouchableOpacity>
         <View>
           <Text style={styles.headerTitle}>Account Setup</Text>
-          <Text style={styles.headerSubtitle}>Step 3 of 5</Text>
+          <Text style={styles.headerSubtitle}>Step 2 of 5</Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <ProgressSteps currentStep={3} />
+        <ProgressSteps currentStep={2} />
 
-        {/* VERIFICATION SUMMARY CARD */}
+        {/* PERSONAL INFORMATION CARD */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Verification Summary</Text>
-          <View style={styles.infoBox}>
-            <View style={styles.infoRow}><Text style={styles.infoLabel}>Owner</Text><Text style={styles.infoValue}>{ownerName || 'Not detected'}</Text></View>
-            <View style={styles.infoRow}><Text style={styles.infoLabel}>Business Name</Text><Text style={styles.infoValue}>{permitText?.businessName || 'Not detected'}</Text></View>
-            <View style={styles.infoRow}><Text style={styles.infoLabel}>Category</Text><Text style={styles.infoValue}>{businessType}</Text></View>
-            <View style={styles.infoRow}><Text style={styles.infoLabel}>Market</Text><Text style={styles.infoValue}>{marketName}</Text></View>
+          <Text style={styles.sectionTitle}>Personal Information</Text>
+
+          <Text style={styles.label}>Full Name</Text>
+          <TextInput
+            style={styles.inputField}
+            placeholder="Enter your full name"
+            value={ownerName}
+            onChangeText={setOwnerName}
+            placeholderTextColor="#94A3B8"
+          />
+
+          <Text style={styles.label}>Date of Birth</Text>
+          <TouchableOpacity
+            style={styles.inputField}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text style={{ color: dateOfBirthString ? '#1E293B' : '#94A3B8', fontSize: 14 }}>
+              {dateOfBirthString || 'Select date (MM/DD/YYYY)'}
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={styles.label}>Gender</Text>
+          <View style={styles.pickerContainer}>
+            <Picker selectedValue={gender} onValueChange={setGender}>
+              <Picker.Item label="Select Gender" value="" color="#94A3B8" />
+              <Picker.Item label="Male" value="Male" />
+              <Picker.Item label="Female" value="Female" />
+              <Picker.Item label="Other" value="Other" />
+            </Picker>
           </View>
+        </View>
+
+        {/* BUSINESS INFORMATION CARD */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Business Information</Text>
+
+          <Text style={styles.label}>Business Name</Text>
+          <TextInput
+            style={styles.inputField}
+            placeholder="Enter business name"
+            value={businessName}
+            onChangeText={setBusinessName}
+            placeholderTextColor="#94A3B8"
+          />
+
+          <Text style={styles.label}>Permit Number</Text>
+          <TextInput
+            style={styles.inputField}
+            placeholder="Enter permit number"
+            value={permitNumber}
+            onChangeText={setPermitNumber}
+            placeholderTextColor="#94A3B8"
+          />
         </View>
 
         {/* CONTACT INFO CARD */}
@@ -302,12 +402,24 @@ const VendorSignupStep2 = ({ route, navigation }) => {
       {/* FOOTER */}
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.nextButton, (!email || !phone || !password) && styles.nextButtonDisabled]}
+          style={[styles.nextButton, (!ownerName || !dateOfBirthString || !gender || !businessName || !permitNumber || !email || !phone || !password) && styles.nextButtonDisabled]}
           onPress={handleNext}
         >
-          <Text style={styles.nextText}>Continue to Step 3</Text>
+          <Text style={styles.nextText}>Continue to Step 4</Text>
         </TouchableOpacity>
       </View>
+
+      {/* DATE PICKER */}
+      {showDatePicker && (
+        <DateTimePicker
+          value={dateOfBirth}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleDateChange}
+          maximumDate={new Date()}
+          textColor="#1E293B"
+        />
+      )}
 
       {sileoVisible && (
         <View style={styles.sileoOverlay}>
@@ -447,6 +559,7 @@ const styles = StyleSheet.create({
   nextButton: { backgroundColor: '#2563EB', padding: 16, borderRadius: 12, alignItems: 'center' },
   nextButtonDisabled: { backgroundColor: '#CBD5E1' },
   nextText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+
 });
 
 export default VendorSignupStep2;

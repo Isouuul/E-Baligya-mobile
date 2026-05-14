@@ -3,7 +3,6 @@ import { db } from "../firebase";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { TablePagination } from "@mui/material";
 import "../components/OrdersManagement.css";
-import { User, Wallet, TrendingUp } from 'lucide-react'; // Example using Lucide icons
 
 export default function OrdersManagement() {
   // --- State Management ---

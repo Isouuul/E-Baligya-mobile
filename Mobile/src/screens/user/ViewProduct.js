@@ -26,7 +26,8 @@ import {
   query,
   where,
   getDocs,
-  deleteDoc
+  deleteDoc,
+  updateDoc, increment 
 } from "firebase/firestore";
 import { useRoute, useNavigation } from '@react-navigation/native';
 import ReportModal from '../user/ReportModal';
@@ -221,15 +222,44 @@ export default function ViewProduct() {
     };
   };
 
-  const handleAddToCart = async () => {
-    if (isExpired) {
-      return Alert.alert('Quality Restriction', 'Cannot buy this listing. The seafood is no longer fresh.');
+const handleAddToCart = async () => {
+  if (isExpired) {
+    return Alert.alert('Quality Restriction', 'Cannot buy this listing. The seafood is no longer fresh.');
+  }
+
+  try {
+    const cartRef = collection(db, 'Carts', auth.currentUser.uid, 'items');
+
+    const q = query(
+      cartRef,
+      where('productId', '==', productId)
+    );
+
+    const snap = await getDocs(q);
+
+    const newQty = quantity;
+
+    if (!snap.empty) {
+      // 🔥 ITEM EXISTS → MERGE QUANTITY
+      const existingDoc = snap.docs[0];
+
+      await updateDoc(existingDoc.ref, {
+        quantity: increment(newQty),
+        totalPrice: increment(totalPrice),
+      });
+
+    } else {
+      // 🆕 NEW ITEM
+      await addDoc(cartRef, getCartPayload());
     }
-    try {
-      await addDoc(collection(db, 'Carts', auth.currentUser.uid, 'items'), getCartPayload());
-      showSuccessModal();
-    } catch (err) { Alert.alert('Error', 'Failed to add to cart'); }
-  };
+
+    showSuccessModal();
+
+  } catch (err) {
+    Alert.alert('Error', 'Failed to add to cart');
+    console.log(err);
+  }
+};
 
   const handleBuyNow = async () => {
     if (isExpired) {

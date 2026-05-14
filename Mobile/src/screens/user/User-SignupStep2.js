@@ -9,8 +9,10 @@ import {
   StatusBar,
   Dimensions,
   Animated,
+  Platform,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import Locations from './Locations.json';
 
 const { width } = Dimensions.get('window');
@@ -72,11 +74,20 @@ const UserSignupStep2 = ({ route, navigation }) => {
     genderFromID,
   } = route.params || {};
 
+  // Personal details
+  const [firstName, setFirstName] = useState(govIDFrontText?.firstName || '');
+  const [middleName, setMiddleName] = useState(govIDFrontText?.middleName || '');
+  const [lastName, setLastName] = useState(govIDFrontText?.lastName || '');
+  const [birthDate, setBirthDate] = useState(birthDateFromID ? new Date(birthDateFromID) : new Date());
+  const [birthDateString, setBirthDateString] = useState(birthDateFromID || '');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [gender, setGender] = useState(genderFromID || '');
+
+  // Contact & address details
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  // Personal details are set from Step 1, so no need to edit here
 
   const [selectedCity, setSelectedCity] = useState('');
   const [selectedBarangay, setSelectedBarangay] = useState('');
@@ -98,6 +109,25 @@ const UserSignupStep2 = ({ route, navigation }) => {
         setStatus({ message: '', type: '' });
       });
     }, 3000);
+  };
+
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${month}/${day}/${year}`;
+  };
+
+
+
+  const handleDateChange = (event, selectedDate) => {
+    if (event.type === 'set' && selectedDate) {
+      setBirthDate(selectedDate);
+      setBirthDateString(formatDate(selectedDate));
+      setShowDatePicker(false);
+    } else if (event.type === 'dismissed') {
+      setShowDatePicker(false);
+    }
   };
 
 
@@ -149,29 +179,39 @@ const UserSignupStep2 = ({ route, navigation }) => {
   // };
 
   const handleNext = () => {
+    // Validate personal details
+    if (!firstName.trim()) return showNotification('First name is required.');
+    if (!lastName.trim()) return showNotification('Last name is required.');
+    if (!birthDateString.trim()) return showNotification('Birth date is required.');
+    if (!gender) return showNotification('Gender is required.');
+
+    // Validate contact details
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showNotification('Valid email is required.');
     const phoneRegex = /^09\d{9}$/;
     if (!phone || !phoneRegex.test(phone)) return showNotification('Enter a valid mobile number (09XXXXXXXXX).');
     if (!password || password.length < 6) return showNotification('Password must be at least 6 characters.');
     if (password !== confirmPassword) return showNotification('Passwords do not match.');
+
+    // Validate address details
     if (!selectedCity || !selectedBarangay || !streetName.trim()) return showNotification('Complete your address details.');
 
     navigation.navigate('UserSignupStep3', {
-      govIDFront,
-      govIDBack,
-      govIDFrontText,
-      govIDBackText,
-      fullNameFromID,
-      birthDateFromID,
-      genderFromID,
-      firstName: govIDFrontText?.firstName || '',
-      middleName: govIDFrontText?.middleName || '',
-      lastName: govIDFrontText?.lastName || '',
+      govIDFront: govIDFront || '',
+      govIDBack: govIDBack || '',
+      govIDFrontText: govIDFrontText || {},
+      govIDBackText: govIDBackText || {},
+      fullNameFromID: fullNameFromID || '',
+      birthDateFromID: birthDateString || '',
+      genderFromID: gender || '',
+      firstName: firstName.trim(),
+      middleName: middleName.trim(),
+      lastName: lastName.trim(),
       email: email.trim().toLowerCase(),
-      phone,
+      phone: phone.trim(),
       password,
       selectedCity,
       selectedBarangay,
-      streetName,
+      streetName: streetName.trim(),
     });
   };
 
@@ -207,11 +247,53 @@ const UserSignupStep2 = ({ route, navigation }) => {
         <ProgressSteps currentStep={2} />
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Verification Summary</Text>
-          <View style={styles.infoBox}>
-            <View style={styles.infoRow}><Text style={styles.infoLabel}>Name from ID</Text><Text style={styles.infoValue}>{fullNameFromID || 'Not detected'}</Text></View>
-            <View style={styles.infoRow}><Text style={styles.infoLabel}>Birth Date</Text><Text style={styles.infoValue}>{birthDateFromID || 'Not detected'}</Text></View>
-            <View style={styles.infoRow}><Text style={styles.infoLabel}>Gender from ID</Text><Text style={styles.infoValue}>{genderFromID || 'Not detected'}</Text></View>
+          <Text style={styles.sectionTitle}>Personal Information</Text>
+
+          <Text style={styles.label}>First Name</Text>
+          <TextInput
+            style={styles.inputField}
+            placeholder="Enter your first name"
+            value={firstName}
+            onChangeText={setFirstName}
+            placeholderTextColor="#94A3B8"
+          />
+
+          <Text style={styles.label}>Middle Name</Text>
+          <TextInput
+            style={styles.inputField}
+            placeholder="Enter your middle name (optional)"
+            value={middleName}
+            onChangeText={setMiddleName}
+            placeholderTextColor="#94A3B8"
+          />
+
+          <Text style={styles.label}>Last Name</Text>
+          <TextInput
+            style={styles.inputField}
+            placeholder="Enter your last name"
+            value={lastName}
+            onChangeText={setLastName}
+            placeholderTextColor="#94A3B8"
+          />
+
+          <Text style={styles.label}>Date of Birth</Text>
+          <TouchableOpacity
+            style={styles.inputField}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <Text style={{ color: birthDateString ? '#1E293B' : '#94A3B8', fontSize: 14 }}>
+              {birthDateString || 'Select date (MM/DD/YYYY)'}
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={styles.label}>Gender</Text>
+          <View style={styles.pickerContainer}>
+            <Picker selectedValue={gender} onValueChange={setGender}>
+              <Picker.Item label="Select Gender" value="" color="#94A3B8" />
+              <Picker.Item label="Male" value="Male" />
+              <Picker.Item label="Female" value="Female" />
+              <Picker.Item label="Other" value="Other" />
+            </Picker>
           </View>
         </View>
 
@@ -312,12 +394,24 @@ const UserSignupStep2 = ({ route, navigation }) => {
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.nextButton, (!email || !phone || !password || !confirmPassword) && styles.nextButtonDisabled]}
+          style={[styles.nextButton, (!firstName || !lastName || !birthDateString || !gender || !email || !phone || !password || !confirmPassword || !selectedCity || !selectedBarangay || !streetName) && styles.nextButtonDisabled]}
           onPress={handleNext}
         >
           <Text style={styles.nextText}>Continue to Selfie</Text>
         </TouchableOpacity>
       </View>
+
+      {/* DATE PICKER */}
+      {showDatePicker && (
+        <DateTimePicker
+          value={birthDate}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleDateChange}
+          maximumDate={new Date()}
+          textColor="#1E293B"
+        />
+      )}
     </View>
   );
 };
@@ -367,6 +461,7 @@ const styles = StyleSheet.create({
   nextButton: { backgroundColor: '#2563EB', padding: 16, borderRadius: 12, alignItems: 'center' },
   nextButtonDisabled: { backgroundColor: '#CBD5E1' },
   nextText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+
 });
 
 export default UserSignupStep2;

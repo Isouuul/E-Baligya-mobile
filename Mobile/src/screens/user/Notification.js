@@ -99,7 +99,7 @@ const handleAccept = (item) => {
         productId: item.productId || item.id,
         productName: item.productName || "Unnamed Product",
         productImage: item.productImage || null,
-        basePrice: item.basePrice || item.totalAmount || 0,
+        basePrice: item.basePrice || 0,
         quantity: 1,
         selectedVariation: item.variation || null,
         selectedVariationPrice: item.variationPrice || 0,

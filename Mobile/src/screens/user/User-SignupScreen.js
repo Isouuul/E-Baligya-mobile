@@ -125,8 +125,13 @@ const UserSignupStep1 = ({ route, navigation }) => {
     setIsLoading(true);
     try {
       navigation.navigate('SignupStep2', {
-        govIDFront,
-        govIDBack,
+        govIDFront: govIDFront || '',
+        govIDBack: govIDBack || '',
+        govIDFrontText: {}, // OCR data placeholder
+        govIDBackText: {}, // OCR data placeholder
+        fullNameFromID: '', // Will be filled manually
+        birthDateFromID: '', // Will be filled manually
+        genderFromID: '', // Will be filled manually
       });
     } finally {
       setIsLoading(false);

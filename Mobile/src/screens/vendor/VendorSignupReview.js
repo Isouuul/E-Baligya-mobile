@@ -73,47 +73,41 @@ const VendorSignupReview = ({ route, navigation }) => {
     onPress: null,
   });
 
-  const params = route.params || {};
-  const {
-    permitText,
-    businessName: rawBusinessName,
-    ownerName,
-    email,
-    phone,
-    password,
-    birthday,
-    birthDate,
-    gender,
-    genderFromID,
-    businessType,
-    marketName,
-    selectedProvince,
-    selectedCity,
-    selectedBarangay,
-    streetName,
-    businessAddress,
-    govIDFront,
-    govIDBack,
-    selfieUri,
-    permitImage,
-    latitude,
-    longitude,
-  } = params;
+const formData = route?.params?.formData ?? {};
+  /* ------------------------- EXTRACT ALL DATA PROPERLY ------------------------- */
+const {
+  email,
+  password,
+  ownerName,
+  phone,
+  dateOfBirth,
+  gender,
+  businessName,
+  permitNumber,
+  businessType,
+  marketName,
+  govIDFront,
+  govIDBack,
+  permitImage,
+  selfieUri,
+  selectedProvince,
+  selectedCity,
+  selectedBarangay,
+  streetName,
+} = formData;
 
-  const businessName = permitText?.businessName || rawBusinessName || "";
-  const birthdayFinal = birthday || birthDate || null;
-  const genderFinal = gender || genderFromID || null;
-  const businessAddressFinal =
-    businessAddress ||
-    [streetName, selectedBarangay, selectedCity, selectedProvince].filter(Boolean).join(", ") ||
-    marketName ||
-    "";
+  /* ------------------------- OPTIONAL SAFE NORMALIZATION ------------------------- */
+  const normalizedEmail = (email || "").trim().toLowerCase();
 
-  /* Convert image URI to Base64 for Firebase */
+  const businessNameLower = (businessName || "").toLowerCase();
+
+  /* ------------------------- IMAGE CONVERTER ------------------------- */
   const convertImageToBase64 = async (uri) => {
     if (!uri) return null;
     try {
-      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
       return `data:image/jpeg;base64,${base64}`;
     } catch (e) {
       console.error("Image conversion failed:", uri, e);
@@ -121,6 +115,7 @@ const VendorSignupReview = ({ route, navigation }) => {
     }
   };
 
+  /* ------------------------- SILEO MODAL ------------------------- */
   const showSileo = ({ title, message, buttonText = "OK", type = "info", onPress = null }) => {
     setSileoConfig({ title, message, buttonText, type, onPress });
     setSileoVisible(true);
@@ -131,210 +126,95 @@ const VendorSignupReview = ({ route, navigation }) => {
     if (typeof sileoConfig.onPress === "function") {
       sileoConfig.onPress();
     }
-    setSileoConfig((prev) => ({ ...prev, onPress: null }));
   };
 
-  const handleSubmit = async () => {
-    if (!agreed) {
-      return showSileo({
-        title: "Agreement Required",
-        message: "Please agree to the terms before submitting your application.",
-        type: "warning",
-      });
+  /* ------------------------- SUBMIT ------------------------- */
+const handleSubmit = async () => {
+  if (!agreed) {
+    return showSileo({
+      title: "Agreement Required",
+      message: "Please agree to the terms before submitting your application.",
+      type: "warning",
+    });
+  }
+
+  if (!email || !password || !businessName || !ownerName) {
+    return showSileo({
+      title: "Missing Fields",
+      message: "Please fill in all required information.",
+      type: "warning",
+    });
+  }
+
+  setLoading(true);
+
+  try {
+    const userCred = await createUserWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+
+    const [idF, idB, selfie, permit] = await Promise.all([
+      convertImageToBase64(govIDFront),
+      convertImageToBase64(govIDBack),
+      convertImageToBase64(selfieUri),
+      convertImageToBase64(permitImage),
+    ]);
+
+    const sanitizedEmail = email.toLowerCase().replace(/\./g, "_");
+
+    // MAIN DOC
+await setDoc(doc(db, "PendingVendors", sanitizedEmail), {
+  businessName: businessName || "",
+  email: email.trim().toLowerCase(),
+  ownerName: ownerName || "",
+  status: "Pending",
+  hasFullData: true, // 🔥 ADD THIS
+  userId: userCred.user.uid,
+  createdAt: Timestamp.now(),
+});
+
+    // FULL DATA
+    await setDoc(doc(db, "PendingVendors", sanitizedEmail, "fullData", "vendorData"), {
+      ...formData,
+      email,
+      createdAt: Timestamp.now(),
+    });
+
+    // IMAGES
+    const images = [
+      { id: "govIDFront", b64: idF },
+      { id: "govIDBack", b64: idB },
+      { id: "selfie", b64: selfie },
+      { id: "businessPermit", b64: permit },
+    ];
+
+    for (const img of images) {
+      if (img.b64) {
+        await setDoc(
+          doc(db, "PendingVendors", sanitizedEmail, "images", img.id),
+          { image: img.b64 }
+        );
+      }
     }
 
-    // Basic validation
-    if (!email || !password || !businessName || !ownerName) {
-      return showSileo({
-        title: "Missing Fields",
-        message: "Please fill in all required information.",
-        type: "warning",
-      });
-    }
+    await signOut(auth);
 
-    setLoading(true);
+    showSileo({
+      title: "Submitted",
+      message: "Your application is now under review.",
+      type: "success",
+      buttonText: "Continue",
+      onPress: () => navigation.navigate("Login"),
+    });
 
-    try {
-      const normalizedEmail = (email || "").trim().toLowerCase();
-      const sanitizedEmail = normalizedEmail.replace(/\./g, "_");
-      const normalizedBusinessName = businessName.trim();
-      const emailLower = normalizedEmail;
-      const businessNameLower = normalizedBusinessName.toLowerCase();
-
-      const existsByField = async (collectionName, field, value) => {
-        if (!value) return false;
-        const q = query(collection(db, collectionName), where(field, "==", value));
-        const snap = await getDocs(q);
-        return !snap.empty;
-      };
-
-      const [
-        pendingEmailExists,
-        approvedEmailExists,
-        pendingEmailLowerExists,
-        approvedEmailLowerExists,
-      ] = await Promise.all([
-        existsByField("PendingVendors", "email", normalizedEmail),
-        existsByField("ApprovedVendors", "email", normalizedEmail),
-        existsByField("PendingVendors", "emailLower", emailLower),
-        existsByField("ApprovedVendors", "emailLower", emailLower),
-      ]);
-
-      if (pendingEmailExists || approvedEmailExists || pendingEmailLowerExists || approvedEmailLowerExists) {
-        return showSileo({
-          title: "Duplicate Email",
-          message: "This email is already registered or pending approval.",
-          type: "warning",
-        });
-      }
-
-      if (normalizedBusinessName) {
-        const [
-          pendingBusinessExists,
-          approvedBusinessExists,
-          pendingBusinessLowerExists,
-          approvedBusinessLowerExists,
-        ] = await Promise.all([
-          existsByField("PendingVendors", "businessName", normalizedBusinessName),
-          existsByField("ApprovedVendors", "businessName", normalizedBusinessName),
-          existsByField("PendingVendors", "businessNameLower", businessNameLower),
-          existsByField("ApprovedVendors", "businessNameLower", businessNameLower),
-        ]);
-
-        if (pendingBusinessExists || approvedBusinessExists || pendingBusinessLowerExists || approvedBusinessLowerExists) {
-          return showSileo({
-            title: "Duplicate Business",
-            message: "This business name is already registered or pending approval.",
-            type: "warning",
-          });
-        }
-      }
-
-      const userCred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
-
-      const [idF, idB, selfie, permit] = await Promise.all([
-        convertImageToBase64(govIDFront),
-        convertImageToBase64(govIDBack),
-        convertImageToBase64(selfieUri),
-        convertImageToBase64(permitImage),
-      ]);
-
-      const hasConversionFailure =
-        (govIDFront && !idF) ||
-        (govIDBack && !idB) ||
-        (selfieUri && !selfie) ||
-        (permitImage && !permit);
-
-      if (hasConversionFailure) {
-        return showSileo({
-          title: "Image Upload Error",
-          message: "One or more uploaded images could not be processed. Please re-upload clear images and submit again.",
-          type: "warning",
-        });
-      }
-
-      const safeFormData = { ...params };
-      delete safeFormData.password;
-
-      // --- Store main document with only required fields ---
-      await setDoc(doc(db, "PendingVendors", sanitizedEmail), {
-        businessName: normalizedBusinessName,
-        createdAt: Timestamp.now(),
-        email: normalizedEmail,
-        hasFullData: true,
-        ownerName,
-        status: "Pending",
-        userId: userCred.user.uid,
-      });
-
-      const payload = {
-        userId: userCred.user.uid,
-        businessName: businessName ?? null,
-        ownerName: ownerName ?? null,
-        email: normalizedEmail ?? null,
-        phone: phone ?? null,
-        birthday: birthdayFinal ?? null,
-        gender: genderFinal ?? null,
-        businessType: businessType ?? null,
-        businessAddress: businessAddressFinal ?? null,
-        govID: govIDFront ?? null,
-        govIDFront: govIDFront ?? null,
-        govIDBack: govIDBack ?? null,
-        selfie: selfieUri ?? null,
-        businessPermit: permitImage ?? null,
-        permitImage: permitImage ?? null,
-        latitude: latitude ?? null,
-        longitude: longitude ?? null,
-        role: "Vendor",
-        subscription: "Unsubscribe",
-        createdAt: Timestamp.now(),
-      };
-
-      // --- Store full data in subcollection ---
-      await setDoc(doc(db, "PendingVendors", sanitizedEmail, "fullData", "vendorData"), {
-        ...safeFormData,
-        ...payload,
-        email: normalizedEmail,
-        emailLower,
-        businessName: normalizedBusinessName,
-        businessNameLower,
-        businessAddress: businessAddressFinal,
-        role: "Vendor",
-        createdAt: Timestamp.now(),
-      });
-
-      // --- Store images ---
-      const images = [
-        { id: "govIDFront", type: "govIDFront", b64: idF },
-        { id: "govIDBack", type: "govIDBack", b64: idB },
-        { id: "selfie", type: "selfie", b64: selfie },
-        { id: "businessPermit", type: "businessPermit", b64: permit },
-      ];
-
-      for (const img of images) {
-        if (img.b64) {
-          await setDoc(doc(db, "PendingVendors", sanitizedEmail, "images", img.id), {
-            image: img.b64,
-            type: img.type,
-          });
-
-          if (img.type === "businessPermit") {
-            await setDoc(doc(db, "PendingVendors", sanitizedEmail, "images", "permit"), {
-              image: img.b64,
-              type: "businessPermit",
-            });
-          }
-        }
-      }
-
-      await signOut(auth);
-
-      showSileo({
-        title: "Submitted",
-        message: "Your application is now under review.",
-        buttonText: "Continue",
-        type: "success",
-        onPress: () => navigation.navigate("Login"),
-      });
-    } catch (error) {
-      if (error?.code === "auth/email-already-in-use") {
-        showSileo({
-          title: "Duplicate Email",
-          message: "This email already has an account.",
-          type: "warning",
-        });
-      } else {
-        showSileo({
-          title: "Error",
-          message: error?.message || "Something went wrong while submitting your application.",
-          type: "info",
-        });
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  } catch (error) {
+    showSileo({
+      title: "Error",
+      message: error.message || "Something went wrong.",
+      type: "warning",
+    });
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <View style={styles.mainWrapper}>
@@ -362,12 +242,15 @@ const VendorSignupReview = ({ route, navigation }) => {
           <View style={styles.cardHeader}>
             <Text style={styles.cardHeaderText}>Personal Profile</Text>
           </View>
-          <ReviewItem label="Full Name" value={ownerName} />
-          <ReviewItem label="Contact Number" value={phone} />
-          <ReviewItem label="Email Address" value={email} />
-          <ReviewItem label="Birthdate" value={birthdayFinal} />
-          <ReviewItem label="Gender" value={genderFinal} />
-          <ReviewItem label="Home Address" value={businessAddressFinal} />
+<ReviewItem label="Full Name" value={ownerName} />
+<ReviewItem label="Contact Number" value={phone} />
+<ReviewItem label="Email Address" value={email} />
+<ReviewItem label="Birthdate" value={dateOfBirth} />
+<ReviewItem label="Gender" value={gender} />
+<ReviewItem 
+  label="Home Address" 
+  value={`${streetName}, ${selectedBarangay}, ${selectedCity}, ${selectedProvince}`} 
+/>
         </View>
 
         {/* BUSINESS INFO */}
@@ -375,10 +258,10 @@ const VendorSignupReview = ({ route, navigation }) => {
           <View style={styles.cardHeader}>
             <Text style={styles.cardHeaderText}>Business Information</Text>
           </View>
-          <ReviewItem label="Business Name" value={businessName} />
-          <ReviewItem label="Market Location" value={marketName} />
-          <ReviewItem label="Permit Number" value={permitText?.permitNumber} />
-          <ReviewItem label="Category" value={businessType} />
+<ReviewItem label="Business Name" value={businessName} />
+<ReviewItem label="Market Location" value={marketName} />
+<ReviewItem label="Permit Number" value={permitNumber} />
+<ReviewItem label="Category" value={businessType} />
         </View>
 
         {/* DOCUMENTS */}

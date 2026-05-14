@@ -82,13 +82,10 @@ const ProgressSteps = ({ currentStep = 2 }) => {
 
 /* ------------------------- MAIN COMPONENT ------------------------- */
 const VendorSignupBusPermit = ({ route, navigation }) => {
-  const {
-    govIDFront, govIDBack, govIDFrontText, govIDBackText,
-    marketName, latitude, longitude, businessType,
-    ownerName, birthDate, genderFromID
-  } = route.params || {};
+const prevData = route.params?.formData || {};
 
-  const [permitImage, setPermitImage] = useState(null);
+
+const [permitImage, setPermitImage] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const pickPermitImage = async () => {
@@ -132,28 +129,20 @@ const VendorSignupBusPermit = ({ route, navigation }) => {
 
 
 
-  const handleNext = () => {
-    if (!permitImage)
-      return Alert.alert('Missing Image', 'Please upload your Business Permit.');
+const handleNext = () => {
+  if (!permitImage) {
+    return Alert.alert('Missing Image', 'Please upload your Business Permit.');
+  }
 
-    setIsLoading(true);
-    try {
-      navigation.navigate('VendorSignupStep2', {
-        govIDFront,
-        govIDBack,
-        marketName,
-        latitude,
-        longitude,
-        businessType,
-        ownerName,
-        birthDate,
-        genderFromID,
-        permitImage,
-      });
-    } finally {
-      setIsLoading(false);
-    }
+  const updatedData = {
+    ...prevData, // 🔥 keep Step1 data
+    permitImage, // 🔥 add Step2 data
   };
+
+  navigation.navigate('VendorSignupStep2', {
+    formData: updatedData,
+  });
+};
 
 
   return (
@@ -190,7 +179,9 @@ const VendorSignupBusPermit = ({ route, navigation }) => {
             ) : (
               <View style={styles.placeholderContent}>
                 <Text style={styles.plusIcon}>+</Text>
-                <Text style={styles.uploadBtnText}>Upload Business Permit</Text>
+<Text style={styles.uploadBtnText}>
+  {permitImage ? "Change Business Permit" : "Upload Business Permit"}
+</Text>
               </View>
             )}
           </TouchableOpacity>

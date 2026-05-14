@@ -14,7 +14,7 @@ import * as ImagePicker from 'expo-image-picker';
 const { width } = Dimensions.get('window');
 
 /* ------------------------- PROGRESS STEPS UI (Step 3) ------------------------- */
-const ProgressSteps = ({ currentStep = 4 }) => {
+const ProgressSteps = ({ currentStep = 3 }) => {
   const steps = ['Verify', 'Business Permit', 'Information', 'Selfie', 'Review'];
   return (
     <View style={styles.progressContainer}>
@@ -44,8 +44,8 @@ const ProgressSteps = ({ currentStep = 4 }) => {
 
 /* ------------------------- MAIN COMPONENT ------------------------- */
 const VendorSignupStep3 = ({ route, navigation }) => {
-  const allDataFromPreviousSteps = route.params || {};
-  const [selfie, setSelfie] = useState(null);
+const prevData = route.params?.formData || {};
+const [selfie, setSelfie] = useState(null);
   const [sileoVisible, setSileoVisible] = useState(false);
   const [sileoConfig, setSileoConfig] = useState({
     title: '',
@@ -82,22 +82,25 @@ const VendorSignupStep3 = ({ route, navigation }) => {
     }
   };
 
-  const handleNext = () => {
-    if (!selfie) {
-      showSileo({
-        title: 'Selfie Required',
-        message: 'Please take a clear selfie to proceed.',
-        type: 'warning',
-      });
-      return;
-    }
-
-    // Pass everything to the final Review screen
-    navigation.navigate('VendorSignupReview', {
-      ...allDataFromPreviousSteps,
-      selfieUri: selfie,
+const handleNext = () => {
+  if (!selfie) {
+    showSileo({
+      title: 'Selfie Required',
+      message: 'Please take a clear selfie to proceed.',
+      type: 'warning',
     });
+    return;
+  }
+
+  const updatedData = {
+    ...prevData,
+    selfieUri: selfie,
   };
+
+  navigation.navigate('VendorSignupReview', {
+    formData: updatedData,
+  });
+};
 
   return (
     <View style={styles.mainWrapper}>
@@ -110,12 +113,12 @@ const VendorSignupStep3 = ({ route, navigation }) => {
         </TouchableOpacity>
         <View>
           <Text style={styles.headerTitle}>Face Verification</Text>
-          <Text style={styles.headerSubtitle}>Step 4 of 5</Text>
+          <Text style={styles.headerSubtitle}>Step 3 of 5</Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <ProgressSteps currentStep={4} />
+        <ProgressSteps currentStep={3} />
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Take a Selfie</Text>
@@ -140,12 +143,7 @@ const VendorSignupStep3 = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* DATA PREVIEW BOX */}
-        <View style={styles.dataPreview}>
-          <Text style={styles.dataTitle}>VERIFYING IDENTITY FOR</Text>
-          <Text style={styles.dataText}>{allDataFromPreviousSteps.ownerName || 'Unknown User'}</Text>
-          <Text style={styles.dataSubText}>{allDataFromPreviousSteps.email}</Text>
-        </View>
+
 
         <View style={{ height: 100 }} />
       </ScrollView>
