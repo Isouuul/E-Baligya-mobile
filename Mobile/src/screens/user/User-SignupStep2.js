@@ -64,24 +64,23 @@ const ProgressSteps = ({ currentStep = 2 }) => {
 };
 
 const UserSignupStep2 = ({ route, navigation }) => {
-  const {
-    govIDFront,
-    govIDBack,
-    govIDFrontText,
-    govIDBackText,
-    fullNameFromID,
-    birthDateFromID,
-    genderFromID,
-  } = route.params || {};
+const {
+  govIDFront,
+  govIDBack,
+} = route.params || {};
 
   // Personal details
-  const [firstName, setFirstName] = useState(govIDFrontText?.firstName || '');
-  const [middleName, setMiddleName] = useState(govIDFrontText?.middleName || '');
-  const [lastName, setLastName] = useState(govIDFrontText?.lastName || '');
-  const [birthDate, setBirthDate] = useState(birthDateFromID ? new Date(birthDateFromID) : new Date());
-  const [birthDateString, setBirthDateString] = useState(birthDateFromID || '');
+
+  const [firstName, setFirstName] = useState('');
+const [middleName, setMiddleName] = useState('');
+const [lastName, setLastName] = useState('');
+
+const [birthDate, setBirthDate] = useState(new Date());
+const [birthDateString, setBirthDateString] = useState('');
+
+const [gender, setGender] = useState('');
+
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [gender, setGender] = useState(genderFromID || '');
 
   // Contact & address details
   const [email, setEmail] = useState('');
@@ -178,42 +177,50 @@ const UserSignupStep2 = ({ route, navigation }) => {
   //   }
   // };
 
-  const handleNext = () => {
-    // Validate personal details
-    if (!firstName.trim()) return showNotification('First name is required.');
-    if (!lastName.trim()) return showNotification('Last name is required.');
-    if (!birthDateString.trim()) return showNotification('Birth date is required.');
-    if (!gender) return showNotification('Gender is required.');
+const handleNext = () => {
+  // Validate personal details
+  if (!firstName.trim()) return showNotification('First name is required.');
+  if (!lastName.trim()) return showNotification('Last name is required.');
+  if (!birthDateString.trim()) return showNotification('Birth date is required.');
+  if (!gender) return showNotification('Gender is required.');
 
-    // Validate contact details
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showNotification('Valid email is required.');
-    const phoneRegex = /^09\d{9}$/;
-    if (!phone || !phoneRegex.test(phone)) return showNotification('Enter a valid mobile number (09XXXXXXXXX).');
-    if (!password || password.length < 6) return showNotification('Password must be at least 6 characters.');
-    if (password !== confirmPassword) return showNotification('Passwords do not match.');
+  // Validate contact details
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return showNotification('Valid email is required.');
 
-    // Validate address details
-    if (!selectedCity || !selectedBarangay || !streetName.trim()) return showNotification('Complete your address details.');
+  const phoneRegex = /^09\d{9}$/;
+  if (!phone || !phoneRegex.test(phone))
+    return showNotification('Enter a valid mobile number (09XXXXXXXXX).');
 
-    navigation.navigate('UserSignupStep3', {
-      govIDFront: govIDFront || '',
-      govIDBack: govIDBack || '',
-      govIDFrontText: govIDFrontText || {},
-      govIDBackText: govIDBackText || {},
-      fullNameFromID: fullNameFromID || '',
-      birthDateFromID: birthDateString || '',
-      genderFromID: gender || '',
-      firstName: firstName.trim(),
-      middleName: middleName.trim(),
-      lastName: lastName.trim(),
-      email: email.trim().toLowerCase(),
-      phone: phone.trim(),
-      password,
-      selectedCity,
-      selectedBarangay,
-      streetName: streetName.trim(),
-    });
-  };
+  if (!password || password.length < 6)
+    return showNotification('Password must be at least 6 characters.');
+
+  if (password !== confirmPassword)
+    return showNotification('Passwords do not match.');
+
+  // Validate address details
+  if (!selectedCity || !selectedBarangay || !streetName.trim())
+    return showNotification('Complete your address details.');
+
+  navigation.navigate('UserSignupStep3', {
+    ...route.params,   // 👈 IMPORTANT: carry Step 1 data forward
+
+    // Step 2 data
+    firstName: firstName.trim(),
+    middleName: middleName.trim(),
+    lastName: lastName.trim(),
+    email: email.trim().toLowerCase(),
+    phone: phone.trim(),
+    password,
+    selectedCity,
+    selectedBarangay,
+    streetName: streetName.trim(),
+    birthDate: birthDateString,
+    gender,
+
+    currentStep: 3,
+  });
+};
 
   return (
     <View style={styles.mainWrapper}>

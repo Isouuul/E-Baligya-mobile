@@ -61,12 +61,28 @@ const UserSignupReview = ({ route, navigation }) => {
   const [agreed, setAgreed] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  const data = route.params || {};
+const data = route?.params ?? {};
+const requiredFields = [
+  'email',
+  'password',
+  'firstName',
+  'lastName',
+  'phone',
+  'govIDFront',
+  'govIDBack',
+  'selfieUri',
+];
+
+for (const field of requiredFields) {
+  if (!data[field]) {
+    Alert.alert('Missing Data', `Missing field: ${field}`);
+    return;
+  }
+}
   const fullName = [data.firstName, data.middleName, data.lastName].filter(Boolean).join(' ');
   const homeAddress = [data.streetName, data.selectedBarangay, data.selectedCity].filter(Boolean).join(', ');
-  const birthDateValue = data.birthDateFromID || data.birthDate || '—';
-  const gender = data.genderFromID || data.gender || '—';
-
+const birthDateValue = data.birthDate || '—';
+const genderValue = data.gender || '—';
   const convertImageToBase64 = async (uri) => {
     if (!uri) return null;
     try {
@@ -84,104 +100,83 @@ const UserSignupReview = ({ route, navigation }) => {
     return !snap.empty;
   };
 
-  const handleSubmit = async () => {
-    if (!agreed) {
-      return Alert.alert('Required', 'Please agree to the terms.');
+const handleSubmit = async () => {
+  if (!agreed) {
+    return Alert.alert('Required', 'Please agree to the terms.');
+  }
+
+  if (!data.email || !data.password || !data.firstName || !data.lastName || !data.phone) {
+    return Alert.alert('Missing Fields', 'Please fill in all required information.');
+  }
+
+  setLoading(true);
+
+  try {
+    const email = (data.email || '').trim().toLowerCase();
+    const emailLower = email;
+
+    // check duplicate email
+    const emailExists = await existsByField('Users', 'emailLower', emailLower);
+
+    if (emailExists) {
+      return Alert.alert('Duplicate Email', 'This email is already registered.');
     }
 
-    if (!data.email || !data.password || !data.firstName || !data.lastName || !data.phone) {
-      return Alert.alert('Missing Fields', 'Please fill in all required information.');
+    // create auth user
+    const userCred = await createUserWithEmailAndPassword(auth, email, data.password);
+
+    // convert images
+    const [idFrontB64, idBackB64, selfieB64] = await Promise.all([
+      convertImageToBase64(data.govIDFront),
+      convertImageToBase64(data.govIDBack),
+      convertImageToBase64(data.selfieUri),
+    ]);
+
+    // FIRESTORE SAVE (clean + simple like your reference)
+    await setDoc(doc(db, 'Users', userCred.user.uid), {
+      address: {
+        barangay: data.selectedBarangay || '',
+        city: data.selectedCity || '',
+        region: "Region VI - Western Visayas",
+        street: data.streetName || '',
+        birthdate: data.birthDate || '',
+      },
+      email: email,
+      emailLower: emailLower,
+
+      firstName: data.firstName || '',
+      lastName: data.lastName || '',
+      middleName: data.middleName || '',
+
+      phone: data.phone || '',
+
+      gender: data.gender || '',
+
+      idImage: idFrontB64 || '',
+      idImageBack: idBackB64 || '',
+      selfieImage: selfieB64 || '',
+
+      role: 'Consumer',
+      selectedIDType: data.selectedIDType || 'National ID',
+
+      uid: userCred.user.uid,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+
+    await signOut(auth);
+    setShowSuccess(true);
+
+  } catch (error) {
+    if (error?.code === 'auth/email-already-in-use') {
+      Alert.alert('Duplicate Email', 'This email already has an account.');
+    } else {
+      Alert.alert('Error', error.message || 'Failed to submit registration.');
     }
-
-    setLoading(true);
-
-    try {
-      // Utility function to remove undefined values from objects (Firestore requirement)
-      const removeUndefinedValues = (obj) => {
-        const cleaned = {};
-        for (const key in obj) {
-          if (obj[key] !== undefined && obj[key] !== null) {
-            cleaned[key] = obj[key];
-          } else if (obj[key] === null) {
-            // Keep null values but filter out undefined
-            cleaned[key] = null;
-          }
-        }
-        return cleaned;
-      };
-
-      const email = (data.email || '').trim().toLowerCase();
-      const emailLower = email;
-
-      const [usersEmailExists, usersEmailLowerExists] = await Promise.all([
-        existsByField('Users', 'email', email),
-        existsByField('Users', 'emailLower', emailLower),
-      ]);
-
-      if (usersEmailExists || usersEmailLowerExists) {
-        return Alert.alert('Duplicate Email', 'This email is already registered.');
-      }
-
-      const userCred = await createUserWithEmailAndPassword(auth, email, data.password);
-
-      const [idFrontB64, idBackB64, selfieB64] = await Promise.all([
-        convertImageToBase64(data.govIDFront),
-        convertImageToBase64(data.govIDBack),
-        convertImageToBase64(data.selfieUri),
-      ]);
-
-      const { password, ...safeFormData } = data;
-
-      const userPayload = removeUndefinedValues({
-        address: removeUndefinedValues({
-          barangay: data.selectedBarangay || '',
-          city: data.selectedCity || '',
-          region: "Region VI - Western Visayas",
-          street: data.streetName || '',
-          birthdate: birthDateValue !== '—' ? birthDateValue : '',
-        }),
-        email: email,
-        emailLower: emailLower,
-        firstName: data.firstName || '',
-        lastName: data.lastName || '',  
-        middleName: data.middleName || '',
-        phone: data.phone || '',
-        gender: gender !== '—' ? gender : '',
-        idImage: idFrontB64 || '',
-        idImageBack: idBackB64 || '',
-        profileImage: data.profileImage || '',
-        selfieImage: selfieB64 || '',
-        role: 'Consumer',
-        selectedIDType: data.selectedIDType || 'National ID',
-        uid: userCred.user.uid,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      });
-
-      await setDoc(doc(db, 'Users', userCred.user.uid), userPayload);
-
-      // Store full data in subcollection for record keeping
-      const fullDataPayload = removeUndefinedValues({
-        ...safeFormData,
-        ...userPayload,
-        email: email,
-        emailLower: emailLower,
-      });
-
-      await setDoc(doc(db, 'Users', userCred.user.uid, 'userData', 'details'), fullDataPayload);
-
-      await signOut(auth);
-      setShowSuccess(true);
-    } catch (error) {
-      if (error?.code === 'auth/email-already-in-use') {
-        Alert.alert('Duplicate Email', 'This email already has an account.');
-      } else {
-        Alert.alert('Error', error.message || 'Failed to submit registration.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <View style={styles.mainWrapper}>
@@ -220,7 +215,7 @@ const UserSignupReview = ({ route, navigation }) => {
             <ReviewItem label="Contact Number" value={data.phone} />
             <ReviewItem label="Email Address" value={data.email} />
             <ReviewItem label="Birth Date" value={birthDateValue} />
-            <ReviewItem label="Gender" value={gender} />
+<ReviewItem label="Gender" value={genderValue} />
             <ReviewItem label="Home Address" value={homeAddress} />
           </View>
         </View>

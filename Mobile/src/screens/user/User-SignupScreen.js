@@ -117,27 +117,27 @@ const UserSignupStep1 = ({ route, navigation }) => {
       console.error('Pick Back ID Error:', err);
     }
   };
+const handleNext = () => {
+  if (isLoading) return;
 
-  const handleNext = () => {
-    if (isLoading) return;
-    if (!govIDFront || !govIDBack) return Alert.alert('Missing Photos', 'Upload both sides of your ID.');
+  if (!govIDFront || !govIDBack) {
+    return Alert.alert('Missing Photos', 'Upload both sides of your ID.');
+  }
 
-    setIsLoading(true);
-    try {
-      navigation.navigate('SignupStep2', {
-        govIDFront: govIDFront || '',
-        govIDBack: govIDBack || '',
-        govIDFrontText: {}, // OCR data placeholder
-        govIDBackText: {}, // OCR data placeholder
-        fullNameFromID: '', // Will be filled manually
-        birthDateFromID: '', // Will be filled manually
-        genderFromID: '', // Will be filled manually
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  setIsLoading(true);
 
+  try {
+    navigation.navigate('SignupStep2', {
+      currentStep: 2,
+
+      // Step 1 data
+      govIDFront,
+      govIDBack,
+    });
+  } finally {
+    setIsLoading(false);
+  }
+};
   return (
     <View style={styles.mainWrapper}>
       {/* HEADER */}

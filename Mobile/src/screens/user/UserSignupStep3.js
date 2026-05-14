@@ -43,7 +43,21 @@ const ProgressSteps = ({ currentStep = 3 }) => {
 };
 
 const UserSignupStep3 = ({ route, navigation }) => {
-  const allDataFromPreviousSteps = route.params || {};
+const {
+  govIDFront,
+  govIDBack,
+  firstName,
+  middleName,
+  lastName,
+  email,
+  phone,
+  password,
+  selectedCity,
+  selectedBarangay,
+  streetName,
+  birthDate,
+  gender,
+} = route.params || {};
   const [selfie, setSelfie] = useState(null);
 
   const takeSelfie = async () => {
@@ -64,37 +78,19 @@ const UserSignupStep3 = ({ route, navigation }) => {
       setSelfie(result.assets[0].uri);
     }
   };
+const handleNext = () => {
+  if (!selfie) {
+    Alert.alert('Selfie Required', 'Please take a clear selfie to proceed.');
+    return;
+  }
 
-  const handleNext = () => {
-    if (!selfie) {
-      Alert.alert('Selfie Required', 'Please take a clear selfie to proceed.');
-      return;
-    }
+  navigation.navigate('SignupReview', {
+    ...route.params,   // 👈 CRITICAL: carry ALL previous data
 
-    // Create a complete payload with all previous data plus selfie
-    const completeData = {
-      ...allDataFromPreviousSteps,
-      selfieUri: selfie,
-      // Ensure all critical fields are present with defaults
-      firstName: allDataFromPreviousSteps.firstName || '',
-      middleName: allDataFromPreviousSteps.middleName || '',
-      lastName: allDataFromPreviousSteps.lastName || '',
-      email: allDataFromPreviousSteps.email || '',
-      phone: allDataFromPreviousSteps.phone || '',
-      password: allDataFromPreviousSteps.password || '',
-      selectedCity: allDataFromPreviousSteps.selectedCity || '',
-      selectedBarangay: allDataFromPreviousSteps.selectedBarangay || '',
-      streetName: allDataFromPreviousSteps.streetName || '',
-      govIDFront: allDataFromPreviousSteps.govIDFront || '',
-      govIDBack: allDataFromPreviousSteps.govIDBack || '',
-      govIDFrontText: allDataFromPreviousSteps.govIDFrontText || {},
-      govIDBackText: allDataFromPreviousSteps.govIDBackText || {},
-      birthDateFromID: allDataFromPreviousSteps.birthDateFromID || '',
-      genderFromID: allDataFromPreviousSteps.genderFromID || '',
-    };
-
-    navigation.navigate('SignupReview', completeData);
-  };
+    selfieUri: selfie,
+    currentStep: 4,
+  });
+};
 
   return (
     <View style={styles.mainWrapper}>
@@ -134,15 +130,17 @@ const UserSignupStep3 = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.dataPreview}>
-          <Text style={styles.dataTitle}>VERIFYING IDENTITY FOR</Text>
-          <Text style={styles.dataText}>
-            {[allDataFromPreviousSteps.firstName, allDataFromPreviousSteps.middleName, allDataFromPreviousSteps.lastName]
-              .filter(Boolean)
-              .join(' ') || 'Unknown User'}
-          </Text>
-          <Text style={styles.dataSubText}>{allDataFromPreviousSteps.email}</Text>
-        </View>
+<View style={styles.dataPreview}>
+  <Text style={styles.dataTitle}>VERIFYING IDENTITY FOR</Text>
+
+  <Text style={styles.dataText}>
+    {[firstName, middleName, lastName]
+      .filter(Boolean)
+      .join(' ') || 'Unknown User'}
+  </Text>
+
+  <Text style={styles.dataSubText}>{email || 'No email provided'}</Text>
+</View>
 
         <View style={{ height: 100 }} />
       </ScrollView>
