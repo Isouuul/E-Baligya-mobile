@@ -295,11 +295,15 @@ const handleNext = () => {
 
           <Text style={styles.label}>Gender</Text>
           <View style={styles.pickerContainer}>
-            <Picker selectedValue={gender} onValueChange={setGender}>
-              <Picker.Item label="Select Gender" value="" color="#94A3B8" />
-              <Picker.Item label="Male" value="Male" />
-              <Picker.Item label="Female" value="Female" />
-              <Picker.Item label="Other" value="Other" />
+<Picker
+  selectedValue={gender}
+  onValueChange={setGender}
+  style={{ color: '#000' }}   // IMPORTANT
+>
+  <Picker.Item label="Select Gender" value="" color="#000" />
+<Picker.Item label="Male" value="Male" color="#000" />
+<Picker.Item label="Female" value="Female" color="#000" />
+<Picker.Item label="Other" value="Other" color="#000" />
             </Picker>
           </View>
         </View>
@@ -364,12 +368,13 @@ const handleNext = () => {
           <Text style={styles.label}>City</Text>
           <View style={styles.pickerContainer}>
             <Picker
-              selectedValue={selectedCity}
-              onValueChange={(value) => {
-                setSelectedCity(value);
-                setSelectedBarangay('');
-              }}
-            >
+  selectedValue={selectedCity}
+  onValueChange={(value) => {
+    setSelectedCity(value);
+    setSelectedBarangay('');
+  }}
+  style={{ color: '#000' }}   // ✅ FORCE BLACK TEXT
+>
               <Picker.Item label="Select City" value="" color="#94A3B8" />
               {cities.map((cityName) => (
                 <Picker.Item key={cityName} label={cityName} value={cityName} />
@@ -379,8 +384,13 @@ const handleNext = () => {
 
           <Text style={styles.label}>Barangay</Text>
           <View style={styles.pickerContainer}>
-            <Picker selectedValue={selectedBarangay} onValueChange={setSelectedBarangay} enabled={!!selectedCity}>
-              <Picker.Item label="Select Barangay" value="" color="#94A3B8" />
+<Picker
+  selectedValue={selectedBarangay}
+  onValueChange={setSelectedBarangay}
+  enabled={!!selectedCity}
+  style={{ color: '#000' }}   // ✅ FORCE BLACK TEXT
+>
+                <Picker.Item label="Select Barangay" value="" color="#94A3B8" />
               {(selectedCity && Locations[selectedCity] ? Locations[selectedCity] : []).map((barangayName) => (
                 <Picker.Item key={barangayName} label={barangayName} value={barangayName} />
               ))}
@@ -452,8 +462,21 @@ const styles = StyleSheet.create({
   label: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6, marginTop: 10 },
   inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden' },
   inputWrapperVerified: { borderColor: '#10B981', backgroundColor: '#F0FDF4' },
-  input: { flex: 1, padding: 12, color: '#1E293B', fontSize: 14 },
-  inputField: { backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', padding: 12, fontSize: 14, color: '#1E293B' },
+input: {
+  flex: 1,
+  padding: 12,
+  color: '#000', // FORCE BLACK
+  fontSize: 14,
+},
+inputField: {
+  backgroundColor: '#F8FAFC',
+  borderRadius: 10,
+  borderWidth: 1,
+  borderColor: '#E2E8F0',
+  padding: 12,
+  fontSize: 14,
+  color: '#000', // FORCE BLACK
+},
   inlineButton: { paddingHorizontal: 12, borderLeftWidth: 1, borderLeftColor: '#E2E8F0' },
   inlineButtonText: { color: '#2563EB', fontWeight: '700', fontSize: 12 },
   verifiedSealWrapper: { paddingHorizontal: 12, justifyContent: 'center' },

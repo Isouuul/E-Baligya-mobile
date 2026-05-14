@@ -51,6 +51,21 @@ const EditProductBiddingFormModal = ({ visible, existingBidding, onCancel, onSub
     }
   };
 
+  useEffect(() => {
+    if (!existingBidding) return;
+
+    setCategory(existingBidding.category || "");
+    setProductName(existingBidding.productName || "");
+    setDescription(existingBidding.description || "");
+    setFreshness(existingBidding.freshness || "Fresh");
+    setImageBase64(normalizeImageUri(existingBidding.imageBase64));
+
+    setBasePrice(existingBidding.basePrice?.toString() || "");
+    setTotalQuantity(existingBidding.totalQuantity?.toString() || "");
+
+    setDurationInMinutes(existingBidding.durationMinutes || 20);
+  }, [existingBidding]);
+
   const handleUpdate = async () => {
     const finalDuration = useCustom ? parseInt(customDuration) : durationInMinutes;
 
@@ -107,22 +122,26 @@ const EditProductBiddingFormModal = ({ visible, existingBidding, onCancel, onSub
       <View style={styles.modalOverlay}>
         <View style={styles.cardContainer}>
           <View style={styles.modalHeader}>
-            <View style={{ flex: 1 }} />
+            <View style={{ width: 32 }} /> 
             <Text style={styles.modalTitle}>Edit Bidding Details</Text>
-            <TouchableOpacity onPress={onCancel} style={styles.closeBtn}>
+            <TouchableOpacity onPress={onCancel} style={styles.closeBtn} activeOpacity={0.7}>
               <Text style={styles.closeBtnText}>✕</Text>
             </TouchableOpacity>
           </View>
 
           <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            {/* Image Section */}
-            <Pressable style={styles.imagePicker} onPress={pickImage}>
-              {imageBase64 ? (
-                <Image source={{ uri: imageBase64 }} style={styles.previewImage} />
-              ) : (
-                <Text style={styles.imagePlaceholderText}>Tap to Change Photo</Text>
-              )}
-            </Pressable>
+{/* Premium Image Section (Non-Pressable) */}
+<View style={styles.imagePicker}>
+  {imageBase64 ? (
+    <View style={styles.imageContainer}>
+      <Image source={{ uri: imageBase64 }} style={styles.previewImage} />
+    </View>
+  ) : (
+    <View style={styles.placeholderWrapper}>
+      <Text style={styles.imagePlaceholderText}>No Product Image Available</Text>
+    </View>
+  )}
+</View>
 
             {/* Inputs */}
             <View style={styles.inputGroup}>
@@ -132,42 +151,38 @@ const EditProductBiddingFormModal = ({ visible, existingBidding, onCancel, onSub
                 value={productName} 
                 onChangeText={setProductName} 
                 placeholder="e.g. Yellowfin Tuna"
-                placeholderTextColor="#000"
+                placeholderTextColor="#94a3b8"
               />
             </View>
 
             <View style={styles.row}>
-              <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+              {/* Premium Read-Only Category Display */}
+              <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
                 <Text style={styles.label}>Category</Text>
-                <View style={styles.pickerContainer}>
-                  <Picker selectedValue={category} onValueChange={setCategory} style={{ color: '#000' }}>
-                    <Picker.Item label="Fish" value="Fish" color="#000" />
-                    <Picker.Item label="Crustacean" value="Crustacean" color="#000" />
-                    <Picker.Item label="Mollusk" value="Mollusk" color="#000" />
-                  </Picker>
+                <View style={styles.readOnlyContainer}>
+                  <Text style={styles.readOnlyText}>{category || "N/A"}</Text>
                 </View>
               </View>
+
+              {/* Premium Read-Only Freshness Display */}
               <View style={[styles.inputGroup, { flex: 1 }]}>
                 <Text style={styles.label}>Freshness</Text>
-                <View style={styles.pickerContainer}>
-                  <Picker selectedValue={freshness} onValueChange={setFreshness} style={{ color: '#000' }}>
-                    <Picker.Item label="Fresh" value="Fresh" color="#000" />
-                    <Picker.Item label="Chilled" value="Chilled" color="#000" />
-                    <Picker.Item label="Frozen" value="Frozen" color="#000" />
-                  </Picker>
+                <View style={styles.readOnlyContainer}>
+                  <Text style={styles.readOnlyText}>{freshness || "N/A"}</Text>
                 </View>
               </View>
             </View>
 
             <View style={styles.row}>
-              <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                <Text style={styles.label}>Base Price (₱/kg)</Text>
+              <View style={[styles.inputGroup, { flex: 1, marginRight: 10 }]}>
+                <Text style={styles.label}>Base Price (₱ / kg)</Text>
                 <TextInput 
                   style={styles.premiumInput} 
                   keyboardType="numeric"
                   value={basePrice} 
                   onChangeText={setBasePrice}
-                  placeholderTextColor="#000"
+                  placeholder="0.00"
+                  placeholderTextColor="#94a3b8"
                 />
               </View>
               <View style={[styles.inputGroup, { flex: 1 }]}>
@@ -177,7 +192,8 @@ const EditProductBiddingFormModal = ({ visible, existingBidding, onCancel, onSub
                   keyboardType="numeric"
                   value={totalQuantity} 
                   onChangeText={setTotalQuantity}
-                  placeholderTextColor="#000"
+                  placeholder="0"
+                  placeholderTextColor="#94a3b8"
                 />
               </View>
             </View>
@@ -187,10 +203,11 @@ const EditProductBiddingFormModal = ({ visible, existingBidding, onCancel, onSub
               <TextInput 
                 style={[styles.premiumInput, styles.textArea]} 
                 multiline 
-                numberOfLines={3}
+                numberOfLines={4}
                 value={description} 
                 onChangeText={setDescription}
-                placeholderTextColor="#000"
+                placeholder="Describe features, sourcing, or grading..."
+                placeholderTextColor="#94a3b8"
               />
             </View>
 
@@ -198,13 +215,14 @@ const EditProductBiddingFormModal = ({ visible, existingBidding, onCancel, onSub
               style={styles.submitButton} 
               onPress={handleUpdate}
               disabled={isLoading}
+              activeOpacity={0.8}
             >
               {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Save Changes</Text>}
             </TouchableOpacity>
           </ScrollView>
         </View>
 
-        {/* Sileo Alert Modal (Simplified for brevity) */}
+        {/* Sileo Alert Modal */}
         <Modal visible={sileoVisible} transparent animationType="fade">
           <View style={styles.sileoOverlay}>
             <View style={styles.sileoCard}>
@@ -216,8 +234,9 @@ const EditProductBiddingFormModal = ({ visible, existingBidding, onCancel, onSub
                   setSileoVisible(false);
                   sileoConfig.onPress?.();
                 }}
+                activeOpacity={0.8}
               >
-                <Text style={styles.sileoBtnText}>OK</Text>
+                <Text style={styles.sileoBtnText}>Continue</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -232,100 +251,162 @@ export default EditProductBiddingFormModal;
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)', // Smoother premium dark overlay tint
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
   },
   cardContainer: {
     width: '100%',
-    maxWidth: 500,
-    maxHeight: '85%',
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    paddingBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 15,
+    maxWidth: 480,
+    maxHeight: '82%',
+    backgroundColor: '#ffffff',
+    borderRadius: 28,
+    paddingBottom: 8,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 10,
   },
   modalHeader: {
     alignItems: "center",
-    paddingVertical: 16,
+    paddingVertical: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
+    borderBottomColor: "#f1f5f9",
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
   },
-  modalTitle: { fontSize: 18, fontWeight: "800", color: "#1E3A8A" },
+  modalTitle: { 
+    fontSize: 17, 
+    fontWeight: "700", 
+    color: "#0f172a",
+    letterSpacing: -0.3 
+  },
   closeBtn: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: 18, 
-    backgroundColor: '#F1F5F9',
+    width: 32, 
+    height: 32, 
+    borderRadius: 16, 
+    backgroundColor: '#f1f5f9',
     alignItems: "center", 
     justifyContent: "center",
   },
-  closeBtnText: { fontSize: 20, color: "#64748B", fontWeight: "bold" },
-  scrollContent: { padding: 20 },
+  closeBtnText: { fontSize: 13, color: "#475569", fontWeight: "600" },
+  scrollContent: { padding: 24 },
   imagePicker: {
     width: "100%",
-    height: 180,
-    backgroundColor: "#F8FAFC",
-    borderRadius: 16,
+    height: 190,
+    backgroundColor: "#f8fafc",
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderStyle: "dashed",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 20,
+    borderColor: "#e2e8f0",
+    marginBottom: 24,
     overflow: "hidden",
   },
-  previewImage: { width: "100%", height: "100%" },
-  imagePlaceholderText: { color: "#94A3B8", fontWeight: "600" },
-  inputGroup: { marginBottom: 16 },
-  row: { flexDirection: "row", marginBottom: 4 },
-  label: { fontSize: 13, fontWeight: "700", color: "#475569", marginBottom: 6, marginLeft: 4 },
-  premiumInput: {
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 52,
-    fontSize: 15,
-    color: "#0F172A",
+  imageContainer: {
+    width: '100%',
+    height: '100%',
+    position: 'relative'
   },
-  textArea: { height: 100, paddingTop: 12, textAlignVertical: "top" },
-  pickerContainer: {
-    backgroundColor: "#F8FAFC",
+  previewImage: { width: "100%", height: "100%", resizeMode: 'cover' },
+  imageOverlayBadge: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  imageOverlayText: { color: '#ffffff', fontSize: 12, fontWeight: '600' },
+  placeholderWrapper: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imagePlaceholderText: { color: "#64748b", fontWeight: "600", fontSize: 14 },
+  inputGroup: { marginBottom: 20 },
+  row: { flexDirection: "row" },
+  label: { 
+    fontSize: 13, 
+    fontWeight: "600", 
+    color: "#475569", 
+    marginBottom: 8, 
+    marginLeft: 2,
+    letterSpacing: -0.1
+  },
+  premiumInput: {
+    backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 12,
-    height: 52,
+    borderColor: "#cbd5e1",
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    height: 50,
+    fontSize: 15,
+    color: "#0f172a",
+  },
+  textArea: { 
+    height: 110, 
+    paddingTop: 14, 
+    paddingBottom: 14,
+    textAlignVertical: "top" 
+  },
+  readOnlyContainer: {
+    backgroundColor: "#f1f5f9",
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    height: 50,
     justifyContent: "center",
   },
+  readOnlyText: {
+    fontSize: 15,
+    color: "#64748b",
+    fontWeight: "500",
+  },
   submitButton: {
-    backgroundColor: "#1E3A8A",
-    height: 56,
+    backgroundColor: "#2563eb", // Vibrant premium digital action blue
+    height: 54,
     borderRadius: 16,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 10,
-    shadowColor: "#1E3A8A",
-    shadowOpacity: 0.3,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 8,
-    elevation: 5,
+    marginTop: 12,
+    shadowColor: "#2563eb",
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
+    elevation: 3,
   },
-  submitText: { color: "#fff", fontSize: 16, fontWeight: "800" },
-  // Alert styles
-  sileoOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center" },
-  sileoCard: { width: "80%", backgroundColor: "#fff", borderRadius: 20, padding: 24, alignItems: "center" },
-  sileoTitle: { fontSize: 18, fontWeight: "800", marginBottom: 8 },
-  sileoMsg: { textAlign: "center", color: "#64748B", marginBottom: 20 },
-  sileoBtn: { backgroundColor: "#1E3A8A", paddingHorizontal: 30, paddingVertical: 12, borderRadius: 10 },
-  sileoBtnText: { color: "#fff", fontWeight: "700" }
+  submitText: { color: "#fff", fontSize: 16, fontWeight: "600", letterSpacing: -0.2 },
+  
+  // High-end refinement for Sileo Custom Alert Elements
+  sileoOverlay: { 
+    flex: 1, 
+    backgroundColor: "rgba(15, 23, 42, 0.5)", 
+    justifyContent: "center", 
+    alignItems: "center" 
+  },
+  sileoCard: { 
+    width: "84%", 
+    maxWidth: 340,
+    backgroundColor: "#ffffff", 
+    borderRadius: 24, 
+    padding: 24, 
+    alignItems: "center",
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.15,
+    shadowRadius: 30,
+    elevation: 10
+  },
+  sileoTitle: { fontSize: 18, fontWeight: "700", color: "#0f172a", marginBottom: 8, letterSpacing: -0.3 },
+  sileoMsg: { textAlign: "center", color: "#475569", fontSize: 14, lineHeight: 20, marginBottom: 24 },
+  sileoBtn: { 
+    backgroundColor: "#0f172a", 
+    width: "100%",
+    paddingVertical: 14, 
+    borderRadius: 14,
+    alignItems: "center"
+  },
+  sileoBtnText: { color: "#ffffff", fontWeight: "600", fontSize: 15 }
 });

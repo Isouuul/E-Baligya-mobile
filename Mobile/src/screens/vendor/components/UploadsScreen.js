@@ -4,14 +4,10 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  Modal,
   FlatList,
   Image,
-  ScrollView,
   StyleSheet,
   Animated,
-  KeyboardAvoidingView,
-  Platform,
   Dimensions
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
@@ -19,7 +15,6 @@ import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../../../firebase";
 
 import CreateProductForm from "./CreateProductForm";
-import EditProductForm from "./EditProductForm";
 import ProductCard from "./ProductCard";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -40,8 +35,6 @@ const UploadsScreen = () => {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [showCreateProductModal, setShowCreateProductModal] = useState(false);
-  const [showEditProductModal, setShowEditProductModal] = useState(false);
-  const [editingProduct, setEditingProduct] = useState(null);
 
   const slideAnim = useState(new Animated.Value(0))[0];
 
@@ -85,7 +78,7 @@ const UploadsScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* Header Banner */}
+      {/* HEADER */}
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>My Products</Text>
@@ -96,7 +89,7 @@ const UploadsScreen = () => {
         </View>
       </View>
 
-      {/* Modern Search & Date Filter Bar */}
+      {/* SEARCH */}
       <View style={styles.searchDateContainer}>
         <View style={styles.searchBar}>
           <Text style={styles.searchIcon}>🔍</Text>
@@ -114,16 +107,15 @@ const UploadsScreen = () => {
             selectedValue={dateFilter}
             onValueChange={setDateFilter}
             style={styles.datePicker}
-            dropdownIconColor="#4f46e5"
           >
-            <Picker.Item label="🗓️ All" value="All" color="#0f172a" style={styles.pickerItem} />
-            <Picker.Item label="🗓️ Today" value="Today" color="#0f172a" style={styles.pickerItem} />
-            <Picker.Item label="🗓️ Yesterday" value="Yesterday" color="#0f172a" style={styles.pickerItem} />
+            <Picker.Item label="🗓️ All" value="All" />
+            <Picker.Item label="🗓️ Today" value="Today" />
+            <Picker.Item label="🗓️ Yesterday" value="Yesterday" />
           </Picker>
         </View>
       </View>
 
-      {/* Box-based Category Filters with Icon and Title */}
+      {/* CATEGORIES */}
       <View style={styles.categoryContainer}>
         <FlatList
           scrollEnabled={false}
@@ -137,12 +129,17 @@ const UploadsScreen = () => {
               <TouchableOpacity
                 style={styles.categoryItem}
                 onPress={() => setSelectedCategory(item.name)}
-                activeOpacity={0.8}
               >
-                <View style={[styles.categoryIconBox, isSelected && styles.categoryIconBoxActive]}>
-                  <Image source={item.icon} style={[styles.categoryIcon, isSelected && styles.categoryIconActive]} />
+                <View style={[
+                  styles.categoryIconBox,
+                  isSelected && styles.categoryIconBoxActive
+                ]}>
+                  <Image source={item.icon} style={styles.categoryIcon} />
                 </View>
-                <Text style={[styles.categoryText, isSelected && styles.categoryTextActive]}>
+                <Text style={[
+                  styles.categoryText,
+                  isSelected && styles.categoryTextActive
+                ]}>
                   {item.name}
                 </Text>
               </TouchableOpacity>
@@ -151,14 +148,16 @@ const UploadsScreen = () => {
         />
       </View>
 
-      {/* Clean Dynamic Product Canvas */}
+      {/* PRODUCTS */}
       {filtered.length === 0 ? (
         <View style={styles.center}>
           <Image
             source={require("../../../../assets/no-order.png")}
             style={styles.noProductsImage}
           />
-          <Text style={styles.noProductsText}>No items found matching criteria</Text>
+          <Text style={styles.noProductsText}>
+            No items found matching criteria
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -168,8 +167,7 @@ const UploadsScreen = () => {
             <ProductCard
               product={item}
               onPress={() => {
-                setEditingProduct(item);
-                setShowEditProductModal(true);
+                console.log("Product clicked:", item.id);
               }}
             />
           )}
@@ -178,78 +176,40 @@ const UploadsScreen = () => {
         />
       )}
 
-      {/* Floating Action Menu Panel */}
+      {/* FAB MENU */}
       {modalVisible && (
         <Animated.View style={styles.actionMenu}>
           <TouchableOpacity
             style={styles.actionButton}
-            activeOpacity={0.7}
             onPress={() => {
               setModalVisible(false);
               setShowCreateProductModal(true);
             }}
           >
-            <Text style={styles.actionText}>🛍️   Create New Product</Text>
+            <Text style={styles.actionText}>🛍️ Create New Product</Text>
           </TouchableOpacity>
         </Animated.View>
       )}
 
-      {/* Premium Gradient Style FAB */}
+      {/* FAB */}
       <TouchableOpacity
         style={styles.fab}
-        activeOpacity={0.9}
         onPress={() => setModalVisible(!modalVisible)}
       >
         <Text style={styles.fabText}>{modalVisible ? "✕" : "＋"}</Text>
       </TouchableOpacity>
 
-      {/* CONNECTED: Create Product Card Modal
-        Since CreateProductForm handles its own Modal context internally, we drop the duplicated parent <Modal>
-        wrappers here to prevent layout conflicts, supplying the expected trigger properties instead.
-      */}
-      <CreateProductForm 
-        visible={showCreateProductModal} 
+      {/* CREATE PRODUCT MODAL */}
+      <CreateProductForm
+        visible={showCreateProductModal}
         onCancel={() => setShowCreateProductModal(false)}
         onSubmit={() => setShowCreateProductModal(false)}
       />
-
-      {/* Edit Product Bottom Sheet Modal */}
-      <Modal
-        visible={showEditProductModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowEditProductModal(false)}
-      >
-        <View style={styles.floatingModalOverlay}>
-          <View style={styles.floatingModalContent}>
-            <View style={styles.modalGrabber} />
-            <View style={styles.modalHeaderRow}>
-              <View>
-                <Text style={styles.modalTitle}>Edit Product</Text>
-                <Text style={styles.modalSubtitle}>Update your product details</Text>
-              </View>
-              <TouchableOpacity style={styles.closeModalButton} onPress={() => setShowEditProductModal(false)}>
-                <Text style={styles.closeModalText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.modalDivider} />
-            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-              <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
-                <EditProductForm
-                  product={editingProduct}
-                  onCancel={() => setShowEditProductModal(false)}
-                  onSubmit={() => setShowEditProductModal(false)}
-                  visible={showEditProductModal}
-                />
-              </KeyboardAvoidingView>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 };
 
+export default UploadsScreen;
 // Original Stylesheets completely retained without alteration
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f8fafc" },
@@ -269,12 +229,13 @@ const styles = StyleSheet.create({
   categoryListContent: { paddingHorizontal:  16, gap: 12, justifyContent: "space-between" },
   categoryItem: { flexDirection: "column", alignItems: "center", flex: 1 },
   categoryItemActive: {},
-  categoryIconBox: { width: 45, height: 45, borderRadius: 12, backgroundColor: "#fff", borderWidth: 2, borderColor: "#e2e8f0", justifyContent: "center", alignItems: "center", marginBottom: 8 },
-  categoryIconBoxActive: { backgroundColor: "#4f46e5", borderColor: "#4f46e5" },
+  categoryIconBox: { width: 45, height: 45, borderRadius: 12, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", justifyContent: "center", alignItems: "center", marginBottom: 8 },
+  categoryIconBoxActive: {     backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',},
   categoryIcon: { width: 26, height: 26, resizeMode: "contain" },
   categoryIconActive: {},
   categoryText: { fontSize: 12, fontWeight: "600", color: "#64748b", textAlign: "center" },
-  categoryTextActive: { color: "#4f46e5" },
+  categoryTextActive: { color: "#3b82f6" },
   list: { paddingHorizontal: 16, paddingBottom: 100 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", paddingBottom: 100 },
   noProductsImage: { width: 140, height: 140, resizeMode: "contain", marginBottom: 16, opacity: 0.8 },
@@ -296,4 +257,3 @@ const styles = StyleSheet.create({
   modalScroll: { paddingHorizontal: 24, paddingTop: 16 }
 });
 
-export default UploadsScreen;

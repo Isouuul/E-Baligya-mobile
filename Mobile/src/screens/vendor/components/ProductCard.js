@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Image, TouchableOpacity, Modal } from "react-native";
+import { View, Text, StyleSheet, Image, TouchableOpacity, Modal, ScrollView } from "react-native";
 import { db, auth } from "../../../firebase";
 import { doc, deleteDoc, setDoc } from "firebase/firestore";
 import * as FileSystem from "expo-file-system";
@@ -216,27 +216,13 @@ const ProductCard = ({ product }) => {
         </View>
       </Modal>
 
-      {/* Edit Product Modal */}
-      <Modal
-        visible={editVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setEditVisible(false)}
-      >
-        <View style={styles.floatingModalOverlay}>
-          <View style={styles.floatingModalContent}>
-            <View style={styles.modalGrabber} />
-            <View style={styles.modalHeaderRow}>
-              <Text style={styles.modalTitle}>Edit Product</Text>
-              <Text style={styles.modalSubtitle}>Modify your listing requirements</Text>
-            </View>
-            <View style={styles.modalDivider} />
-            <View style={styles.modalBody}>
-              <EditProductForm product={product} onCancel={() => setEditVisible(false)} />
-            </View>
-          </View>
-        </View>
-      </Modal>
+{/* Edit Product Layout Portal */}
+{editVisible && (
+  <EditProductForm
+    product={product}
+    onCancel={() => setEditVisible(false)}
+  />
+)}
     </View>
   );
 };
@@ -462,7 +448,6 @@ const styles = StyleSheet.create({
   deleteIcon: { 
     width: 24, 
     height: 24,
-    tintColor: "#EF4444" 
   },
   deleteTitle: { 
     fontSize: 18, 

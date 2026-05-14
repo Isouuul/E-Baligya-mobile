@@ -551,12 +551,12 @@ const styles = StyleSheet.create({
     marginRight: 8, 
     backgroundColor: '#F1F5F9',
   },
-  activeTab: { backgroundColor: '#0F172A' },
-  tabText: { color: '#64748B', fontWeight: '700', fontSize: 13 },
-  activeTabText: { color: '#fff' },
+  activeTab: { backgroundColor: '#eff6ff', borderColor: '#3b82f6', borderWidth: 1 },
+  tabText: { color: '#64748B', fontWeight: '600', fontSize: 13 },
+  activeTabText: { color: '#000' },
   
   countBadge: { marginLeft: 8, backgroundColor: '#E2E8F0', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 99 },
-  activeCountBadge: { backgroundColor: '#334155' },
+  activeCountBadge: { backgroundColor: '#3b82f6' },
   countText: { fontSize: 11, color: '#475569', fontWeight: 'bold' },
   activeCountText: { color: '#fff' },
   

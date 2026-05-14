@@ -23,9 +23,7 @@ import EditIcon from "../../../../assets/Edit.png";
 
 const { width } = Dimensions.get("window");
 
-const ProductBiddingCard = ({ product }) => {
-  const navigation = useNavigation();
-
+const ProductBiddingCard = ({ product, onEdit }) => {  const navigation = useNavigation();
   const [timeLeft, setTimeLeft] = useState("");
   const [archived, setArchived] = useState(false);
 
@@ -263,20 +261,21 @@ const ProductBiddingCard = ({ product }) => {
 
           {/* ACTIONS */}
           <View style={styles.actions}>
-            <TouchableOpacity
-              onPress={(e) => {
-                e.stopPropagation();
-              }}
-              style={[
-                styles.btn,
-                styles.editBtn,
-                isAuctionEnded && styles.disabled,
-              ]}
-              disabled={isAuctionEnded}
-            >
-              <Image source={EditIcon} style={styles.btnIcon} />
-              <Text style={styles.btnText}>Edit</Text>
-            </TouchableOpacity>
+<TouchableOpacity
+  onPress={(e) => {
+    e.stopPropagation();
+    onEdit?.(product); // send to parent screen
+  }}
+  style={[
+    styles.btn,
+    styles.editBtn,
+    isAuctionEnded && styles.disabled,
+  ]}
+  disabled={isAuctionEnded}
+>
+  <Image source={EditIcon} style={styles.btnIcon} />
+  <Text style={styles.btnText}>Edit</Text>
+</TouchableOpacity>
 
             <TouchableOpacity
               onPress={(e) => {

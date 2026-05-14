@@ -18,6 +18,7 @@ import * as FileSystem from 'expo-file-system';
 
 const { width } = Dimensions.get('window');
 
+/* ------------------------- PROGRESS STEPS ------------------------- */
 const ProgressSteps = ({ currentStep = 4 }) => {
   const steps = ['Verify', 'Information', 'Selfie', 'Review'];
   return (
@@ -26,6 +27,7 @@ const ProgressSteps = ({ currentStep = 4 }) => {
         const step = idx + 1;
         const completed = step < currentStep;
         const active = step === currentStep;
+
         return (
           <React.Fragment key={idx}>
             <View style={styles.stepWrapper}>
@@ -39,14 +41,22 @@ const ProgressSteps = ({ currentStep = 4 }) => {
                 {completed ? (
                   <Text style={styles.circleText}>✓</Text>
                 ) : (
-                  <Text style={[styles.circleText, !active && styles.inactiveText]}>{step}</Text>
+                  <Text style={[styles.circleText, !active && styles.inactiveText]}>
+                    {step}
+                  </Text>
                 )}
               </View>
-              <Text style={[styles.stepLabel, active && styles.activeStepLabel]}>{label}</Text>
+              <Text style={[styles.stepLabel, active && styles.activeStepLabel]}>
+                {label}
+              </Text>
             </View>
+
             {idx < steps.length - 1 && (
               <View
-                style={[styles.line, { backgroundColor: completed ? '#2563EB' : '#E2E8F0' }]}
+                style={[
+                  styles.line,
+                  { backgroundColor: completed ? '#2563EB' : '#E2E8F0' },
+                ]}
               />
             )}
           </React.Fragment>
@@ -56,37 +66,67 @@ const ProgressSteps = ({ currentStep = 4 }) => {
   );
 };
 
+/* ------------------------- MAIN COMPONENT ------------------------- */
 const UserSignupReview = ({ route, navigation }) => {
   const [loading, setLoading] = useState(false);
   const [agreed, setAgreed] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
 
-const data = route?.params ?? {};
-const requiredFields = [
-  'email',
-  'password',
-  'firstName',
-  'lastName',
-  'phone',
-  'govIDFront',
-  'govIDBack',
-  'selfieUri',
-];
+  /* ------------------------- SILEO (REPLACED showSuccess) ------------------------- */
+  const [sileoVisible, setSileoVisible] = useState(false);
 
-for (const field of requiredFields) {
-  if (!data[field]) {
-    Alert.alert('Missing Data', `Missing field: ${field}`);
-    return;
+  const [sileoConfig, setSileoConfig] = useState({
+    title: "",
+    message: "",
+    type: "info",
+    buttonText: "OK",
+    onPress: null,
+  });
+
+  const showSileo = ({ title, message, type = "info", buttonText = "OK", onPress = null }) => {
+    setSileoConfig({ title, message, type, buttonText, onPress });
+    setSileoVisible(true);
+  };
+
+  const closeSileo = () => {
+    setSileoVisible(false);
+    if (typeof sileoConfig.onPress === "function") {
+      sileoConfig.onPress();
+    }
+  };
+
+  /* ------------------------- DATA ------------------------- */
+  const data = route?.params ?? {};
+
+  const requiredFields = [
+    'email',
+    'password',
+    'firstName',
+    'lastName',
+    'phone',
+    'govIDFront',
+    'govIDBack',
+    'selfieUri',
+  ];
+
+  for (const field of requiredFields) {
+    if (!data[field]) {
+      Alert.alert('Missing Data', `Missing field: ${field}`);
+      return;
+    }
   }
-}
+
   const fullName = [data.firstName, data.middleName, data.lastName].filter(Boolean).join(' ');
   const homeAddress = [data.streetName, data.selectedBarangay, data.selectedCity].filter(Boolean).join(', ');
-const birthDateValue = data.birthDate || '—';
-const genderValue = data.gender || '—';
+  const birthDateValue = data.birthDate || '—';
+  const genderValue = data.gender || '—';
+
+  /* ------------------------- HELPERS ------------------------- */
   const convertImageToBase64 = async (uri) => {
     if (!uri) return null;
     try {
-      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
       return `data:image/jpeg;base64,${base64}`;
     } catch {
       return null;
@@ -100,84 +140,90 @@ const genderValue = data.gender || '—';
     return !snap.empty;
   };
 
-const handleSubmit = async () => {
-  if (!agreed) {
-    return Alert.alert('Required', 'Please agree to the terms.');
-  }
-
-  if (!data.email || !data.password || !data.firstName || !data.lastName || !data.phone) {
-    return Alert.alert('Missing Fields', 'Please fill in all required information.');
-  }
-
-  setLoading(true);
-
-  try {
-    const email = (data.email || '').trim().toLowerCase();
-    const emailLower = email;
-
-    // check duplicate email
-    const emailExists = await existsByField('Users', 'emailLower', emailLower);
-
-    if (emailExists) {
-      return Alert.alert('Duplicate Email', 'This email is already registered.');
+  /* ------------------------- SUBMIT ------------------------- */
+  const handleSubmit = async () => {
+    if (!agreed) {
+      return Alert.alert('Required', 'Please agree to the terms.');
     }
 
-    // create auth user
-    const userCred = await createUserWithEmailAndPassword(auth, email, data.password);
-
-    // convert images
-    const [idFrontB64, idBackB64, selfieB64] = await Promise.all([
-      convertImageToBase64(data.govIDFront),
-      convertImageToBase64(data.govIDBack),
-      convertImageToBase64(data.selfieUri),
-    ]);
-
-    // FIRESTORE SAVE (clean + simple like your reference)
-    await setDoc(doc(db, 'Users', userCred.user.uid), {
-      address: {
-        barangay: data.selectedBarangay || '',
-        city: data.selectedCity || '',
-        region: "Region VI - Western Visayas",
-        street: data.streetName || '',
-        birthdate: data.birthDate || '',
-      },
-      email: email,
-      emailLower: emailLower,
-
-      firstName: data.firstName || '',
-      lastName: data.lastName || '',
-      middleName: data.middleName || '',
-
-      phone: data.phone || '',
-
-      gender: data.gender || '',
-
-      idImage: idFrontB64 || '',
-      idImageBack: idBackB64 || '',
-      selfieImage: selfieB64 || '',
-
-      role: 'Consumer',
-      selectedIDType: data.selectedIDType || 'National ID',
-
-      uid: userCred.user.uid,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
-    });
-
-    await signOut(auth);
-    setShowSuccess(true);
-
-  } catch (error) {
-    if (error?.code === 'auth/email-already-in-use') {
-      Alert.alert('Duplicate Email', 'This email already has an account.');
-    } else {
-      Alert.alert('Error', error.message || 'Failed to submit registration.');
+    if (!data.email || !data.password || !data.firstName || !data.lastName || !data.phone) {
+      return Alert.alert('Missing Fields', 'Please fill in all required information.');
     }
-  } finally {
-    setLoading(false);
-  }
-};
 
+    setLoading(true);
+
+    try {
+      const email = (data.email || '').trim().toLowerCase();
+      const emailLower = email;
+
+      const emailExists = await existsByField('Users', 'emailLower', emailLower);
+
+      if (emailExists) {
+        setLoading(false);
+        return Alert.alert('Duplicate Email', 'This email is already registered.');
+      }
+
+      const userCred = await createUserWithEmailAndPassword(auth, email, data.password);
+
+      const [idFrontB64, idBackB64, selfieB64] = await Promise.all([
+        convertImageToBase64(data.govIDFront),
+        convertImageToBase64(data.govIDBack),
+        convertImageToBase64(data.selfieUri),
+      ]);
+
+      await setDoc(doc(db, 'Users', userCred.user.uid), {
+        address: {
+          barangay: data.selectedBarangay || '',
+          city: data.selectedCity || '',
+          region: "Region VI - Western Visayas",
+          street: data.streetName || '',
+          birthdate: data.birthDate || '',
+        },
+        email,
+        emailLower,
+        firstName: data.firstName || '',
+        lastName: data.lastName || '',
+        middleName: data.middleName || '',
+        phone: data.phone || '',
+        gender: data.gender || '',
+        idImage: idFrontB64 || '',
+        idImageBack: idBackB64 || '',
+        selfieImage: selfieB64 || '',
+        role: 'Consumer',
+        selectedIDType: data.selectedIDType || 'National ID',
+        uid: userCred.user.uid,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
+      });
+
+      await signOut(auth);
+
+      /* ------------------------- SILEO SUCCESS ------------------------- */
+      showSileo({
+        title: "Account Created!",
+        message: "Your consumer account has been successfully created.",
+        type: "success",
+        buttonText: "Continue",
+        onPress: () => {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Login' }],
+          });
+        },
+      });
+
+    } catch (error) {
+      if (error?.code === 'auth/email-already-in-use') {
+        Alert.alert('Duplicate Email', 'This email already has an account.');
+      } else {
+        Alert.alert('Error', error.message || 'Failed to submit registration.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ------------------------- UI ------------------------- */
   return (
     <View style={styles.mainWrapper}>
       <StatusBar barStyle="dark-content" />
@@ -197,7 +243,9 @@ const handleSubmit = async () => {
 
         <View style={styles.reviewBanner}>
           <Text style={styles.bannerTitle}>Please review your information before submitting.</Text>
-          <Text style={styles.bannerSubtitle}>All details should match your legal documents and uploaded ID.</Text>
+          <Text style={styles.bannerSubtitle}>
+            All details should match your legal documents and uploaded ID.
+          </Text>
         </View>
 
         <View style={styles.profileCard}>
@@ -211,11 +259,12 @@ const handleSubmit = async () => {
               <Text style={styles.profileRole}>Consumer</Text>
             </View>
           </View>
+
           <View style={styles.profileDetailsBox}>
             <ReviewItem label="Contact Number" value={data.phone} />
             <ReviewItem label="Email Address" value={data.email} />
             <ReviewItem label="Birth Date" value={birthDateValue} />
-<ReviewItem label="Gender" value={genderValue} />
+            <ReviewItem label="Gender" value={genderValue} />
             <ReviewItem label="Home Address" value={homeAddress} />
           </View>
         </View>
@@ -223,6 +272,7 @@ const handleSubmit = async () => {
         <View style={styles.sectionDivider} />
 
         <Text style={styles.sectionTitle}>Uploaded Documents</Text>
+
         <View style={styles.mediaGrid}>
           {[
             { uri: data.govIDFront, label: 'ID Front' },
@@ -240,38 +290,45 @@ const handleSubmit = async () => {
             <View style={[styles.checkbox, agreed && styles.checkboxActive]}>
               {agreed && <Text style={styles.checkText}>✓</Text>}
             </View>
-            <Text style={styles.termsLabel}>I declare that all information provided is true and correct.</Text>
+            <Text style={styles.termsLabel}>
+              I declare that all information provided is true and correct.
+            </Text>
           </TouchableOpacity>
         </View>
 
         <View style={{ height: 120 }} />
       </ScrollView>
 
+      {/* FOOTER (UNCHANGED UI) */}
       <View style={styles.footer}>
-<TouchableOpacity
-  style={styles.sileoButton}
-  onPress={() => {
-    setShowSuccess(false);
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Login' }],
-    });
-  }}
->
-  <Text style={styles.sileoButtonText}>Continue</Text>
-</TouchableOpacity>
+        <TouchableOpacity
+          style={styles.btn}
+          onPress={handleSubmit}
+          disabled={loading || !agreed}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.btnText}>Submit Application</Text>
+          )}
+        </TouchableOpacity>
       </View>
 
-      {showSuccess && (
+      {/* ---------------- SILEO MODAL ---------------- */}
+      {sileoVisible && (
         <View style={styles.sileoOverlay}>
           <View style={styles.sileoModal}>
             <View style={styles.sileoIconCircle}>
               <Text style={styles.sileoIcon}>✓</Text>
             </View>
-            <Text style={styles.sileoTitle}>Account Created!</Text>
-            <Text style={styles.sileoMessage}>Your consumer account has been successfully created.</Text>
-            <TouchableOpacity style={styles.sileoButton} onPress={() => { setShowSuccess(false); navigation.navigate('Login'); }}>
-              <Text style={styles.sileoButtonText}>Continue</Text>
+
+            <Text style={styles.sileoTitle}>{sileoConfig.title}</Text>
+            <Text style={styles.sileoMessage}>{sileoConfig.message}</Text>
+
+            <TouchableOpacity style={styles.sileoButton} onPress={closeSileo}>
+              <Text style={styles.sileoButtonText}>
+                {sileoConfig.buttonText}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -280,12 +337,16 @@ const handleSubmit = async () => {
   );
 };
 
+/* ------------------------- REVIEW ITEM ------------------------- */
 const ReviewItem = ({ label, value }) => (
   <View style={styles.reviewItem}>
     <Text style={styles.reviewLabel}>{label}</Text>
     <Text style={styles.reviewValue}>{value || '—'}</Text>
   </View>
 );
+
+export default UserSignupReview;
+
 
 const styles = StyleSheet.create({
     sileoOverlay: {
@@ -686,4 +747,3 @@ const styles = StyleSheet.create({
   },
 });
 
-export default UserSignupReview;

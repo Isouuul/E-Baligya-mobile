@@ -258,150 +258,180 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
     >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
-          <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-            <View style={styles.header}>
-              <Text style={styles.headerTitle}>Edit Listing</Text>
-              <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-                <Text style={styles.closeButtonText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-      {/* Image Section */}
-      <View style={styles.section}>
-        <Pressable onPress={pickImage} style={styles.imagePlaceholder}>
-          {imageUri ? (
-            <Image source={{ uri: imageUri }} style={styles.fullImage} />
-          ) : (
-            <View style={styles.uploadPrompt}>
-              <Text style={styles.uploadIcon}>📸</Text>
-              <Text style={styles.uploadText}>Upload Product Photo</Text>
-            </View>
-          )}
-        </Pressable>
-
-        {isClassifying && (
-          <View style={styles.aiBadgeLoading}>
-            <ActivityIndicator size="small" color="#1e3a8a" />
-            <Text style={styles.aiText}> Analyzing Quality...</Text>
-          </View>
-        )}
-
-        {freshness && !isClassifying && (
-          <View style={[styles.aiBadge, isRotten ? styles.badgeRotten : styles.badgeFresh]}>
-            <Text style={styles.aiTextMain}>Freshness: {freshness}</Text>
-            {prediction && (
-              <Text style={styles.aiTextSub}>
-                {prediction.label} • {(prediction.confidence * 100).toFixed(0)}% match
-              </Text>
-            )}
-          </View>
-        )}
-      </View>
-
-      {/* Details Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionLabel}>Basic Information</Text>
-        <View style={styles.pickerWrapper}>
-          <Picker selectedValue={category} onValueChange={setCategory} style={[styles.picker, { color: '#000' }]}>
-            <Picker.Item label="Select Category" value="" color="#999" />
-            <Picker.Item label="Fish" value="Fish" color="#000" />
-            <Picker.Item label="Mollusk" value="Mollusk" color="#000" />
-            <Picker.Item label="Crustacean" value="Crustacean" color="#000" />
-            <Picker.Item label="Seasonal" value="Seasonal" color="#000" />
-          </Picker>
-        </View>
-        <TextInput 
-          style={styles.premiumInput} 
-          placeholder="Product Name" 
-          placeholderTextColor="#000" 
-          value={productName} 
-          onChangeText={setProductName} 
-        />
-        <View style={styles.inputRow}>
-          <TextInput 
-            style={[styles.premiumInput, { flex: 1, marginRight: 10 }]} 
-            placeholder="Base Price" 
-            keyboardType="numeric" 
-            placeholderTextColor="#000" 
-            value={basePrice} 
-            onChangeText={setBasePrice} 
-          />
-          <TextInput 
-            style={[styles.premiumInput, { flex: 1 }]} 
-            placeholder="Stock (kg)" 
-            keyboardType="numeric" 
-            placeholderTextColor="#000" 
-            value={quantityKg} 
-            onChangeText={setQuantityKg} 
-          />
-        </View>
-        <TextInput 
-          style={[styles.premiumInput, { minHeight: 100, textAlignVertical: 'top' }]} 
-          placeholder="Product Description (optional)" 
-          placeholderTextColor="#000" 
-          value={description} 
-          onChangeText={setDescription}
-          multiline
-        />
-      </View>
-
-      {isRotten && (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>⚠️ Quality check failed. Spoiled products cannot remain active.</Text>
-        </View>
-      )}
-
-      <TouchableOpacity
-        onPress={handleSubmit}
-        style={[styles.submitButton, (isSubmitting || isRotten) && styles.disabledButton]}
-        disabled={isSubmitting || isRotten}
-      >
-        {isSubmitting ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.submitButtonText}>Save Changes</Text>
-        )}
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={handleClose}
-        style={styles.resetButton}
-        disabled={isSubmitting || isClassifying}
-      >
-        <Text style={styles.resetButtonText}>Cancel</Text>
-      </TouchableOpacity>
-
-      <Modal
-        visible={sileoVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={handleSileoClose}
-      >
-        <View style={styles.sileoOverlay}>
-          <View style={styles.sileoModal}>
-            <View
-              style={[
-                styles.sileoIconCircle,
-                sileoConfig.type === 'success'
-                  ? styles.sileoSuccess
-                  : sileoConfig.type === 'warning'
-                    ? styles.sileoWarning
-                    : styles.sileoError,
-              ]}
-            >
-              <Text style={styles.sileoIconText}>
-                {sileoConfig.type === 'success' ? '✓' : sileoConfig.type === 'warning' ? '!' : '✕'}
-              </Text>
-            </View>
-            <Text style={styles.sileoTitle}>{sileoConfig.title}</Text>
-            <Text style={styles.sileoMessage}>{sileoConfig.message}</Text>
-            <TouchableOpacity style={styles.sileoButton} onPress={handleSileoClose}>
-              <Text style={styles.sileoButtonText}>{sileoConfig.buttonText}</Text>
+          <View style={styles.header}>
+            <View style={{ width: 32 }} />
+            <Text style={styles.headerTitle}>Edit Listing</Text>
+            <TouchableOpacity onPress={handleClose} style={styles.closeButton} activeOpacity={0.7}>
+              <Text style={styles.closeButtonText}>✕</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+
+          <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+            {/* Image Section */}
+            <View style={styles.section}>
+<View style={styles.imagePlaceholder}>
+  {imageUri ? (
+    <Image source={{ uri: imageUri }} style={styles.fullImage} />
+  ) : (
+    <View style={styles.uploadPrompt}>
+      <Text style={styles.uploadIcon}>📸</Text>
+      <Text style={styles.uploadText}>No Image Available</Text>
+    </View>
+  )}
+</View>
+
+              {isClassifying && (
+                <View style={styles.aiBadgeLoading}>
+                  <ActivityIndicator size="small" color="#2563eb" />
+                  <Text style={styles.aiText}> Analyzing Quality...</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Details Section */}
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Basic Information</Text>
+              
+              <View style={styles.inputRowCat}>
+                {/* Category Picker */}
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={styles.inputTitle}>Category</Text>
+                  <View style={[styles.pickerWrapper, { marginBottom: 0 }]}>
+                    <Picker selectedValue={category} onValueChange={setCategory} style={styles.picker}>
+                      <Picker.Item label="Select Category" value="" color="#94a3b8" />
+                      <Picker.Item label="Fish" value="Fish" color="#0f172a" />
+                      <Picker.Item label="Mollusk" value="Mollusk" color="#0f172a" />
+                      <Picker.Item label="Crustacean" value="Crustacean" color="#0f172a" />
+                      <Picker.Item label="Seasonal" value="Seasonal" color="#0f172a" />
+                    </Picker>
+                  </View>
+                </View>
+
+                {/* Premium Read-Only Freshness Display */}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputTitle}>Quality Status</Text>
+                  <View style={styles.inputGroup}>
+                    <View style={styles.readOnlyContainer}>
+                      <Text style={styles.readOnlyText}>{freshness}</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* Product Name Input */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.inputTitle}>Product Name</Text>
+                <TextInput 
+                  style={styles.premiumInput} 
+                  placeholder="e.g., Bangus, Yellowfin Tuna" 
+                  placeholderTextColor="#94a3b8"
+                  value={productName} 
+                  onChangeText={setProductName} 
+                />
+              </View>
+              
+              {/* Pricing & Stock Grid */}
+              <View style={styles.inputRow}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={styles.inputTitle}>Base Price (₱)</Text>
+                  <TextInput 
+                    style={styles.premiumInput} 
+                    placeholder="0.00" 
+                    keyboardType="numeric" 
+                    placeholderTextColor="#94a3b8"      
+                    value={basePrice} 
+                    onChangeText={setBasePrice} 
+                  />
+                </View>
+                
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputTitle}>Stock (kg)</Text>
+                  <TextInput 
+                    style={styles.premiumInput} 
+                    placeholder="0" 
+                    keyboardType="numeric" 
+                    placeholderTextColor="#94a3b8"
+                    value={quantityKg} 
+                    onChangeText={setQuantityKg} 
+                  />
+                </View>
+              </View>
+
+              {/* Description Input */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.inputTitle}>Product Description</Text>
+                <TextInput 
+                  style={[styles.premiumInput, { minHeight: 110, paddingTop: 14, paddingBottom: 14, textAlignVertical: 'top' }]} 
+                  placeholder="Describe your batch freshness, catching location, etc. (optional)" 
+                  placeholderTextColor="#94a3b8"
+                  value={description} 
+                  onChangeText={setDescription}
+                  multiline
+                />
+              </View>
+            </View>
+
+            {/* Quality Warning Check */}
+            {isRotten && (
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorText}>⚠️ Quality check failed. Spoiled products cannot remain active.</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              onPress={handleSubmit}
+              style={[styles.submitButton, (isSubmitting || isRotten) && styles.disabledButton]}
+              disabled={isSubmitting || isRotten}
+              activeOpacity={0.8}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.submitButtonText}>Save Changes</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleClose}
+              style={styles.resetButton}
+              disabled={isSubmitting || isClassifying}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.resetButtonText}>Cancel</Text>
+            </TouchableOpacity>
+
+            {/* Custom Sileo Dialog Modal */}
+            <Modal
+              visible={sileoVisible}
+              transparent
+              animationType="fade"
+              statusBarTranslucent
+              onRequestClose={handleSileoClose}
+            >
+              <View style={styles.sileoOverlay}>
+                <View style={styles.sileoModal}>
+                  <View
+                    style={[
+                      styles.sileoIconCircle,
+                      sileoConfig.type === 'success'
+                        ? styles.sileoSuccess
+                        : sileoConfig.type === 'warning'
+                          ? styles.sileoWarning
+                          : styles.sileoError,
+                    ]}
+                  >
+                    <Text style={styles.sileoIconText}>
+                      {sileoConfig.type === 'success' ? '✓' : sileoConfig.type === 'warning' ? '!' : '✕'}
+                    </Text>
+                  </View>
+                  <Text style={styles.sileoTitle}>{sileoConfig.title}</Text>
+                  <Text style={styles.sileoMessage}>{sileoConfig.message}</Text>
+                  <TouchableOpacity style={styles.sileoButton} onPress={handleSileoClose} activeOpacity={0.8}>
+                    <Text style={styles.sileoButtonText}>{sileoConfig.buttonText}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Modal>
           </ScrollView>
         </View>
       </View>
@@ -409,103 +439,216 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
   );
 };
 
-// Reusing same exact stylings as CreateProductForm for design consistency
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)', 
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
   },
   modalContent: {
     width: '100%',
-    maxWidth: 500,
-    maxHeight: '85%',
+    maxWidth: 480,
+    maxHeight: '82%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
+    borderRadius: 28,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 15,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 10,
   },
   container: { 
     padding: 24,
-    paddingBottom: 32,
+    paddingBottom: 28,
   },
   header: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
-    marginBottom: 20,
+    paddingTop: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
+    paddingHorizontal: 20,
   },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#1E3A8A' },
+  headerTitle: { 
+    fontSize: 17, 
+    fontWeight: '700', 
+    color: '#0f172a',
+    letterSpacing: -0.3
+  },
   closeButton: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: 18, 
+    width: 32, 
+    height: 32, 
+    borderRadius: 16, 
     backgroundColor: '#F1F5F9', 
     alignItems: 'center', 
     justifyContent: 'center',
-    padding: 4,
   },
-  closeButtonText: { fontSize: 20, color: '#64748B', fontWeight: 'bold' },
+  closeButtonText: { fontSize: 13, color: '#475569', fontWeight: '600' },
   
-  section: { marginBottom: 25 },
-  sectionLabel: { fontSize: 14, fontWeight: '700', color: '#64748B', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 },
-  
-  imagePlaceholder: { width: '100%', height: 200, borderRadius: 16, backgroundColor: '#FFF', borderStyle: 'dashed', borderWidth: 2, borderColor: '#CBD5E1', overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
-  fullImage: { width: '100%', height: '100%' },
+  section: { marginBottom: 24 },
+  sectionLabel: { 
+    fontSize: 12, 
+    fontWeight: '700', 
+    color: '#64748b', 
+    marginBottom: 16, 
+    textTransform: 'uppercase', 
+    letterSpacing: 0.8,
+    marginLeft: 2
+  },
+  fieldGroup: {
+    marginBottom: 16
+  },
+  inputTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 6,
+    marginLeft: 2,
+  },
+  imagePlaceholder: { 
+    width: '100%', 
+    height: 190, 
+    borderRadius: 20, 
+    backgroundColor: '#f8fafc', 
+    borderWidth: 1, 
+    borderColor: '#e2e8f0', 
+    overflow: 'hidden', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  imageContainer: {
+    width: '100%',
+    height: '100%',
+    position: 'relative'
+  },
+  fullImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  imageOverlayBadge: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  imageOverlayText: { color: '#ffffff', fontSize: 12, fontWeight: '600' },
   uploadPrompt: { alignItems: 'center' },
-  uploadIcon: { fontSize: 40, marginBottom: 8 },
-  uploadText: { color: '#64748B', fontWeight: '600' },
+  uploadIcon: { fontSize: 32, marginBottom: 8 },
+  uploadText: { color: '#64748b', fontWeight: '600', fontSize: 14 },
   
-  aiBadge: { padding: 12, borderRadius: 12, marginTop: 12, borderLeftWidth: 5 },
-  aiBadgeLoading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 12 },
-  badgeFresh: { backgroundColor: '#F0FDF4', borderLeftColor: '#22C55E' },
-  badgeRotten: { backgroundColor: '#FEF2F2', borderLeftColor: '#EF4444' },
-  aiTextMain: { fontWeight: 'bold', fontSize: 16, color: '#1E293B' },
-  aiTextSub: { fontSize: 12, color: '#64748B' },
+  aiBadgeLoading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 14 },
+  aiText: { color: '#475569', fontWeight: '600', fontSize: 14 },
 
-  premiumInput: { backgroundColor: '#FFF', padding: 16, borderRadius: 12, fontSize: 16, color: '#1E293B', marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
-  inputRow: { flexDirection: 'row' },
-  
-  pickerWrapper: { backgroundColor: '#FFF', borderRadius: 12, marginBottom: 12, overflow: 'hidden', elevation: 2 },
-  picker: { height: 55 },
+  premiumInput: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    height: 50,
+    fontSize: 15,
+    color: '#0f172a',
+  },
 
-  errorBanner: { backgroundColor: '#EF4444', padding: 12, borderRadius: 12, marginBottom: 15 },
-  errorText: { color: '#FFF', fontWeight: 'bold', textAlign: 'center' },
+  inputRow: { 
+    flexDirection: 'row',
+    marginBottom: 16
+  },
+  inputRowCat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16, 
+  },
+  inputGroup: {
+    justifyContent: 'center',
+  },
+  readOnlyContainer: {
+    backgroundColor: '#F8FAFC', 
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 14,
+    height: 50, 
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+  },
+  readOnlyText: {
+    color: '#0F172A', 
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  pickerWrapper: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    height: 50,
+    justifyContent: 'center',
+  },
+  picker: {
+    color: '#0f172a',
+    backgroundColor: 'transparent',
+  },
 
-  submitButton: { backgroundColor: '#1e3a8a', paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginTop: 10, shadowColor: '#1e3a8a', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
-  disabledButton: { backgroundColor: '#94A3B8', shadowOpacity: 0 },
-  submitButtonText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
-  resetButton: { borderWidth: 1.5, borderColor: '#1e3a8a', paddingVertical: 14, borderRadius: 14, alignItems: 'center', marginTop: 10, backgroundColor: '#FFFFFF' },
-  resetButtonText: { color: '#1e3a8a', fontSize: 16, fontWeight: '700' },
+  errorBanner: { backgroundColor: '#ef4444', padding: 14, borderRadius: 14, marginBottom: 16 },
+  errorText: { color: '#FFF', fontWeight: '600', fontSize: 13, textAlign: 'center', lineHeight: 18 },
+
+  submitButton: { 
+    backgroundColor: '#2563eb', 
+    height: 54,
+    borderRadius: 16, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    marginTop: 8, 
+    shadowColor: '#2563eb', 
+    shadowOffset: { width: 0, height: 6 }, 
+    shadowOpacity: 0.2, 
+    shadowRadius: 12, 
+    elevation: 3 
+  },
+  disabledButton: { backgroundColor: '#94a3b8', shadowOpacity: 0, elevation: 0 },
+  submitButtonText: { color: '#FFF', fontSize: 16, fontWeight: '600', letterSpacing: -0.2 },
+  resetButton: { 
+    height: 50,
+    borderWidth: 1.5, 
+    borderColor: '#cbd5e1', 
+    borderRadius: 14, 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    marginTop: 12, 
+    backgroundColor: '#FFFFFF' 
+  },
+  resetButtonText: { color: '#475569', fontSize: 15, fontWeight: '600' },
   
   sileoOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1000,
   },
   sileoModal: {
-    width: '86%',
+    width: '84%',
+    maxWidth: 340,
     backgroundColor: '#fff',
     borderRadius: 24,
-    paddingHorizontal: 22,
-    paddingVertical: 24,
+    padding: 24,
     alignItems: 'center',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.15,
+    shadowRadius: 30,
+    elevation: 10
   },
   sileoIconCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -513,16 +656,17 @@ const styles = StyleSheet.create({
   sileoSuccess: { backgroundColor: '#10B981' },
   sileoWarning: { backgroundColor: '#F59E0B' },
   sileoError: { backgroundColor: '#EF4444' },
-  sileoIconText: { color: '#fff', fontSize: 24, fontWeight: '800' },
-  sileoTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
-  sileoMessage: { fontSize: 15, color: '#64748B', textAlign: 'center', lineHeight: 21, marginBottom: 20 },
+  sileoIconText: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  sileoTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 8, letterSpacing: -0.3 },
+  sileoMessage: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
   sileoButton: {
     backgroundColor: '#0F172A',
-    paddingVertical: 12,
-    paddingHorizontal: 28,
-    borderRadius: 12,
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center'
   },
-  sileoButtonText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  sileoButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
 });
 
 export default EditProductForm;
