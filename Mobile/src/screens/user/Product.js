@@ -27,7 +27,7 @@ const ITEMS_PER_PAGE = 16;
 
 // MARKET OPTIONS DATA
 const marketOptions = [
-  { name: 'All Markets', latitude: 0, longitude: 0 }, // Added default option
+  { name: 'All Markets', latitude: 0, longitude: 0 }, 
   { name: 'Bacolod Central Market', latitude: 10.66761, longitude: 122.94719 },
   { name: 'Libertad Public Market', latitude: 10.66012, longitude: 122.94971 },
   { name: 'Bacolod North (Burgos) Market', latitude: 10.66891, longitude: 122.95498 },
@@ -92,6 +92,9 @@ function AnimatedProductCard({ item, index, navigation, status }) {
   }, []);
 
   const hasStock = item.quantityKg > 0;
+  
+  // Adjusted to fallback gracefully if nested property isn't built yet
+  const displayMarketName = item.uploadedBy?.marketName || item.marketName || "Unknown Market";
 
   return (
     <Animated.View style={{ transform: [{ translateY: slideAnim }], opacity: fadeAnim }}>
@@ -130,15 +133,13 @@ function AnimatedProductCard({ item, index, navigation, status }) {
             {item.productName}
           </Text>
 
-          {/* MARKET TAG ADDED TO CARD DETALIS */}
-{item.marketName && (
-  <View style={styles.marketTagContainer}>
-    <Ionicons name="location-outline" size={12} color="#64748b" />
-    <Text style={styles.marketTagText} numberOfLines={1}>
-      {item.marketName}
-    </Text>
-  </View>
-)}
+          {/* MARKET TAG STYLED PROPERLY */}
+          <View style={styles.marketTagContainer}>
+            <Ionicons name="location-outline" size={12} color="#64748b" style={{ marginRight: 2 }} />
+            <Text style={styles.marketTagText} numberOfLines={1}>
+              {displayMarketName}
+            </Text>
+          </View>
 
           <View style={styles.cardFooter}>
             <View style={styles.priceContainer}>
@@ -185,7 +186,7 @@ export default function Product() {
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [searchText, setSearchText] = useState('');
   const [category, setCategory] = useState(initialCategory);
-  const [selectedMarket, setSelectedMarket] = useState('All Markets'); // Market State Tracker
+  const [selectedMarket, setSelectedMarket] = useState('All Markets'); 
   const [currentPage, setCurrentPage] = useState(1);
   const [refreshing, setRefreshing] = useState(false);
   const [cartItems, setCartItems] = useState([]);
@@ -198,47 +199,24 @@ export default function Product() {
     { name: "Trend", icon: require("../../../assets/Trend.png") },
   ];
 
-const fetchProducts = async () => {
-  try {
-    // 1. GET APPROVED VENDORS
-    const approvedSnapshot = await getDocs(collection(db, 'ApprovedVendors'));
+  const fetchProducts = async () => {
+    try {
+      const q = query(collection(db, 'Products'), orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(q);
 
-    const vendorMap = {};
+      let list = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+        };
+      });
 
-    approvedSnapshot.docs.forEach(doc => {
-      const email = doc.id.replace(/_/g, '.'); // convert back
-      vendorMap[email] = doc.data(); // store full vendor data
-    });
-
-    // 2. GET PRODUCTS
-    const q = query(collection(db, 'Products'), orderBy('createdAt', 'desc'));
-    const snapshot = await getDocs(q);
-
-    let list = snapshot.docs.map(doc => {
-      const data = doc.data();
-
-      const vendor = vendorMap[data.vendorEmail];
-
-      return {
-        id: doc.id,
-        ...data,
-
-        // ✅ attach marketName from ApprovedVendors
-        marketName: vendor?.marketName || "Unknown Market",
-
-        // (optional extras if you want later)
-        vendorLatitude: vendor?.latitude,
-        vendorLongitude: vendor?.longitude,
-        vendorStatus: vendor?.penaltyStatus,
-      };
-    });
-
-    setProducts(list);
-
-  } catch (error) {
-    console.log(error);
-  }
-};
+      setProducts(list);
+    } catch (error) {
+      console.log(error);
+    }
+  };
 
   const fetchCartItems = async () => {
     const uid = auth.currentUser?.uid;
@@ -282,8 +260,11 @@ const fetchProducts = async () => {
       const matchesCat = category === "All" || p.category === category;
       const matchesSearch = p.productName?.toLowerCase().includes(searchText.toLowerCase());
       
-      // Market Match Condition
-      const matchesMarket = selectedMarket === "All Markets" || p.marketName === selectedMarket;
+      // Fixed market matching condition to point securely to uploadedBy.marketName nested schema
+      const itemMarketName = p.uploadedBy?.marketName || p.marketName || '';
+      const matchesMarket =
+        selectedMarket === "All Markets" ||
+        itemMarketName.toLowerCase() === selectedMarket.toLowerCase();
 
       return matchesCat && matchesSearch && matchesMarket;
     });
@@ -339,7 +320,35 @@ const fetchProducts = async () => {
           </View>
         </View>
 
-        {/* NEW: HORIZONTAL MARKET FILTER SCROLL */}
+
+
+        {/* ELEGANT SCROLLABLE CATEGORIES LIST */}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={styles.catList}
+        >
+          {categories.map((cat, i) => {
+            const isActive = category === cat.name;
+            return (
+              <TouchableOpacity
+                key={i}
+                onPress={() => setCategory(cat.name)}
+                activeOpacity={0.8}
+                style={[styles.catItem, isActive && styles.catItemActive]}
+              >
+                <View style={[styles.catIconWrapper, isActive && styles.catIconWrapperActive]}>
+                  <Image source={cat.icon} style={styles.catIcon} />
+                </View>
+                <Text style={[styles.catText, isActive && styles.catTextActive]}>
+                  {cat.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+                {/* HORIZONTAL MARKET FILTER SCROLL */}
         <View style={styles.marketFilterContainer}>
           <ScrollView
             horizontal
@@ -372,32 +381,6 @@ const fetchProducts = async () => {
             })}
           </ScrollView>
         </View>
-
-        {/* ELEGANT SCROLLABLE CATEGORIES LIST */}
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
-          contentContainerStyle={styles.catList}
-        >
-          {categories.map((cat, i) => {
-            const isActive = category === cat.name;
-            return (
-              <TouchableOpacity
-                key={i}
-                onPress={() => setCategory(cat.name)}
-                activeOpacity={0.8}
-                style={[styles.catItem, isActive && styles.catItemActive]}
-              >
-                <View style={[styles.catIconWrapper, isActive && styles.catIconWrapperActive]}>
-                  <Image source={cat.icon} style={styles.catIcon} />
-                </View>
-                <Text style={[styles.catText, isActive && styles.catTextActive]}>
-                  {cat.name}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
       </SafeAreaView>
 
       {/* PRODUCTS DISPLAY GRID */}
@@ -429,9 +412,6 @@ const fetchProducts = async () => {
   );
 }
 
-/* ---------------------------
-   STYLES
-----------------------------*/
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -484,7 +464,7 @@ const styles = StyleSheet.create({
   iconCircle: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 10,
     backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
@@ -516,7 +496,6 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '800',
   },
-  /* NEW MARKET FILTER STYLES */
   marketFilterContainer: {
     paddingVertical: 6,
   },
@@ -551,12 +530,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 6,
-    gap: 2,
   },
   marketTagText: {
     fontSize: 11,
     color: '#64748b',
-    fontWeight: '500',
+    fontWeight: '600',
     flex: 1,
   },
   catList: {
@@ -743,7 +721,7 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
     opacity: 0.8,
     marginBottom: 16,
-  },
+  }, 
   emptyTitle: {
     fontSize: 17,
     fontWeight: '700',

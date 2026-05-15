@@ -190,7 +190,7 @@ const SettingsScreen = () => {
           </TouchableOpacity>
 
           <View style={styles.infoSection}>
-            <Text style={styles.profileLabel}>Verified Partner</Text>
+            <Text style={styles.profileLabel}>Verified Vendor</Text>
             <Text style={styles.value} numberOfLines={1}>
               {vendorData.businessName || 'Business Name'}
             </Text>
@@ -352,8 +352,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+
   },
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.5 },
   headerSubtitle: { fontSize: 13, color: '#94a3b8', marginTop: 2 },

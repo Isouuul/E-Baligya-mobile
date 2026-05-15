@@ -9,33 +9,33 @@ import {
   TouchableOpacity,
   Dimensions,
   Alert,
-  ActivityIndicator, 
-  Linking, 
-  Platform
+  ActivityIndicator,
+  Platform,
+  StatusBar
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import MapView, { Marker } from 'react-native-maps';
 import { doc, deleteDoc, setDoc } from "firebase/firestore";
 import { db } from '../../../firebase';
 
 const { width } = Dimensions.get('window');
-const MAP_HEIGHT = 180;
+const MAP_HEIGHT = 200;
 
 const getStatusBadgeStyle = status => {
   switch (status) {
     case 'Pending':
-      return { backgroundColor: '#FEF3C7', color: '#D97706' }; // Soft Amber
+      return { backgroundColor: '#FFF7ED', color: '#C2410C', icon: 'clock-outline' };
     case 'Preparing':
-      return { backgroundColor: '#DBEAFE', color: '#2563EB' }; // Soft Blue
+      return { backgroundColor: '#EFF6FF', color: '#1D4ED8', icon: 'silverware-clean' };
     case 'ToDeliver':
-      return { backgroundColor: '#F5F3FF', color: '#7C3AED' }; // Soft Violet
+      return { backgroundColor: '#F5F3FF', color: '#6D28D9', icon: 'moped' };
     case 'Completed':
-      return { backgroundColor: '#D1FAE5', color: '#059669' }; // Soft Emerald
+      return { backgroundColor: '#ECFDF5', color: '#047857', icon: 'check-decagram' };
     case 'Cancelled':
-      return { backgroundColor: '#FEE2E2', color: '#DC2626' }; // Soft Red
+      return { backgroundColor: '#FEF2F2', color: '#B91C1C', icon: 'close-circle-outline' };
     default:
-      return { backgroundColor: '#F1F5F9', color: '#475569' }; // Soft Slate
+      return { backgroundColor: '#F8FAFC', color: '#475569', icon: 'help-circle-outline' };
   }
 };
 
@@ -45,7 +45,6 @@ export default function ViewOrderDetailsVendor() {
   const order = route.params?.order;
   const [isCancelling, setIsCancelling] = useState(false);
 
-  // Group items by vendor
   const groupedItems = useMemo(() => {
     const groups = {};
     order.items.forEach(item => {
@@ -55,45 +54,6 @@ export default function ViewOrderDetailsVendor() {
     });
     return Object.entries(groups).map(([shopName, items]) => ({ shopName, items }));
   }, [order.items]);
-
-  const renderItemCard = item => {
-    const base = Number(item.basePrice || 0);
-    const servicesTotal = (item.services || []).reduce((a, s) => a + Number(s.price || 0), 0);
-    const itemTotal = (base + servicesTotal) * (item.quantity || 1);
-
-    return (
-      <View key={item.productId} style={styles.itemCardNew}>
-        <View style={styles.productRow}>
-          {item.productImage ? (
-            <Image source={{ uri: item.productImage }} style={styles.productImageNew} />
-          ) : (
-            <View style={styles.placeholderImageNew}>
-              <Ionicons name="image-outline" size={28} color="#94A3B8" />
-            </View>
-          )}
-          <View style={styles.productDetailsNew}>
-            <Text style={styles.productTextNew} numberOfLines={2}>{item.productName}</Text>
-
-            {item.services && item.services.length > 0 && (
-              <View style={styles.servicesContainer}>
-                <Text style={styles.serviceHeader}>Additional Services:</Text>
-                {item.services.map((s, idx) => (
-                  <Text key={idx} style={styles.serviceTextNew}>
-                    • {s.label} <Text style={styles.servicePrice}>(+₱{Number(s.price).toFixed(2)})</Text>
-                  </Text>
-                ))}
-              </View>
-            )}
-            
-            <View style={styles.qtyPriceRow}>
-              <Text style={styles.qtyTextNew}>Qty: <Text style={styles.qtyHighlight}>{item.quantity}</Text></Text>
-              <Text style={styles.itemTotalNew}>₱{itemTotal.toFixed(2)}</Text>
-            </View>
-          </View>
-        </View>
-      </View>
-    );
-  };
 
   const handleCancelOrder = async () => {
     if (isCancelling) return;
@@ -109,16 +69,11 @@ export default function ViewOrderDetailsVendor() {
             setIsCancelling(true);
             try {
               const orderRef = doc(db, "Orders", order.id);
-
-              // Copy order data to CancelledOrders
               await setDoc(doc(db, "CancelledOrders", order.id), {
                 ...order,
                 cancelledAt: new Date(),
               });
-
-              // Delete original order
               await deleteDoc(orderRef);
-
               Alert.alert("Success", "Your order has been cancelled.");
               navigation.goBack();
             } catch (error) {
@@ -133,482 +88,319 @@ export default function ViewOrderDetailsVendor() {
     );
   };
 
+  const renderItemCard = item => {
+    const base = Number(item.basePrice || 0);
+    const servicesTotal = (item.services || []).reduce((a, s) => a + Number(s.price || 0), 0);
+    const itemTotal = (base + servicesTotal) * (item.quantity || 1);
+
+    return (
+      <View key={item.productId} style={styles.itemCardNew}>
+        <View style={styles.productRow}>
+          {item.productImage ? (
+            <Image source={{ uri: item.productImage }} style={styles.productImageNew} />
+          ) : (
+            <View style={styles.placeholderImageNew}>
+              <Ionicons name="image-outline" size={24} color="#CBD5E1" />
+            </View>
+          )}
+          <View style={styles.productDetailsNew}>
+            <View>
+              <Text style={styles.productTextNew} numberOfLines={1}>{item.productName}</Text>
+              {item.services && item.services.length > 0 && (
+                <View style={styles.servicesContainer}>
+                  {item.services.map((s, idx) => (
+                    <Text key={idx} style={styles.serviceTextNew}>
+                      • {s.label} <Text style={styles.servicePrice}>(+₱{Number(s.price).toFixed(2)})</Text>
+                    </Text>
+                  ))}
+                </View>
+              )}
+            </View>
+            
+            <View style={styles.qtyPriceRow}>
+              <View style={styles.qtyBadge}>
+                <Text style={styles.qtyTextNew}>× {item.quantity}</Text>
+              </View>
+              <Text style={styles.itemTotalNew}>₱{itemTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
-      {/* Premium Header */}
+      <StatusBar barStyle="dark-content" />
+      
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={24} color="#0F172A" />
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Feather name="arrow-left" size={22} color="#0F172A" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Order details</Text>
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle}>Order Details</Text>
+          <Text style={styles.headerSubtitle}>#{order.orderNumber}</Text>
+        </View>
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         
-        {/* Progress Tracker Flag */}
-        <View style={styles.statusBanner}>
-          <Text style={styles.statusLabel}>Current Status</Text>
-          <View style={[styles.statusBadgeGlobal, getStatusBadgeStyle(order.status)]}>
-            <View style={[styles.statusIndicatorDot, { backgroundColor: getStatusBadgeStyle(order.status).color }]} />
+        {/* Status Section */}
+        <View style={styles.statusSection}>
+          <View style={[styles.statusBadgeGlobal, { backgroundColor: getStatusBadgeStyle(order.status).backgroundColor }]}>
+            <MaterialCommunityIcons 
+              name={getStatusBadgeStyle(order.status).icon} 
+              size={18} 
+              color={getStatusBadgeStyle(order.status).color} 
+            />
             <Text style={[styles.statusTextGlobal, { color: getStatusBadgeStyle(order.status).color }]}>
               {order.status}
             </Text>
           </View>
+          <Text style={styles.orderDateText}>Placed on {new Date().toLocaleDateString()}</Text>
         </View>
 
-        {/* Address Card */}
+        {/* Delivery Card */}
         {order.address && (
-          <View style={styles.addressWrapper}>
-            <View style={styles.addressTitleRow}>
-              <View style={styles.iconCircle}>
-                <MaterialCommunityIcons name="map-marker-radius" size={20} color="#0F172A" />
-              </View>
-              <Text style={styles.sectionTitleNew}>Delivery Destination</Text>
+          <View style={styles.cardWrapper}>
+            <View style={styles.cardHeader}>
+              <Feather name="map-pin" size={18} color="#6366F1" />
+              <Text style={styles.cardTitle}>Delivery Address</Text>
             </View>
             
-            <View style={styles.addressDetailsContainer}>
+            <View style={styles.addressInfo}>
               <Text style={styles.addressNameText}>{order.address.fullName}</Text>
-              <Text style={styles.addressContactText}>📞 {order.address.contactNumber}</Text>
+              <Text style={styles.addressContactText}>{order.address.contactNumber}</Text>
               <Text style={styles.addressFullText}>{order.address.fullAddress}</Text>
-              
-              {order.address.latitude && order.address.longitude && (
-                <View style={styles.mapContainer}>
-                  <MapView
-                    style={styles.map}
-                    initialRegion={{
-                      latitude: order.address.latitude,
-                      longitude: order.address.longitude,
-                      latitudeDelta: 0.008,
-                      longitudeDelta: 0.008,
-                    }}
-                    scrollEnabled={false}
-                    zoomEnabled={false}
-                    pitchEnabled={false}
-                    rotateEnabled={false}
-                  >
-                    <Marker
-                      coordinate={{
-                        latitude: order.address.latitude,
-                        longitude: order.address.longitude,
-                      }}
-                      title="Delivery Location"
-                    />
-                  </MapView>
-                </View>
-              )}
             </View>
+            
+            {order.address.latitude && order.address.longitude && (
+              <View style={styles.mapContainer}>
+                <MapView
+                  style={styles.map}
+                  initialRegion={{
+                    latitude: order.address.latitude,
+                    longitude: order.address.longitude,
+                    latitudeDelta: 0.005,
+                    longitudeDelta: 0.005,
+                  }}
+                  scrollEnabled={false}
+                  zoomEnabled={false}
+                >
+                  <Marker coordinate={{ latitude: order.address.latitude, longitude: order.address.longitude }} />
+                </MapView>
+              </View>
+            )}
           </View>
         )}
 
         {/* Grouped Items */}
-        {groupedItems.map(group => {
-          const shopImage = group.items[0].uploadedBy?.profileImage || null;
-          return (
-            <View key={group.shopName} style={styles.vendorContainer}>
-              <View style={styles.vendorHeaderNew}>
-                {shopImage ? (
-                  <Image source={{ uri: shopImage }} style={styles.vendorImageNew} />
-                ) : (
-                  <View style={styles.vendorPlaceholderNew}>
-                    <Ionicons name="business" size={16} color="#64748B" />
-                  </View>
-                )}
-                <Text style={styles.shopNameNew}>{group.shopName}</Text>
-              </View>
-
-              {group.items.map(item => renderItemCard(item))}
+        {groupedItems.map(group => (
+          <View key={group.shopName} style={styles.vendorSection}>
+            <View style={styles.vendorHeader}>
+              <MaterialCommunityIcons name="storefront-outline" size={20} color="#64748B" />
+              <Text style={styles.shopNameNew}>{group.shopName}</Text>
             </View>
-          );
-        })}
-
-        {/* Order Summary Card */}
-        <View style={styles.orderSummaryNew}>
-          <Text style={styles.summaryTitleNew}>Bill Details</Text> 
-          
-          <View style={styles.summaryRowNew}>
-            <Text style={styles.summaryLabel}>Order ID</Text>
-            <Text style={styles.orderNumberText}>#{order.orderNumber}</Text>
+            {group.items.map(item => renderItemCard(item))}
           </View>
+        ))}
+
+        {/* Summary Card */}
+        <View style={styles.cardWrapper}>
+          <Text style={styles.cardTitleSummary}>Payment Summary</Text> 
           
-          <View style={styles.summaryRowNew}>
-            <Text style={styles.summaryLabel}>Items Subtotal</Text>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Subtotal</Text>
             <Text style={styles.summaryValue}>₱{order.subtotal.toFixed(2)}</Text>
           </View>
 
-          <View style={styles.summaryRowNew}>
-            <Text style={styles.summaryLabel}>Delivery Partner Fee</Text>
-            <Text style={styles.shippingValue}>₱{order.shippingFee.toFixed(2)}</Text>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Delivery Fee</Text>
+            <Text style={styles.summaryValue}>₱{order.shippingFee.toFixed(2)}</Text>
           </View>
           
           <View style={styles.divider} />
           
-          <View style={[styles.summaryRowNew, { marginTop: 12 }]}>
-            <Text style={styles.totalLabel}>Total Payable</Text>
-            <Text style={styles.totalValue}>₱{order.totalAmount.toFixed(2)}</Text>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Total Amount</Text>
+            <Text style={styles.totalValue}>₱{order.totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
           </View>
         </View>
 
-        {/* Cancel Button */}
+        {/* Action Button */}
         <TouchableOpacity
           disabled={isCancelling}
-          style={[
-            styles.cancelButton, 
-            { backgroundColor: isCancelling ? '#FDA4AF' : '#FFEBEB' }
-          ]}
+          style={[styles.cancelButton, isCancelling && { opacity: 0.7 }]}
           onPress={handleCancelOrder}
           activeOpacity={0.8}
         >
           {isCancelling ? (
             <ActivityIndicator color="#EF4444" />
           ) : (
-            <Text style={styles.cancelButtonText}>Cancel Order Request</Text>
+            <>
+              <Feather name="x-circle" size={18} color="#EF4444" style={{marginRight: 8}} />
+              <Text style={styles.cancelButtonText}>Cancel Order</Text>
+            </>
           )}
         </TouchableOpacity>
 
       </ScrollView>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#F8FAFC' 
+    backgroundColor: '#FBFBFE' 
   },
-  
-  // Premium Clean Header
   header: {
-    height: Platform.OS === 'ios' ? 90 : 60,
-    paddingTop: Platform.OS === 'ios' ? 30 : 0,
+    height: Platform.OS === 'ios' ? 110 : 70,
+    paddingTop: Platform.OS === 'ios' ? 50 : 10,
     backgroundColor: '#fff',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
-    marginTop: 35
   },
   backButton: { 
-    padding: 8,
-    borderRadius: 99,
-    backgroundColor: '#F1F5F9',
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#F1F5F9'
+  },
+  headerTitleContainer: {
+    flex: 1,
+    marginLeft: 15,
   },
   headerTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '800',
     color: '#0F172A',
-    letterSpacing: -0.3,
   },
-  headerSpacer: {
-    width: 40,
-  },
-
-  // Global Status Tracker
-  statusBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#fff',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  statusLabel: {
-    fontSize: 13,
-    fontWeight: '700',
+  headerSubtitle: {
+    fontSize: 12,
     color: '#64748B',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    fontWeight: '500'
+  },
+  headerSpacer: { width: 40 },
+
+  statusSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    backgroundColor: '#fff',
   },
   statusBadgeGlobal: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 99,
-  },
-  statusIndicatorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    gap: 8,
   },
   statusTextGlobal: {
     fontWeight: '800',
-    fontSize: 12,
-    textTransform: 'uppercase',
+    fontSize: 14,
+    letterSpacing: 0.5,
+  },
+  orderDateText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#94A3B8',
   },
 
-  // Address Card
-  addressWrapper: { 
+  cardWrapper: { 
     backgroundColor: '#fff', 
-    borderRadius: 16, 
+    borderRadius: 20, 
     marginHorizontal: 16,
     marginTop: 16, 
-    padding: 16, 
-    shadowColor: '#0F172A', 
-    shadowOpacity: 0.04, 
-    shadowRadius: 10, 
-    shadowOffset: { width: 0, height: 4 }, 
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#F1F5F9'
-  },
-  addressTitleRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    marginBottom: 12 
-  },
-  iconCircle: {
-    padding: 8,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 10,
-    marginRight: 8,
-  },
-  sectionTitleNew: { 
-    fontSize: 15, 
-    fontWeight: '800', 
-    color: '#0F172A',
-    letterSpacing: -0.2,
-  },
-  addressDetailsContainer: { 
-    marginTop: 4 
-  },
-  addressNameText: { 
-    fontSize: 15, 
-    fontWeight: '700', 
-    color: '#1E293B' 
-  },
-  addressContactText: { 
-    fontSize: 13, 
-    color: '#64748B', 
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  addressFullText: { 
-    fontSize: 13, 
-    color: '#475569', 
-    lineHeight: 18, 
-    marginTop: 6 
-  },
-  mapContainer: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginTop: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  map: { 
-    width: '100%', 
-    height: MAP_HEIGHT, 
-  },
-
-  // Vendor Header Section
-  vendorContainer: { 
-    marginHorizontal: 16, 
-    marginTop: 20 
-  },
-  vendorHeaderNew: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    marginBottom: 10,
-    marginLeft: 4,
-  },
-  vendorImageNew: { 
-    width: 32, 
-    height: 32, 
-    borderRadius: 16, 
-    marginRight: 10 
-  },
-  vendorPlaceholderNew: { 
-    width: 32, 
-    height: 32, 
-    borderRadius: 16, 
-    backgroundColor: '#F1F5F9', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    marginRight: 10 
-  },
-  shopNameNew: { 
-    fontSize: 14, 
-    fontWeight: '800', 
-    color: '#0F172A',
-    letterSpacing: -0.1,
-  },
-
-  // Premium Item Card
-  itemCardNew: { 
-    backgroundColor: '#fff', 
-    borderRadius: 16, 
-    padding: 12, 
-    marginBottom: 10, 
-    shadowColor: '#0F172A', 
+    padding: 20, 
+    shadowColor: '#000', 
     shadowOpacity: 0.03, 
-    shadowRadius: 6, 
-    shadowOffset: { width: 0, height: 3 }, 
-    elevation: 1,
+    shadowRadius: 15, 
+    shadowOffset: { width: 0, height: 5 }, 
+    elevation: 3,
     borderWidth: 1,
     borderColor: '#F1F5F9'
   },
-  productRow: { 
-    flexDirection: 'row', 
-    gap: 12 
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+    gap: 8
   },
-  productImageNew: { 
-    width: 76, 
-    height: 76, 
-    borderRadius: 12 
-  },
-  placeholderImageNew: { 
-    width: 76, 
-    height: 76, 
-    borderRadius: 12, 
-    backgroundColor: '#F1F5F9', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  productDetailsNew: { 
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  productTextNew: { 
-    fontSize: 14, 
-    fontWeight: '700', 
-    color: '#0F172A',
-    lineHeight: 18,
-  },
-  servicesContainer: { 
-    marginTop: 6,
-    paddingLeft: 4,
-    borderLeftWidth: 2,
-    borderLeftColor: '#E2E8F0',
-  },
-  serviceHeader: { 
-    fontSize: 11, 
+  cardTitle: { 
+    fontSize: 15, 
     fontWeight: '800', 
-    color: '#475569',
-    marginBottom: 2,
-  },
-  serviceTextNew: { 
-    fontSize: 11, 
-    color: '#64748B', 
-    marginTop: 1 
-  },
-  servicePrice: {
-    fontWeight: '700',
     color: '#1E293B',
   },
-  qtyPriceRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center',
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#F8FAFC',
+  addressInfo: { marginBottom: 12 },
+  addressNameText: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  addressContactText: { fontSize: 14, color: '#64748B', marginTop: 2 },
+  addressFullText: { fontSize: 14, color: '#475569', marginTop: 8, lineHeight: 20 },
+  
+  mapContainer: {
+    height: MAP_HEIGHT,
+    borderRadius: 15,
+    overflow: 'hidden',
+    marginTop: 5,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
-  qtyTextNew: { 
-    fontSize: 13, 
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  qtyHighlight: {
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  itemTotalNew: { 
-    fontSize: 15, 
-    fontWeight: '800', 
-    color: '#0F172A' 
-  },
+  map: { flex: 1 },
 
-  // Receipt Style Order Summary
-  orderSummaryNew: { 
+  vendorSection: { marginHorizontal: 16, marginTop: 24 },
+  vendorHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, marginLeft: 4 },
+  shopNameNew: { fontSize: 14, fontWeight: '700', color: '#64748B', textTransform: 'uppercase', letterSpacing: 1 },
+
+  itemCardNew: { 
     backgroundColor: '#fff', 
-    borderRadius: 16, 
-    padding: 16, 
-    marginHorizontal: 16, 
-    marginTop: 16, 
-    marginBottom: 20, 
-    shadowColor: '#0F172A', 
-    shadowOpacity: 0.04, 
-    shadowRadius: 10, 
-    shadowOffset: { width: 0, height: 4 }, 
-    elevation: 2,
+    borderRadius: 18, 
+    padding: 12, 
+    marginBottom: 12, 
     borderWidth: 1,
     borderColor: '#F1F5F9'
   },
-  summaryTitleNew: { 
-    fontSize: 15, 
-    fontWeight: '800', 
-    color: '#0F172A',
-    marginBottom: 14,
-    letterSpacing: -0.2,
-  },
-  summaryRowNew: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center',
-    marginVertical: 4 
-  },
-  summaryLabel: { 
-    fontSize: 13, 
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  orderNumberText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0F172A',
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  summaryValue: { 
-    fontSize: 13, 
-    fontWeight: '700', 
-    color: '#1E293B' 
-  },
-  shippingValue: { 
-    fontSize: 13, 
-    fontWeight: '700', 
-    color: '#1E293B' 
-  },
-  divider: { 
-    height: 1, 
-    backgroundColor: '#F1F5F9',
-    marginVertical: 12,
-  },
-  totalLabel: { 
-    fontSize: 15, 
-    fontWeight: '800', 
-    color: '#0F172A' 
-  },
-  totalValue: { 
-    fontSize: 18, 
-    fontWeight: '900', 
-    color: '#059669' // Premium Emerald Green
-  },
+  productRow: { flexDirection: 'row', gap: 12 },
+  productImageNew: { width: 85, height: 85, borderRadius: 14 },
+  placeholderImageNew: { width: 85, height: 85, borderRadius: 14, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
+  productDetailsNew: { flex: 1, justifyContent: 'space-between' },
+  productTextNew: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
+  servicesContainer: { marginTop: 4 },
+  serviceTextNew: { fontSize: 12, color: '#94A3B8' },
+  servicePrice: { color: '#64748B', fontWeight: '600' },
+  qtyPriceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  qtyBadge: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  qtyTextNew: { fontSize: 12, fontWeight: '700', color: '#475569' },
+  itemTotalNew: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
 
-  // Premium Cancellation Trigger Button
+  cardTitleSummary: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 20 },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  summaryLabel: { fontSize: 14, color: '#64748B' },
+  summaryValue: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
+  divider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 10 },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 },
+  totalLabel: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  totalValue: { fontSize: 22, fontWeight: '900', color: '#10B981' },
+
   cancelButton: { 
     marginHorizontal: 16, 
-    marginBottom: 24, 
-    borderRadius: 14, 
-    paddingVertical: 14, 
+    marginTop: 25, 
+    borderRadius: 16, 
+    paddingVertical: 16, 
     alignItems: 'center', 
     justifyContent: 'center', 
+    flexDirection: 'row',
+    backgroundColor: '#FFF1F1',
     borderWidth: 1,
     borderColor: '#FEE2E2',
   },
-  cancelButtonText: { 
-    color: '#EF4444', 
-    fontSize: 14, 
-    fontWeight: '800',
-    letterSpacing: -0.1,
-  }
+  cancelButtonText: { color: '#EF4444', fontSize: 15, fontWeight: '700' }
 });

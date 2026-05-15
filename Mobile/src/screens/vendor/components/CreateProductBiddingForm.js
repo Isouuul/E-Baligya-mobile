@@ -309,6 +309,8 @@ const CreateProductBiddingForm = ({ onCancel, onSubmit }) => {
           uid: user.uid,
           email: user.email,
           businessName: vendorData.businessName || 'Unknown',
+          marketName: vendorData.marketName || 'Unknown Market',
+
           vendorProfileImage: vendorData.profileImage || null,
         },
       };

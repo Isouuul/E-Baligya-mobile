@@ -15,7 +15,6 @@ import {
   KeyboardAvoidingView,
   Dimensions
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../../../firebase";
 import EditProductBiddingFormModal from "./EditProductBiddingFormModal";
@@ -37,16 +36,19 @@ const BiddingUploadsScreen = () => {
   const [search, setSearch] = useState("");
   const [dateFilter, setDateFilter] = useState("All");
   const [selectedCategory, setSelectedCategory] = useState("All");
-const [editModalVisible, setEditModalVisible] = useState(false);
-const [selectedProduct, setSelectedProduct] = useState(null);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false); // Controlled state for custom dropdown
   const [modalVisible, setModalVisible] = useState(false);
   const [showCreateProductModal, setShowCreateProductModal] = useState(false);
 
   const slideAnim = useState(new Animated.Value(0))[0];
-const handleEdit = (product) => {
-  setSelectedProduct(product);
-  setEditModalVisible(true);
-};
+  
+  const handleEdit = (product) => {
+    setSelectedProduct(product);
+    setEditModalVisible(true);
+  };
+
   // Fetch products
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "Bidding_Products"), (snapshot) => {
@@ -62,7 +64,7 @@ const handleEdit = (product) => {
     return unsub;
   }, []);
 
-  // FAB animation (kept as-is)
+  // FAB animation
   useEffect(() => {
     Animated.timing(slideAnim, {
       toValue: modalVisible ? 1 : 0,
@@ -112,7 +114,7 @@ const handleEdit = (product) => {
       </View>
 
       {/* Search + Filter */}
-      <View style={styles.searchDateContainer}>
+      <View style={[styles.searchDateContainer, { zIndex: 50 }]}>
         <View style={styles.searchBar}>
           <Text style={styles.searchIcon}>🔍</Text>
           <TextInput
@@ -124,16 +126,45 @@ const handleEdit = (product) => {
           />
         </View>
 
+        {/* UPDATED CUSTOM DROPDOWN */}
         <View style={styles.datePickerWrapper}>
-          <Picker
-            selectedValue={dateFilter}
-            onValueChange={setDateFilter}
-            style={styles.datePicker}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={styles.dropdownButton}
+            onPress={() => setDropdownOpen(!dropdownOpen)}
           >
-            <Picker.Item label="🗓️ All" value="All" />
-            <Picker.Item label="🗓️ Today" value="Today" />
-            <Picker.Item label="🗓️ Yesterday" value="Yesterday" />
-          </Picker>
+            <Text style={styles.dropdownText}>
+              🗓️ {dateFilter}
+            </Text>
+            <Text style={styles.dropdownArrow}>
+              {dropdownOpen ? "▲" : "▼"}
+            </Text>
+          </TouchableOpacity>
+
+          {dropdownOpen && (
+            <View style={styles.dropdownMenu}>
+              {["All", "Today", "Yesterday"].map((item, index) => (
+                <TouchableOpacity
+                  key={item}
+                  style={[
+                    styles.dropdownItem,
+                    index !== 2 && { borderBottomWidth: 1, borderBottomColor: "#f1f5f9" }
+                  ]}
+                  onPress={() => {
+                    setDateFilter(item);
+                    setDropdownOpen(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.dropdownItemText,
+                    dateFilter === item && { color: "#4f46e5", fontWeight: "700" }
+                  ]}>
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       </View>
 
@@ -193,12 +224,12 @@ const handleEdit = (product) => {
         <FlatList
           data={filtered}
           keyExtractor={(item) => item.id}
-renderItem={({ item }) => (
-  <ProductBiddingCard
-    product={item}
-    onEdit={handleEdit}
-  />
-)}
+          renderItem={({ item }) => (
+            <ProductBiddingCard
+              product={item}
+              onEdit={handleEdit}
+            />
+          )}
           contentContainerStyle={styles.list}
         />
       )}
@@ -230,57 +261,107 @@ renderItem={({ item }) => (
         </Text>
       </TouchableOpacity>
 
-      {/* ✅ CONNECTED CREATE FORM MODAL */}
+      {/* CREATE FORM MODAL */}
       {showCreateProductModal && (
         <CreateProductBiddingForm
           onCancel={() => setShowCreateProductModal(false)}
           onSubmit={() => setShowCreateProductModal(false)}
         />
       )}
-      {editModalVisible && selectedProduct && (
-  <EditProductBiddingFormModal
-    visible={editModalVisible}
-    existingBidding={selectedProduct}
-    onCancel={() => setEditModalVisible(false)}
-    onSubmit={() => {
-      setEditModalVisible(false);
-      setSelectedProduct(null);
-    }}
-  />
-)}
-
       
+      {/* EDIT FORM MODAL */}
+      {editModalVisible && selectedProduct && (
+        <EditProductBiddingFormModal
+          visible={editModalVisible}
+          existingBidding={selectedProduct}
+          onCancel={() => setEditModalVisible(false)}
+          onSubmit={() => {
+            setEditModalVisible(false);
+            setSelectedProduct(null);
+          }}
+        />
+      )}
     </View>
-    
   );
 };
 
-
-
 export default BiddingUploadsScreen;
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f8fafc" },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
-  headerTitle: { fontSize: 24, fontWeight: "800", color: "#0f172a" },
-  headerSubtitle: { fontSize: 13, color: "#64748b", marginTop: 2 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16, backgroundColor: "#1e3a8a", borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
+  headerTitle: { fontSize: 24, fontWeight: "800", color: "#fff" },
+  headerSubtitle: { fontSize: 13, color: "#fff", marginTop: 2 },
   badge: { backgroundColor: "#f1f5f9", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  headerCount: { fontSize: 13, fontWeight: "700", color: "#4f46e5" },
+  headerCount: { fontSize: 13, fontWeight: "700", color: "#fff" },
   searchDateContainer: { flexDirection: "row", paddingHorizontal: 16, marginTop: 16, alignItems: "center", gap: 10 },
   searchBar: { flex: 1, flexDirection: "row", backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 14, alignItems: "center", height: 50, borderWidth: 1, borderColor: "#e2e8f0" },
   searchIcon: { fontSize: 16, marginRight: 8 },
   searchInput: { flex: 1, fontSize: 15, color: "#0f172a", fontWeight: "500" },
-  datePickerWrapper: { backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#e2e8f0", width: 130, height: 50, justifyContent: "center", overflow: "hidden" },
-  datePicker: { width: "100%", marginLeft: 5 },
-  pickerItem: { fontSize: 14, fontWeight: "600" },
+  
+  // ADJUSTED CONTAINER FOR THE CUSTOM PICKER
+  datePickerWrapper: { 
+    width: 130, 
+    height: 50, 
+    position: 'relative' 
+  },
+  dropdownButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    height: 50,
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    width: "100%"
+  },
+  dropdownText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+  dropdownArrow: {
+    fontSize: 10,
+    color: "#94a3b8",
+  },
+  dropdownMenu: {
+    position: "absolute",
+    top: 55, 
+    left: 0,
+    right: 0,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    zIndex: 1000,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    overflow: 'hidden'
+  },
+  dropdownItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    backgroundColor: '#fff',
+  },
+  dropdownItemText: {
+    fontSize: 14,
+    color: "#475569",
+    fontWeight: "500",
+  },
+
   categoryContainer: { marginVertical: 14},
   categoryListContent: { paddingHorizontal: 16, gap: 12, justifyContent: "space-between" },
   categoryItem: { flexDirection: "column", alignItems: "center", flex: 1 },
   categoryItemActive: {},
   categoryIconBox: { width: 45, height: 45, borderRadius: 12, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e2e8f0", justifyContent: "center", alignItems: "center", marginBottom: 8 },
-  categoryIconBoxActive: {     backgroundColor: '#eff6ff',
-    borderColor: '#3b82f6',},
+  categoryIconBoxActive: { backgroundColor: '#eff6ff', borderColor: '#3b82f6' },
   categoryIcon: { width: 26, height: 26, resizeMode: "contain" },
-  categoryIconActive: {  },
+  categoryIconActive: {},
   categoryText: { fontSize: 12, fontWeight: "600", color: "#64748b", textAlign: "center" },
   categoryTextActive: { color: "#3b82f6" },
   list: { paddingHorizontal: 16, paddingBottom: 100 },
@@ -304,4 +385,3 @@ const styles = StyleSheet.create({
   modalDivider: { height: 1, backgroundColor: "#f1f5f9" },
   modalScroll: { paddingHorizontal: 24, paddingTop: 16 }
 });
-

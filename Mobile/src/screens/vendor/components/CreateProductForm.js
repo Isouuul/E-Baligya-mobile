@@ -239,6 +239,8 @@ const CreateProductForm = ({ onCancel, onSubmit, visible }) => {
           uid: user.uid,
           email: user.email,
           businessName: vendorData.businessName || 'Unknown',
+          marketName: vendorData.marketName || 'Unknown Market',
+
           vendorProfileImage: vendorData.profileImage || null,
           freshness: freshness || 'Unknown',
         },

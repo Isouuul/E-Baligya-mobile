@@ -68,7 +68,8 @@ import VendorNotifications from './src/screens/vendor/components/VendorNotificat
 import ViewOrderDetailsVendor from './src/screens/vendor/components/ViewOrderDetailsVendor';
 import VendorSignupBusPermit from './src/screens/vendor/VendorSignupBusPermit';
 import AllReviews from './src/screens/user/AllReview';
-
+import BuyNowModal from './src/screens/user/BuyNow';
+import BuyNowModalCheckedout from './src/screens/user/BuyNowModalCheckedout';
 const Stack = createNativeStackNavigator();
 Text.defaultProps = Text.defaultProps || {};
 Text.defaultProps.style = {
@@ -117,7 +118,9 @@ export default function App() {
         <Stack.Screen name="TermsPolicyScreen" component={TermsPolicyScreen} />
         <Stack.Screen name='SettingsScreen' component={SettingsScreen} />
         <Stack.Screen name='ViewShop' component={ViewShop} />
+        <Stack.Screen name= "BuyNowModal" component={BuyNowModal} />
         <Stack.Screen name='BuyNowCheckedOut' component={BuyNowCheckedOut} />
+        <Stack.Screen name='BuyNowModalCheckedout' component={BuyNowModalCheckedout} />
         <Stack.Screen name='BiddingUploadsScreen' component={BiddingUploadsScreen} />
         <Stack.Screen name='EditProductFormModal' component={EditProductFormModal} />
         <Stack.Screen name='SubscriptionsScreen' component={SubscriptionsScreen} />
