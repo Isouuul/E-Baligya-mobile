@@ -12,11 +12,8 @@ import {
   Dimensions,
   SafeAreaView,
   StatusBar,
-  Modal,
-  TextInput
 } from "react-native";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from "@expo/vector-icons";
 import { db, auth } from "../../firebase";
 import {
   collection,
@@ -24,14 +21,12 @@ import {
   where,
   onSnapshot,
   doc,
-  getDoc,
   getDocs,
   setDoc,
   deleteDoc,
 } from "firebase/firestore";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import * as FileSystem from "expo-file-system";
-import AddToBasketIcon from "../../../assets/add-to-basket.png";
 import AddingCartModal from "./AddingCartModal";
 import ReportModal from "./ReportModal";
 
@@ -48,10 +43,10 @@ export default function ViewShop() {
   const [vendorProfileImage, setVendorProfileImage] = useState(null);
   const [followersCount, setFollowersCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
-  const [currentUserData, setCurrentUserData] = useState(null);
   const [businessName, setBusinessName] = useState(null);
 
-  const [modalVisible, setModalVisible] = useState(false);
+  // Split states for distinct overlays
+  const [cartModalVisible, setCartModalVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedVariation, setSelectedVariation] = useState(null);
   const [selectedServices, setSelectedServices] = useState([]);
@@ -68,11 +63,7 @@ export default function ViewShop() {
   // --- Follow / Unfollow Logic ---
   const handleToggleFollow = async () => {
     if (!auth.currentUser) {
-      showSileo({
-        title: 'Login Required',
-        message: 'Please sign in to follow this shop.',
-        type: 'info'
-      });
+      alert('Login Required: Please sign in to follow this shop.');
       return;
     }
 
@@ -227,7 +218,7 @@ export default function ViewShop() {
               </View>
             </View>
 
-            {/* CATEGORIES - BOX WITH TITLE BELOW */}
+            {/* CATEGORIES */}
             <View style={styles.categoryContainer}>
               <Text style={[styles.sectionLabel, { marginLeft: 16, marginBottom: 10 }]}>Categories</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScroll}>
@@ -256,42 +247,57 @@ export default function ViewShop() {
           </>
         )}
         renderItem={({ item }) => (
-          <View style={[styles.productCardRow, { marginHorizontal: 16 }]}>
-            <View style={styles.imageContainer}>
+          <View style={styles.productCard}>
+            {/* Product Image Section */}
+            <View style={styles.imageSection}>
               <Base64Image 
                 base64={item.imageBase64} 
                 productId={item.id} 
-                style={styles.productImageRow} 
+                style={styles.productImage} 
               />
               <View style={styles.categoryBadge}>
-                <Text style={styles.productCategoryText}>{item.category}</Text>
+                <Text style={styles.categoryBadgeText}>{item.category}</Text>
               </View>
-            </View>
-            <View style={styles.productInfoRow}>
-              <Text numberOfLines={1} style={styles.productNameRow}>{item.productName}</Text>
-              <Text style={styles.productPriceRow}>₱{item.basePrice}<Text style={styles.unitText}>/kg</Text></Text>
-            </View>
-            <View style={styles.buttonColumnRow}>
               <TouchableOpacity 
-                style={styles.addToCartBtnRow} 
-                onPress={() => { setSelectedProduct(item); setModalVisible(true); }}
-              >
-                <Text style={[styles.buyNowText, { color: '#3B82F6' }]}>Add to Cart</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.buyNowBtn} 
-                onPress={() => navigation.navigate("BuyNowCheckedOut", { product: item, quantity: 1 })}
-              >
-                <Text style={styles.buyNowText}>Buy Now</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.reportBtn}
+                style={styles.reportIconButton}
                 onPress={() => { setReportProduct(item); setReportModalVisible(true); }}
               >
-                <Ionicons name="flag-outline" size={14} color="#EF4444" />
+                <Ionicons name="flag" size={14} color="#EF4444" />
               </TouchableOpacity>
+            </View>
+
+            {/* Product Details Section */}
+            <View style={styles.detailsSection}>
+              <View>
+                <Text numberOfLines={1} style={styles.productTitle}>{item.productName}</Text>
+                <View style={styles.priceContainer}>
+                  <Text style={styles.currencySymbol}>₱</Text>
+                  <Text style={styles.priceAmount}>{item.basePrice}</Text>
+                  <Text style={styles.priceUnit}>/kg</Text>
+                </View>
+              </View>
+
+              {/* Action Buttons Row */}
+              <View style={styles.actionRow}>
+                <TouchableOpacity 
+                  style={styles.cartButton} 
+                  onPress={() => { 
+                    setSelectedProduct(item); 
+                    setCartModalVisible(true); 
+                  }}
+                >
+                  <Ionicons name="cart-outline" size={20} color="#1E3A8A" />
+                </TouchableOpacity>
+
+ <TouchableOpacity
+  style={styles.buyButton}
+  onPress={() => {
+    // REMOVE FUNCTION
+  }}
+>
+  <Text style={styles.buyButtonText}>Buy Now</Text>
+</TouchableOpacity>
+              </View>
             </View>
           </View>
         )}
@@ -324,8 +330,28 @@ export default function ViewShop() {
         )}
       />
 
-      <AddingCartModal visible={modalVisible} onClose={() => setModalVisible(false)} product={selectedProduct} selectedVariation={selectedVariation} setSelectedVariation={setSelectedVariation} selectedServices={selectedServices} setSelectedServices={setSelectedServices} />
+      {/* Cart Modal Container */}
+      <AddingCartModal 
+        visible={cartModalVisible} 
+        onClose={() => setCartModalVisible(false)} 
+        product={selectedProduct} 
+        selectedVariation={selectedVariation} 
+        setSelectedVariation={setSelectedVariation} 
+        selectedServices={selectedServices} 
+        setSelectedServices={setSelectedServices} 
+      />
 
+<TouchableOpacity
+  style={styles.buyButton}
+  onPress={() => {
+    // REMOVE FUNCTION
+  }}
+>
+  <Text style={styles.buyButtonText}>Buy Now</Text>
+</TouchableOpacity>
+
+
+      {/* Product Reporting Modal Container */}
       <ReportModal 
         visible={reportModalVisible} 
         onClose={() => {
@@ -368,8 +394,6 @@ const styles = StyleSheet.create({
   followingBtn: { backgroundColor: '#F1F5F9' },
   followText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
   followingText: { color: '#64748B' },
-  
-  // FIXED CATEGORIES LOGIC SPECIFICALLY
   categoryContainer: { marginTop: 10 },
   categoryScroll: { paddingLeft: 16, paddingRight: 8, marginLeft: 18},
   categoryItem: { alignItems: 'center', marginRight: 12 },
@@ -384,55 +408,71 @@ const styles = StyleSheet.create({
     borderColor: '#F1F5F9',
     marginBottom: 6
   },
-  activeCategoryIconWrapper: {     backgroundColor: '#eff6ff', borderColor: '#3b82f6',},
+  activeCategoryIconWrapper: { backgroundColor: '#eff6ff', borderColor: '#3b82f6' },
   categoryIcon: { width: 22, height: 22, resizeMode: 'contain' },
   categoryButtonText: { fontSize: 12, color: '#000', fontWeight: '500', textAlign: 'center' },
   activeCategoryText: { color: '#1E3A8A', fontWeight: '700' },
-
-  // RESTORED AVAILABLE PRODUCTS ORIGINAL LOGIC & VISUALS
-  productCardRow: { flexDirection: 'row', backgroundColor: '#FFF', padding: 12, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#F1F5F9' },
-  productImageRow: { width: 80, height: 80, borderRadius: 12 },
-  productInfoRow: { flex: 1, marginLeft: 12, justifyContent: 'center' },
-  productNameRow: { fontSize: 15, fontWeight: '700', color: '#1E293B' },
-  productCategory: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
-  productPriceRow: { fontSize: 16, fontWeight: '800', color: '#1E3A8A', marginTop: 6 },
-  unitText: { fontSize: 11, color: '#64748B', fontWeight: '400' },
-  buttonColumnRow: { justifyContent: 'center', width: 100 },
-  addToCartBtnRow: {
-    width: '100%',
-    paddingVertical: 8,
-    backgroundColor: "#EFF6FF",
-    borderRadius: 8,
-    marginBottom: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
+  productCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    flexDirection: 'row',
+    padding: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
     borderWidth: 1,
-    borderColor: '#DBEAFE'
+    borderColor: '#F1F5F9',
   },
-  addIconRow: { width: 20, height: 20 },
-  buyNowBtn: { 
-    width: '100%',
-    backgroundColor: '#1E3A8A', 
-    paddingVertical: 8, 
+  imageSection: { position: 'relative' },
+  productImage: { width: 100, height: 100, borderRadius: 16 },
+  categoryBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    backgroundColor: 'rgba(30, 58, 138, 0.9)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  buyNowText: { 
-    color: '#FFF', 
-    fontSize: 11, 
-    fontWeight: '700' 
-  },
-  reportBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#FEE2E2',
+  categoryBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
+  reportIconButton: {
+    position: 'absolute',
+    bottom: -5,
+    right: -5,
+    backgroundColor: '#FFF',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#FECACA'
+    borderColor: '#FEE2E2',
+    elevation: 2,
   },
+  detailsSection: { flex: 1, marginLeft: 16, justifyContent: 'space-between', paddingVertical: 2 },
+  productTitle: { fontSize: 16, fontWeight: '700', color: '#1E293B', marginBottom: 4 },
+  priceContainer: { flexDirection: 'row', alignItems: 'baseline' },
+  currencySymbol: { fontSize: 14, fontWeight: '700', color: '#1E3A8A' },
+  priceAmount: { fontSize: 20, fontWeight: '800', color: '#1E3A8A', marginHorizontal: 2 },
+  priceUnit: { fontSize: 12, color: '#64748B', fontWeight: '500' },
+  actionRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  cartButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+  },
+  buyButton: { flex: 1, height: 40, backgroundColor: '#1E3A8A', borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  buyButtonText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
   reviewsSection: { padding: 16, marginTop: 10 },
   reviewSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   seeAllText: { fontSize: 12, color: '#3B82F6', fontWeight: '600' },
@@ -446,21 +486,5 @@ const styles = StyleSheet.create({
   reviewComment: { fontSize: 13, color: '#475569', lineHeight: 18 },
   noCommentText: { fontSize: 12, color: '#94A3B8', fontStyle: 'italic' },
   emptyReviewBox: { padding: 20, alignItems: 'center', borderStyle: 'dashed', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 12 },
-  emptyReviewText: { color: '#94A3B8', fontSize: 13 },
-  imageContainer: { position: 'relative' },
-  categoryBadge: {
-    position: 'absolute',
-    marginTop: 70,
-    left: 25,
-    backgroundColor: "#1e3a8a",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  productCategoryText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-  },
+  emptyReviewText: { color: '#94A3B8', fontSize: 13 }
 });

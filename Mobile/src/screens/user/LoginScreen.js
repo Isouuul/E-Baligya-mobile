@@ -137,11 +137,46 @@ const LoginScreen = ({ navigation }) => {
       setMessageType('error');
       setMessage('🚫 Access Denied: This account is not registered as a user.');
     }
-  } catch (error) {
-    console.error(error);
-    setMessageType('error');
-    setMessage('❌ Login Failed: ' + error.message);
-  } finally {
+} catch (error) {
+  console.error(error);
+
+  let customMessage = '❌ Something went wrong. Please try again.';
+
+  switch (error.code) {
+    case 'auth/invalid-email':
+      customMessage = '⚠️ Please enter a valid email address.';
+      break;
+
+    case 'auth/user-not-found':
+      customMessage = '🚫 No account found with this email.';
+      break;
+
+    case 'auth/wrong-password':
+      customMessage = '🔑 Incorrect password. Please try again.';
+      break;
+
+    case 'auth/invalid-credential':
+      customMessage = 'Incorrect email or password.';
+      break;
+
+    case 'auth/too-many-requests':
+      customMessage =
+        '⏳ Too many failed login attempts. Please try again later.';
+      break;
+
+    case 'auth/network-request-failed':
+      customMessage =
+        '📶 Network error. Please check your internet connection.';
+      break;
+
+    default:
+      customMessage = '❌ Login failed. Please try again.';
+      break;
+  }
+
+  setMessageType('error');
+  setMessage(customMessage);
+} finally {
     setLoading(false);
   }
 };

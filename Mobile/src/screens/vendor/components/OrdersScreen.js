@@ -24,6 +24,7 @@ export default function VendorOrdersScreen() {
   const navigation = useNavigation();
   const [orders, setOrders] = useState([]); 
   const [toDeliverOrders, setToDeliverOrders] = useState([]);
+  const [toPickupOrders, setToPickupOrders] = useState([]);
   const [completedOrders, setCompletedOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeStatus, setActiveStatus] = useState('Pending');
@@ -41,13 +42,20 @@ export default function VendorOrdersScreen() {
   });
   const [pendingDeclineOrder, setPendingDeclineOrder] = useState(null);
 
-  const STATUSES = ['Pending', 'Preparing', 'To Deliver', 'Complete', 'Cancelled'];
-
+const STATUSES = [
+  'Pending',
+  'Preparing',
+  'To Deliver',
+  'To Pickup',
+  'Complete',
+  'Cancelled'
+];
   const getStatusColor = (status) => {
     switch (status) {
       case 'Pending': return '#F59E0B'; 
       case 'Preparing': return '#3B82F6'; 
-      case 'To Deliver': return '#10B981'; 
+      case 'To Deliver': return '#10B981';
+      case 'To Pickup': return '#8B5CF6'; 
       case 'Complete': return '#6366F1'; 
       case 'Cancelled': return '#EF4444'; 
       default: return '#64748B';
@@ -78,6 +86,22 @@ export default function VendorOrdersScreen() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+  const ref = collection(db, 'To_Pickup_Orders');
+  const q = query(ref, orderBy('createdAt', 'desc'));
+
+  const unsubscribe = onSnapshot(q, snapshot => {
+    const data = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    setToPickupOrders(data);
+  });
+
+  return () => unsubscribe();
+}, []);
 
   useEffect(() => {
     const ref = collection(db, 'Completed_Orders');
@@ -147,37 +171,108 @@ export default function VendorOrdersScreen() {
     });
   };
 
-  const handleDeliverOrder = async (order) => {
-    if (processing === order.id) return;
-    setProcessing(order.id);
-    try {
-      const deliverRef = doc(db, 'To_Deliver_Orders', order.id);
-      const ordersRef = doc(db, 'Orders', order.id);
-      await runTransaction(db, async (transaction) => {
-        const deliverSnap = await transaction.get(deliverRef);
-        if (deliverSnap.exists()) throw new Error("Order already moved.");
-        const productSnapshots = [];
-        for (const item of order.items) {
-          const productRef = doc(db, 'Products', item.productId);
-          const productSnap = await transaction.get(productRef);
-          if (productSnap.exists()) productSnapshots.push({ ref: productRef, snap: productSnap, item });
+const handleDeliverOrder = async (order) => {
+  if (processing === order.id) return;
+
+  setProcessing(order.id);
+
+  try {
+    const ordersRef = doc(db, 'Orders', order.id);
+
+    const deliverRef = doc(db, 'To_Deliver_Orders', order.id);
+
+    const pickupRef = doc(db, 'To_Pickup_Orders', order.id);
+
+    await runTransaction(db, async (transaction) => {
+      const productSnapshots = [];
+
+      for (const item of order.items) {
+        const productRef = doc(db, 'Products', item.productId);
+
+        const productSnap = await transaction.get(productRef);
+
+        if (productSnap.exists()) {
+          productSnapshots.push({
+            ref: productRef,
+            snap: productSnap,
+            item,
+          });
         }
-        for (const { ref, snap, item } of productSnapshots) {
-          const currentQty = snap.data().quantityKg || 0;
-          const orderQty = item.quantity || 0;
-          const newQty = currentQty - orderQty;
-          if (newQty < 0) throw new Error(`Insufficient stock for ${item.productName}`);
-          transaction.update(ref, { quantityKg: newQty });
+      }
+
+      for (const { ref, snap, item } of productSnapshots) {
+        const currentQty = snap.data().quantityKg || 0;
+
+        const orderQty = item.quantity || 0;
+
+        const newQty = currentQty - orderQty;
+
+        if (newQty < 0) {
+          throw new Error(`Insufficient stock for ${item.productName}`);
         }
-        transaction.set(deliverRef, { ...order, status: 'To Deliver' });
-        transaction.delete(ordersRef);
-      });
-      Alert.alert('Success', `Order ${order.orderNumber} moved to To Deliver.`);
-    } catch (error) {
-      Alert.alert('Error', error.message || 'Failed to move order.');
-    }
-    setProcessing(null);
-  };
+
+        transaction.update(ref, {
+          quantityKg: newQty,
+        });
+      }
+
+      // DELIVERY
+      if (order.deliveryMethod === 'Delivery') {
+        transaction.set(deliverRef, {
+          ...order,
+          status: 'To Deliver',
+        });
+      }
+
+      // PICKUP
+      if (order.deliveryMethod === 'Pickup') {
+        transaction.set(pickupRef, {
+          ...order,
+          status: 'To Pickup',
+        });
+
+        // USER NOTIFICATION
+        const notifRef = doc(
+          collection(db, 'User_Notifications_Product')
+        );
+
+        transaction.set(notifRef, {
+          userId: order.userId,
+          orderId: order.id,
+
+          title: 'Order Ready for Pickup',
+
+          message:
+            'Your order is now ready for pickup.',
+
+          type: 'ORDER_TO_PICKUP',
+
+          deliveryMethod: 'Pickup',
+
+          read: false,
+
+          createdAt: new Date(),
+        });
+      }
+
+      transaction.delete(ordersRef);
+    });
+
+    Alert.alert(
+      'Success',
+      order.deliveryMethod === 'Pickup'
+        ? `Order ${order.orderNumber} is ready for pickup.`
+        : `Order ${order.orderNumber} moved to To Deliver.`
+    );
+  } catch (error) {
+    Alert.alert(
+      'Error',
+      error.message || 'Failed to process order.'
+    );
+  }
+
+  setProcessing(null);
+};
 
   const handleAcceptOrder = async (order) => {
     if (processing === order.id) return;
@@ -213,14 +308,92 @@ export default function VendorOrdersScreen() {
     setProcessing(null);
   };
 
+  const handleCompletePickup = async (order) => {
+  if (processing === order.id) return;
+
+  setProcessing(order.id);
+
+  try {
+    const completeRef = doc(
+      db,
+      'Completed_Orders',
+      order.id
+    );
+
+    const pickupRef = doc(
+      db,
+      'To_Pickup_Orders',
+      order.id
+    );
+
+    await runTransaction(db, async (transaction) => {
+      const completeSnap =
+        await transaction.get(completeRef);
+
+      if (completeSnap.exists()) {
+        throw new Error('Order already completed.');
+      }
+
+      transaction.set(completeRef, {
+        ...order,
+        status: 'Complete',
+        completedAt: new Date(),
+      });
+
+      transaction.delete(pickupRef);
+
+      // NOTIFICATION
+      const notifRef = doc(
+        collection(db, 'User_Notifications_Product')
+      );
+
+      transaction.set(notifRef, {
+        userId: order.userId,
+        orderId: order.id,
+
+        title: 'Pickup Completed',
+
+        message:
+          'Your pickup order has been completed successfully.',
+
+        type: 'ORDER_COMPLETED',
+
+        read: false,
+
+        createdAt: new Date(),
+      });
+    });
+
+    Alert.alert(
+      'Completed',
+      `Pickup order ${order.orderNumber} completed.`
+    );
+  } catch (error) {
+    Alert.alert(
+      'Error',
+      error.message || 'Failed to complete pickup.'
+    );
+  }
+
+  setProcessing(null);
+};
+
   const getStatusCount = (status) => {
     if (status === 'To Deliver') return toDeliverOrders.length;
+    if (status === 'To Pickup') return toPickupOrders.length;
     if (status === 'Complete') return completedOrders.length;
     return orders.filter(o => o.status === status).length;
   };
 
-  const sourceOrders = activeStatus === 'To Deliver' ? toDeliverOrders : activeStatus === 'Complete' ? completedOrders : orders;
-  const filteredOrders = sourceOrders.filter(o => {
+const sourceOrders =
+  activeStatus === 'To Deliver'
+    ? toDeliverOrders
+    : activeStatus === 'To Pickup'
+    ? toPickupOrders
+    : activeStatus === 'Complete'
+    ? completedOrders
+    : orders;
+      const filteredOrders = sourceOrders.filter(o => {
     const matchesStatus = (activeStatus === 'To Deliver' || activeStatus === 'Complete') ? true : o.status === activeStatus;
     const matchesSearch = searchQuery === '' || o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) || o.items.some(i => i.productName.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesStatus && matchesSearch;
@@ -310,7 +483,11 @@ export default function VendorOrdersScreen() {
                 disabled={processing === item.id}
                 onPress={() => handleDeliverOrder(item)}
               >
-                {processing === item.id ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.btnPrimaryText}>Ship Order</Text>}
+                {processing === item.id ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.btnPrimaryText}>
+  {item.deliveryMethod === 'Pickup'
+    ? 'Ready Pickup'
+    : 'Ship Order'}
+</Text>}
               </TouchableOpacity>
             )}
 
@@ -323,6 +500,25 @@ export default function VendorOrdersScreen() {
                 {processing === item.id ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.btnPrimaryText}>Mark Delivered</Text>}
               </TouchableOpacity>
             )}
+
+            {item.status === 'To Pickup' && (
+  <TouchableOpacity
+    style={[
+      styles.btnPrimary,
+      { backgroundColor: '#8B5CF6' },
+    ]}
+    disabled={processing === item.id}
+    onPress={() => handleCompletePickup(item)}
+  >
+    {processing === item.id ? (
+      <ActivityIndicator color="#FFFFFF" size="small" />
+    ) : (
+      <Text style={styles.btnPrimaryText}>
+        Complete Pickup
+      </Text>
+    )}
+  </TouchableOpacity>
+)}
           </View>
         </View>
       </TouchableOpacity>
