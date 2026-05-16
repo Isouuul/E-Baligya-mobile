@@ -29,7 +29,7 @@ export default function ChatScreenVendor({ route, navigation }) {
   const { chatId, clientId, clientName } = route.params;
   const vendorId = auth.currentUser?.uid;
 
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState([]); 
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const flatListRef = useRef(null);
