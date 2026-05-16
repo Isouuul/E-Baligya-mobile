@@ -3,7 +3,7 @@ export default {
     owner: "shezzowicked15",
     name: "E-BALIGYA",
     slug: "e-baligya",
-    version: "1.0.0",
+    version: "18.0.0",
     newArchEnabled: false,
     
     icon: "./assets/ebaligya-logo.png",
