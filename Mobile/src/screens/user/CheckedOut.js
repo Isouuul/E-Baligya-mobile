@@ -1,4 +1,3 @@
-// src/screens/Users/CheckedOut.js
 import React, { useMemo, useEffect, useState } from 'react';
 import {
   View,
@@ -10,7 +9,8 @@ import {
   ActivityIndicator,
   TextInput,
   SafeAreaView,
-  StatusBar
+  StatusBar,
+  Modal
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -32,11 +32,21 @@ import {
 export default function CheckedOut() {
   const navigation = useNavigation();
   const route = useRoute();
-  const selectedItems = route.params?.selectedItems || [];
+  
+  // Account for both incoming parameters profiles safely
+  const selectedItems = useMemo(() => {
+    if (route.params?.cartItems) return route.params.cartItems; // Came from CartShop
+    if (route.params?.product) return [route.params.product];    // Came from Buy Now direct
+    return [];
+  }, [route.params]);
+
+  const checkoutOrigin = route.params?.origin || 'direct'; // 'cart' or 'direct'
+
   const [paymentMethod, setPaymentMethod] = useState('Cash-On-Delivery');
   const [deliveryMethod, setDeliveryMethod] = useState('Delivery');
   const [leaveNote, setLeaveNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false); // New state for success modal
 
   const SHIPPING_FEE = 50;
 
@@ -119,6 +129,8 @@ export default function CheckedOut() {
 
   const subtotal = useMemo(() => {
     return selectedItems.reduce((sum, item) => {
+      if (item.totalPrice) return sum + Number(item.totalPrice);
+      
       const base = Number(item.basePrice || 0);
       const servicesTotal = (item.selectedServices || []).reduce((a, s) => a + Number(s.price || 0), 0);
       return sum + (base + servicesTotal) * (item.quantity || 1);
@@ -128,12 +140,12 @@ export default function CheckedOut() {
   const totalAmount = subtotal + (deliveryMethod === 'Delivery' ? SHIPPING_FEE : 0);
 
   const renderItemCard = item => {
-    const base = Number(item.basePrice || 0);
-    const servicesTotal = (item.selectedServices || []).reduce((a, s) => a + Number(s.price || 0), 0);
-    const itemTotal = (base + servicesTotal) * (item.quantity || 1);
+    const displayPrice = item.totalPrice 
+      ? item.totalPrice 
+      : (Number(item.basePrice || 0) + (item.selectedServices || []).reduce((a, s) => a + Number(s.price || 0), 0)) * (item.quantity || 1);
 
     return (
-      <View key={item.id} style={styles.itemCardPremium}>
+      <View key={item.cartItemId || item.id || item.productId} style={styles.itemCardPremium}>
         <View style={styles.productRow}>
           {item.productImage ? (
             <Image source={{ uri: item.productImage }} style={styles.productImagePremium} resizeMode="cover" />
@@ -164,13 +176,111 @@ export default function CheckedOut() {
             )}
 
             <View style={styles.qtyPriceRowPremium}>
-              <Text style={styles.qtyTextPremium}>Quantity: {item.quantity}</Text>
-              <Text style={styles.itemTotalPremium}>₱{itemTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
+              <Text style={styles.qtyTextPremium}>Quantity: {item.quantity}kg</Text>
+              <Text style={styles.itemTotalPremium}>₱{displayPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
             </View>
           </View>
         </View>
       </View>
     );
+  };
+
+  const handlePlaceOrder = async () => {
+    if (isSubmitting) return;
+    const user = auth.currentUser;
+    if (!user) return;
+
+    if (deliveryMethod === 'Delivery' && !address) {
+      Toast.show({
+        type: 'error',
+        text1: 'Address Required',
+        text2: 'Please select a delivery address to proceed.',
+        visibilityTime: 5000,
+      });
+      return;
+    }
+
+    const orderNumber = generateOrderNumber();
+
+    try {
+      setIsSubmitting(true);
+      const userRef = doc(db, 'Users', user.uid);
+      const userSnap = await getDoc(userRef);
+      let userData = {};
+      
+      if (userSnap.exists()) {
+        const data = userSnap.data();
+        userData = {
+          firstName: data.firstName || '',
+          lastName: data.lastName || '',
+          profileImage: data.profileImage || null,
+        };
+      }
+
+      const orderData = {
+        orderNumber,
+        userId: user.uid,
+        userFirstName: userData.firstName,
+        userLastName: userData.lastName,
+        userProfileImage: userData.profileImage,
+        items: selectedItems.map(item => ({
+          productId: item.productId || item.id,
+          productName: item.productName,
+          productImage: item.productImage || null,
+          category: item.category || 'Uncategorized',
+          quantity: item.quantity,
+          basePrice: item.basePrice,
+          services: item.selectedServices || [],
+          uploadedBy: item.uploadedBy || null,
+          totalPrice: item.totalPrice || null
+        })),
+        deliveryMethod,
+        shippingFee: deliveryMethod === 'Delivery' ? SHIPPING_FEE : 0,
+        subtotal,
+        totalAmount,
+        paymentMethod,
+        leaveNote: leaveNote || '',
+        address: deliveryMethod === 'Delivery' ? { ...address } : null,
+        status: 'Pending',
+        createdAt: serverTimestamp(),
+      };
+
+      // 1. Save order to FireStore
+      await addDoc(collection(db, 'Orders'), orderData);
+
+      // 2. Clear from cart collection ONLY if order originated from CartShop screen
+      if (checkoutOrigin === 'cart') {
+        const cartCollection = collection(db, 'Carts', user.uid, 'items');
+        
+        await Promise.all(
+          selectedItems.map(item => {
+            if (item.cartItemId) {
+              return deleteDoc(doc(cartCollection, item.cartItemId));
+            }
+            return Promise.resolve();
+          })
+        );
+      }
+
+      // Open the Success Modal emphasize highlight
+      setShowSuccessModal(true);
+
+    } catch (error) {
+      console.error("Order processing failed: ", error);
+      Toast.show({
+        type: 'error',
+        text1: 'Order failed',
+        text2: 'Failed to place order. Please try again.',
+        visibilityTime: 5000,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCloseSuccessModal = () => {
+    setShowSuccessModal(false);
+    navigation.navigate('ConsumerTabs', { screen: 'Product' });
   };
 
   if (selectedItems.length === 0) {
@@ -192,6 +302,7 @@ export default function CheckedOut() {
   return (
     <SafeAreaView style={styles.safeContainer}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      
       {/* Premium Header */}
       <View style={styles.headerPremium}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButtonCircle}>
@@ -217,10 +328,10 @@ export default function CheckedOut() {
               <Text style={styles.editButtonText}>Change</Text>
             </TouchableOpacity>
           </View>
-          
+
           <View style={styles.addressBox}>
             {loadingAddress ? (
-              <ActivityIndicator size="small" color="#0F172A" />
+              <ActivityIndicator size="small" color="#3b82f6" />
             ) : address ? (
               <View>
                 <Text style={styles.addressName}>{address.fullName}</Text>
@@ -233,7 +344,7 @@ export default function CheckedOut() {
           </View>
         </View>
 
-        {/* Order Items */}
+        {/* Order Items Grouped by Shop/Vendor */}
         {groupedItems.map(group => (
           <View key={group.shopName} style={styles.vendorGroup}>
             <View style={styles.vendorHeader}>
@@ -246,40 +357,40 @@ export default function CheckedOut() {
 
         {/* Delivery & Payment Container */}
         <View style={styles.sectionCardPremium}>
-           <Text style={styles.sectionTitlePremium}>Payment & Shipping</Text>
-           
-           <View style={styles.optionGrid}>
-              <TouchableOpacity 
-                style={[styles.optionPill, deliveryMethod === 'Delivery' && styles.optionPillActive]}
-                onPress={() => setDeliveryMethod('Delivery')}
-              >
-                <Text style={[styles.optionPillText, deliveryMethod === 'Delivery' && styles.optionPillTextActive]}>Standard Delivery</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.optionPill, deliveryMethod === 'Pickup' && styles.optionPillActive]}
-                onPress={() => setDeliveryMethod('Pickup')}
-              >
-                <Text style={[styles.optionPillText, deliveryMethod === 'Pickup' && styles.optionPillTextActive]}>Store Pickup</Text>
-              </TouchableOpacity>
-           </View>
+          <Text style={styles.sectionTitlePremium}>Payment & Shipping</Text>
 
-           <View style={styles.dividerPremium} />
+          <View style={styles.optionGrid}>
+            <TouchableOpacity
+              style={[styles.optionPill, deliveryMethod === 'Delivery' && styles.optionPillActive]}
+              onPress={() => setDeliveryMethod('Delivery')}
+            >
+              <Text style={[styles.optionPillText, deliveryMethod === 'Delivery' && styles.optionPillTextActive]}>Delivery</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.optionPill, deliveryMethod === 'Pickup' && styles.optionPillActive]}
+              onPress={() => setDeliveryMethod('Pickup')}
+            >
+              <Text style={[styles.optionPillText, deliveryMethod === 'Pickup' && styles.optionPillTextActive]}> Store Pickup</Text>
+            </TouchableOpacity>
+          </View>
 
-           <TouchableOpacity 
-             style={styles.paymentMethodSelector}
-             onPress={() => setPaymentMethod('Cash-On-Delivery')}
-           >
-             <View style={styles.row}>
-               <View style={styles.iconCircleGreen}>
-                 <MaterialCommunityIcons name="cash-multiple" size={20} color="#10B981" />
-               </View>
-               <View style={{ marginLeft: 12 }}>
-                 <Text style={styles.paymentMainText}>Cash on Delivery</Text>
-                 <Text style={styles.paymentSubText}>Pay when you receive the items</Text>
-               </View>
-             </View>
-             <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-           </TouchableOpacity>
+          <View style={styles.dividerPremium} />
+
+          <TouchableOpacity
+            style={styles.paymentMethodSelector}
+            onPress={() => setPaymentMethod('Cash-On-Delivery')}
+          >
+            <View style={styles.row}>
+              <View style={styles.iconCircleGreen}>
+                <MaterialCommunityIcons name="cash-multiple" size={20} color="#10B981" />
+              </View>
+              <View style={{ marginLeft: 12 }}>
+                <Text style={styles.paymentMainText}>Cash on Delivery</Text>
+                <Text style={styles.paymentSubText}>Pay when you receive the items</Text>
+              </View>
+            </View>
+            <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+          </TouchableOpacity>
         </View>
 
         {/* Note Card */}
@@ -300,7 +411,7 @@ export default function CheckedOut() {
           <Text style={styles.summaryTitlePremium}>Summary</Text>
           <View style={styles.summaryRowPremium}>
             <Text style={styles.summaryLabel}>Subtotal</Text>
-            <Text style={styles.summaryValue}>₱{subtotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
+            <Text style={styles.summaryValue}>₱{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
           </View>
           <View style={styles.summaryRowPremium}>
             <Text style={styles.summaryLabel}>Delivery Fee</Text>
@@ -309,7 +420,7 @@ export default function CheckedOut() {
           <View style={styles.summaryDivider} />
           <View style={styles.summaryRowPremium}>
             <Text style={styles.totalLabelPremium}>Total Amount</Text>
-            <Text style={styles.totalValuePremium}>₱{totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
+            <Text style={styles.totalValuePremium}>₱{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
           </View>
         </View>
       </ScrollView>
@@ -318,252 +429,133 @@ export default function CheckedOut() {
       <View style={styles.footerPremium}>
         <View>
           <Text style={styles.footerTotalLabel}>Grand Total</Text>
-          <Text style={styles.footerTotalValue}>₱{totalAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
+          <Text style={styles.footerTotalValue}>₱{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
         </View>
         <TouchableOpacity
           style={[styles.checkoutButtonPremium, isSubmitting && styles.checkoutButtonDisabled]}
           activeOpacity={0.8}
           disabled={isSubmitting}
-          onPress={async () => {
-            if (isSubmitting) return;
-            const user = auth.currentUser;
-            if (!user) return;
-
-            if (deliveryMethod === 'Delivery' && !address) {
-              Toast.show({
-                type: 'error',
-                text1: 'Address Required',
-                text2: 'Please select a delivery address to proceed.',
-                visibilityTime: 5000,
-              });
-              return;
-            }
-
-            const orderNumber = generateOrderNumber();
-
-            try {
-              setIsSubmitting(true);
-              const userRef = doc(db, 'Users', user.uid);
-              const userSnap = await getDoc(userRef);
-              let userData = {};
-              if (userSnap.exists()) {
-                const data = userSnap.data();
-                userData = {
-                  firstName: data.firstName || '',
-                  lastName: data.lastName || '',
-                  profileImage: data.profileImage || null,
-                };
-              }
-
-              const orderData = {
-                orderNumber,
-                userId: user.uid,
-                userFirstName: userData.firstName,
-                userLastName: userData.lastName,
-                userProfileImage: userData.profileImage,
-                items: selectedItems.map(item => ({
-                  productId: item.productId,
-                  productName: item.productName,
-                  productImage: item.productImage || null,
-                  category: item.category || 'Uncategorized',
-                  quantity: item.quantity,
-                  basePrice: item.basePrice,
-                  services: item.selectedServices || [],
-                  uploadedBy: item.uploadedBy || null,
-                })),
-                deliveryMethod,
-                shippingFee: deliveryMethod === 'Delivery' ? SHIPPING_FEE : 0,
-                subtotal,
-                totalAmount,
-                paymentMethod,
-                leaveNote: leaveNote || '',
-                address: deliveryMethod === 'Delivery' ? { ...address } : null,
-                status: 'Pending',
-                createdAt: serverTimestamp(),
-              };
-
-              await addDoc(collection(db, 'Orders'), orderData);
-              const cartCollection = collection(db, 'Carts', user.uid, 'items');
-              await Promise.all(selectedItems.map(item => deleteDoc(doc(cartCollection, item.id))));
-
-              Toast.show({
-                type: 'success',
-                text1: 'Order placed',
-                text2: 'Your order has been placed successfully.',
-                visibilityTime: 5000,
-              });
-
-              setTimeout(() => {
-                navigation.navigate('ConsumerTabs', { screen: 'Product' });
-              }, 1200);
-            } catch (error) {
-              Toast.show({
-                type: 'error',
-                text1: 'Order failed',
-                text2: 'Failed to place order. Please try again.',
-                visibilityTime: 5000,
-              });
-            } finally {
-              setIsSubmitting(false);
-            }
-          }}
+          onPress={handlePlaceOrder}
         >
           {isSubmitting ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color="#3b82f6" />
           ) : (
             <>
               <Text style={styles.checkoutTextPremium}>Place Order</Text>
-              <Ionicons name="chevron-forward" size={18} color="#fff" />
+              <Ionicons name="chevron-forward" size={18} color="#3b82f6" />
             </>
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Emphasized Premium Success Modal */}
+      <Modal
+        visible={showSuccessModal}
+        transparent={true}
+        animationType="fade"
+        statusBarTranslucent
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.successIconCircle}>
+              <Ionicons name="checkmark" size={44} color="#10B981" />
+            </View>
+            
+            <Text style={styles.modalTitle}>Order Placed!</Text>
+            <Text style={styles.modalSubtitle}>
+              Your fresh order has been posted successfully and is waiting vendor confirmation.
+            </Text>
+
+            <TouchableOpacity 
+              style={styles.modalButton} 
+              onPress={handleCloseSuccessModal}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalButtonText}>Continue Shopping</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeContainer: { flex: 1, backgroundColor: '#FAFAFA' },
-  scrollContent: { paddingBottom: 120 },
-  row: { flexDirection: 'row', alignItems: 'center' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-
-  // Header
-  headerPremium: {
-    height: 64,
-    backgroundColor: '#fff',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  backButtonCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F8FAFC',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitlePremium: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-
-  // Sections
-  sectionCardPremium: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    marginHorizontal: 16,
-    padding: 16,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-  },
+  safeContainer: { flex: 1, backgroundColor: '#FAFAFA', marginTop: 35},
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#1E293B', marginTop: 16, marginBottom: 4 },
+  emptySubtitle: { fontSize: 14, color: '#64748B', textAlign: 'center', marginBottom: 24 },
+  browseButtonPremium: { backgroundColor: '#0F172A', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24 },
+  browseTextPremium: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
+  headerPremium: { height: 60, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  backButtonCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
+  headerTitlePremium: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
+  scrollContent: { padding: 16, paddingBottom: 110 },
+  sectionCardPremium: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#F1F5F9' },
   sectionHeaderPremium: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   titleIconRow: { flexDirection: 'row', alignItems: 'center' },
   sectionTitlePremium: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginLeft: 8 },
-  editButton: { backgroundColor: '#F8FAFC', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
-  editButtonText: { color: '#0F172A', fontSize: 12, fontWeight: '700' },
-
-  // Address
-  addressBox: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12 },
-  addressName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  addressPhone: { fontSize: 13, color: '#64748B', marginTop: 2 },
-  addressText: { fontSize: 13, color: '#64748B', marginTop: 4, lineHeight: 18 },
-
-  // Items
-  vendorGroup: { marginHorizontal: 16, marginTop: 16 },
-  vendorHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, paddingLeft: 4 },
-  vendorNameText: { fontSize: 12, fontWeight: '700', color: '#64748B', marginLeft: 8, textTransform: 'uppercase' },
-  itemCardPremium: { backgroundColor: '#fff', borderRadius: 16, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: '#F1F5F9' },
+  editButton: { paddingVertical: 4, paddingHorizontal: 8,     backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6', borderRadius: 6, borderWidth: 0.5},
+  editButtonText: { color: '#0EA5E9', fontSize: 13, fontWeight: '600' },
+  addressBox: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  addressName: { fontSize: 14, fontWeight: '600', color: '#1E293B', marginBottom: 4 },
+  addressPhone: { fontSize: 12, color: '#64748B', marginBottom: 4 },
+  addressText: { fontSize: 13, color: '#475569', lineHeight: 18 },
+  emptyTextNote: { fontSize: 13, color: '#94A3B8', textAlign: 'center', paddingVertical: 8 },
+  vendorGroup: { marginBottom: 16 },
+  vendorHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, marginBottom: 8 },
+  vendorNameText: { fontSize: 13, fontWeight: '600', color: '#64748B', marginLeft: 6 },
+  itemCardPremium: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#F1F5F9' },
   productRow: { flexDirection: 'row' },
-  productImagePremium: { width: 70, height: 70, borderRadius: 12 },
-  placeholderImagePremium: { width: 70, height: 70, borderRadius: 12, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
-  productDetailsPremium: { flex: 1, marginLeft: 12 },
-  productTextPremium: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  tagRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  categoryBadgePremium: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginRight: 8 },
-  categoryBadgeTextPremium: { fontSize: 9, fontWeight: '700', color: '#475569' },
-  serviceContainer: { marginTop: 6, gap: 2 },
-  serviceItem: { flexDirection: 'row', alignItems: 'center' },
+  productImagePremium: { width: 70, height: 70, borderRadius: 10 },
+  placeholderImagePremium: { width: 70, height: 70, borderRadius: 10, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
+  productDetailsPremium: { flex: 1, marginLeft: 12, justifyContent: 'space-between' },
+  productTextPremium: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
+  tagRow: { flexDirection: 'row', marginTop: 2 },
+  categoryBadgePremium: { backgroundColor: '#E0F2FE', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  categoryBadgeTextPremium: { fontSize: 9, fontWeight: '700', color: '#0EA5E9' },
+  serviceContainer: { marginVertical: 4 },
+  serviceItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
   serviceTextPremium: { fontSize: 11, color: '#64748B' },
-  qtyPriceRowPremium: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 8 },
-  qtyTextPremium: { fontSize: 12, fontWeight: '600', color: '#94A3B8' },
-  itemTotalPremium: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
-
-  // Options
-  optionGrid: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  optionPill: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0' },
-  optionPillActive: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
-  optionPillText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
-  optionPillTextActive: { color: '#fff' },
-  dividerPremium: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 16 },
-  paymentMethodSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 4 },
-  iconCircleGreen: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center' },
-  paymentMainText: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  paymentSubText: { fontSize: 12, color: '#64748B' },
-  premiumInput: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 12, marginTop: 10, height: 80, fontSize: 13, color: '#0F172A' },
-
-  // Summary
-summaryCardPremium: {
-    marginHorizontal: 16,
-    marginTop: 24,
-    padding: 20,
-    backgroundColor: '#FFFFFF', // Luxurious pure white background
-    borderRadius: 20,           // Smooth organic corners
-    borderWidth: 1.5,
-    borderColor: '#F1F5F9',     // Ultra-thin metallic slate boundary
-    
-    // Smooth premium drop shadows
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.03,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 16,
-    elevation: 3,
-  },  summaryTitlePremium: { fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 12 },
+  qtyPriceRowPremium: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  qtyTextPremium: { fontSize: 12, color: '#64748B', fontWeight: '500' },
+  itemTotalPremium: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  optionGrid: { flexDirection: 'row', gap: 10, marginBottom: 14, marginTop: 8 },
+  optionPill: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
+  optionPillActive: {     backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6', borderWidth: 1 },
+  optionPillText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
+  optionPillTextActive: { color: '#FFFFFF' },
+  dividerPremium: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 12 },
+  paymentMethodSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#F0FDF4', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#DCFCE7' },
+  row: { flexDirection: 'row', alignItems: 'center' },
+  iconCircleGreen: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center' },
+  paymentMainText: { fontSize: 14, fontWeight: '600', color: '#14532D' },
+  paymentSubText: { fontSize: 11, color: '#166534' },
+  premiumInput: { backgroundColor: '#F8FAFC', borderRadius: 12, padding: 12, height: 80, textAlignVertical: 'top', fontSize: 13, color: '#1E293B', borderWidth: 1, borderColor: '#E2E8F0' },
+  summaryCardPremium: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#F1F5F9' },
+  summaryTitlePremium: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginBottom: 12 },
   summaryRowPremium: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  summaryLabel: { fontSize: 14, color: '#64748B' },
-  summaryValue: { fontSize: 14, fontWeight: '600', color: '#0F172A' },
-  summaryDivider: { height: 1, backgroundColor: '#E2E8F0', marginVertical: 12, borderStyle: 'dashed' },
-  totalLabelPremium: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-  totalValuePremium: { fontSize: 20, fontWeight: '900', color: '#0F172A' },
-
-  // Footer
-  footerPremium: {
-    position: 'absolute',
-    bottom: 0,
-    width: '100%',
-    backgroundColor: '#fff',
-    padding: 20,
-    paddingBottom: 34,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-  },
-  footerTotalLabel: { fontSize: 12, color: '#94A3B8', fontWeight: '600' },
-  footerTotalValue: { fontSize: 22, fontWeight: '900', color: '#0F172A' },
-  checkoutButtonPremium: {
-    backgroundColor: '#0F172A',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  checkoutButtonDisabled: {
-    opacity: 0.8,
-  },
-  checkoutTextPremium: { color: '#fff', fontSize: 15, fontWeight: '800', marginRight: 8 },
-
-  // Empty State
-  emptyTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginTop: 16 },
-  emptySubtitle: { fontSize: 14, color: '#94A3B8', marginTop: 4 },
-  browseButtonPremium: { backgroundColor: '#0F172A', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 12, marginTop: 24 },
-  browseTextPremium: { color: '#fff', fontWeight: '700' },
+  summaryLabel: { fontSize: 13, color: '#64748B' },
+  summaryValue: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
+  summaryDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 8 },
+  totalLabelPremium: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  totalValuePremium: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  footerPremium: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFFFFF', padding: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 5 },
+  footerTotalLabel: { fontSize: 11, color: '#64748B', fontWeight: '500' },
+  footerTotalValue: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+  checkoutButtonPremium: { flexDirection: 'row',     backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6', borderWidth: 0.5, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12, alignItems: 'center', gap: 6 },
+  checkoutButtonDisabled: { opacity: 0.6 },
+  checkoutTextPremium: { color: '#3b82f6', fontSize: 14, fontWeight: '700' },
+  
+  // Modal Specific Styling
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalContent: { backgroundColor: '#FFFFFF', width: '100%', maxWidth: 340, borderRadius: 24, padding: 28, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 10 },
+  successIconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', marginBottom: 10, textAlign: 'center' },
+  modalSubtitle: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  modalButton: {     backgroundColor: '#eff6ff', borderColor: '#3b82f6', borderWidth: 0.5, width: '100%', paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
+  modalButtonText: { color: '#3b82f6', fontSize: 15, fontWeight: '600' }
 });

@@ -9,7 +9,6 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet } from 'react-native';
 import Toast from 'react-native-toast-message';
 
-import InboxScreen from './src/screens/InboxScreen';
 
 import LoginScreen from './src/screens/user/LoginScreen';
 import SignupScreen from './src/screens/user/User-SignupScreen';
@@ -43,7 +42,9 @@ import OrdersDetails from './src/screens/user/OrdersDetails';
 import AddingCartModal from './src/screens/user/AddingCartModal';
 import CheckedOutBidding from './src/screens/user/CheckedOutBidding';
 import ReportModal from './src/screens/user/ReportModal';
-
+import ReportShop from './src/screens/user/ReportShop';
+import InboxScreenUser from './src/screens/user/InboxScreenUser';
+import ChatScreenVendor from './src/screens/vendor/components/ChatScreenVendor';
 //Vendor
 import VendorSignupStep1 from './src/screens/vendor/VendorSignupStep1';
 import VendorSignupStep2 from './src/screens/vendor/VendorSignupStep2';
@@ -91,7 +92,6 @@ export default function App() {
 
         <Stack.Navigator initialRouteName="Login" screenOptions={{ headerShown: false }}>
 
-        <Stack.Screen name='InboxScreen' component={InboxScreen}/>
 
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Signup" component={SignupScreen} />
@@ -127,7 +127,9 @@ export default function App() {
         <Stack.Screen name='VendorInbox' component={VendorInbox}/>
         <Stack.Screen name='VendorNotifications' component={VendorNotifications} />
         <Stack.Screen name='ViewOrderDetailsVendor' component={ViewOrderDetailsVendor} />
-
+        <Stack.Screen name='ReportShop' component={ReportShop} />
+        <Stack.Screen name='InboxScreenUser' component={InboxScreenUser} />
+        <Stack.Screen name="ChatScreenVendor" component={ChatScreenVendor} options={{ headerTitle: 'Chat' }} />
         {/* User Tabs */}
         <Stack.Screen name='ConsumerTabs' component={ConsumerTabs} />
         <Stack.Screen name="ProductScreen" component={ProductScreen} />

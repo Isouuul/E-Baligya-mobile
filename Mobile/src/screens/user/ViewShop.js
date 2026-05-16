@@ -28,9 +28,12 @@ import {
 import { useRoute, useNavigation } from "@react-navigation/native";
 import * as FileSystem from "expo-file-system";
 import AddingCartModal from "./AddingCartModal";
-import ReportModal from "./ReportModal";
+import ReportShop from "./ReportShop"; // Update path if placed elsewhere
+
 
 const { width } = Dimensions.get('window');
+// Calculate width dynamically for 2 columnrs with appropriate spacing
+const CARD_WIDTH = (width - 44) / 2; 
 
 export default function ViewShop() {
   const route = useRoute();
@@ -44,14 +47,13 @@ export default function ViewShop() {
   const [followersCount, setFollowersCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
   const [businessName, setBusinessName] = useState(null);
-
+const [shopReportVisible, setShopReportVisible] = useState(false);
   // Split states for distinct overlays
   const [cartModalVisible, setCartModalVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedVariation, setSelectedVariation] = useState(null);
   const [selectedServices, setSelectedServices] = useState([]);
 
-  const [reportModalVisible, setReportModalVisible] = useState(false);
   const [reportProduct, setReportProduct] = useState(null);
 
   const [averageRating, setAverageRating] = useState(0);
@@ -183,12 +185,14 @@ export default function ViewShop() {
       <View style={styles.customHeader}>
         <TouchableOpacity style={styles.iconCircle} onPress={() => navigation.goBack()}><Ionicons name="arrow-back" size={22} color="#1E3A8A" /></TouchableOpacity>
         <View style={styles.headerTitleWrap}><Text style={styles.headerTitleText}>{businessName}</Text><Text style={styles.headerSubTitle}>Vendor Profile</Text></View>
-        <TouchableOpacity style={styles.iconCircle} onPress={() => setReportModalVisible(true)}><Image source={require("../../../assets/Alert.png")} style={styles.headerIcon} resizeMode="contain" /></TouchableOpacity>
+        <TouchableOpacity style={styles.iconCircle} onPress={() => setShopReportVisible(true)}><Image source={require("../../../assets/Alert.png")} style={styles.headerIcon} resizeMode="contain" /></TouchableOpacity>
       </View>
 
       <FlatList
         data={filteredProducts}
         keyExtractor={(item) => item.id}
+        numColumns={2}
+        columnWrapperStyle={styles.rowWrapper}
         contentContainerStyle={{ paddingBottom: 40 }}
         ListHeaderComponent={() => (
           <>
@@ -243,7 +247,7 @@ export default function ViewShop() {
                 })}
               </ScrollView>
             </View>
-            <Text style={[styles.sectionLabel, { marginLeft: 16, marginTop: 10 }]}>Available Products</Text>
+            <Text style={[styles.sectionLabel, { marginLeft: 16, marginTop: 15, marginBottom: 5 }]}>Available Products</Text>
           </>
         )}
         renderItem={({ item }) => (
@@ -258,27 +262,19 @@ export default function ViewShop() {
               <View style={styles.categoryBadge}>
                 <Text style={styles.categoryBadgeText}>{item.category}</Text>
               </View>
-              <TouchableOpacity 
-                style={styles.reportIconButton}
-                onPress={() => { setReportProduct(item); setReportModalVisible(true); }}
-              >
-                <Ionicons name="flag" size={14} color="#EF4444" />
-              </TouchableOpacity>
             </View>
 
             {/* Product Details Section */}
             <View style={styles.detailsSection}>
-              <View>
-                <Text numberOfLines={1} style={styles.productTitle}>{item.productName}</Text>
+              <Text numberOfLines={1} style={styles.productTitle}>{item.productName}</Text>
+              
+              <View style={styles.cardFooter}>
                 <View style={styles.priceContainer}>
                   <Text style={styles.currencySymbol}>₱</Text>
                   <Text style={styles.priceAmount}>{item.basePrice}</Text>
                   <Text style={styles.priceUnit}>/kg</Text>
                 </View>
-              </View>
 
-              {/* Action Buttons Row */}
-              <View style={styles.actionRow}>
                 <TouchableOpacity 
                   style={styles.cartButton} 
                   onPress={() => { 
@@ -286,17 +282,8 @@ export default function ViewShop() {
                     setCartModalVisible(true); 
                   }}
                 >
-                  <Ionicons name="cart-outline" size={20} color="#1E3A8A" />
+                  <Ionicons name="cart-outline" size={18} color="#1E3A8A" />
                 </TouchableOpacity>
-
- <TouchableOpacity
-  style={styles.buyButton}
-  onPress={() => {
-    // REMOVE FUNCTION
-  }}
->
-  <Text style={styles.buyButtonText}>Buy Now</Text>
-</TouchableOpacity>
               </View>
             </View>
           </View>
@@ -341,27 +328,16 @@ export default function ViewShop() {
         setSelectedServices={setSelectedServices} 
       />
 
-<TouchableOpacity
-  style={styles.buyButton}
-  onPress={() => {
-    // REMOVE FUNCTION
-  }}
->
-  <Text style={styles.buyButtonText}>Buy Now</Text>
-</TouchableOpacity>
-
-
-      {/* Product Reporting Modal Container */}
-      <ReportModal 
-        visible={reportModalVisible} 
-        onClose={() => {
-          setReportModalVisible(false);
-          setReportProduct(null);
-        }} 
-        productId={reportProduct?.id} 
-        productName={reportProduct?.productName} 
-        product={reportProduct} 
-      />
+{/* Product Reporting Modal Container */}
+<ReportShop 
+  visible={shopReportVisible} 
+  onClose={() => {
+    setShopReportVisible(false);
+  }} 
+  vendorId={vendorId}
+  businessName={businessName}
+  vendorProfileImage={vendorProfileImage}
+/>
     </SafeAreaView>
   );
 }
@@ -395,7 +371,7 @@ const styles = StyleSheet.create({
   followText: { color: '#FFF', fontSize: 13, fontWeight: '600' },
   followingText: { color: '#64748B' },
   categoryContainer: { marginTop: 10 },
-  categoryScroll: { paddingLeft: 16, paddingRight: 8, marginLeft: 18},
+  categoryScroll: { paddingLeft: 16, paddingRight: 8, marginLeft: 2 },
   categoryItem: { alignItems: 'center', marginRight: 12 },
   categoryIconWrapper: { 
     width: 52, 
@@ -412,67 +388,56 @@ const styles = StyleSheet.create({
   categoryIcon: { width: 22, height: 22, resizeMode: 'contain' },
   categoryButtonText: { fontSize: 12, color: '#000', fontWeight: '500', textAlign: 'center' },
   activeCategoryText: { color: '#1E3A8A', fontWeight: '700' },
+  
+  // --- Grid Product Row ---
+  rowWrapper: {
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
   productCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    flexDirection: 'row',
-    padding: 12,
+    borderRadius: 16,
+    width: CARD_WIDTH,
+    marginBottom: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
     borderWidth: 1,
     borderColor: '#F1F5F9',
+    overflow: 'hidden',
   },
-  imageSection: { position: 'relative' },
-  productImage: { width: 100, height: 100, borderRadius: 16 },
+  imageSection: { position: 'relative', width: '100%' },
+  productImage: { width: '100%', height: CARD_WIDTH * 0.9, contentFit: 'cover' },
   categoryBadge: {
     position: 'absolute',
-    top: 6,
-    left: 6,
-    backgroundColor: 'rgba(30, 58, 138, 0.9)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    top: 8,
+    left: 8,
+    backgroundColor: 'rgba(30, 58, 138, 0.85)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
-  categoryBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
-  reportIconButton: {
-    position: 'absolute',
-    bottom: -5,
-    right: -5,
-    backgroundColor: '#FFF',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#FEE2E2',
-    elevation: 2,
-  },
-  detailsSection: { flex: 1, marginLeft: 16, justifyContent: 'space-between', paddingVertical: 2 },
-  productTitle: { fontSize: 16, fontWeight: '700', color: '#1E293B', marginBottom: 4 },
-  priceContainer: { flexDirection: 'row', alignItems: 'baseline' },
-  currencySymbol: { fontSize: 14, fontWeight: '700', color: '#1E3A8A' },
-  priceAmount: { fontSize: 20, fontWeight: '800', color: '#1E3A8A', marginHorizontal: 2 },
-  priceUnit: { fontSize: 12, color: '#64748B', fontWeight: '500' },
-  actionRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  categoryBadgeText: { color: '#FFF', fontSize: 8, fontWeight: '800', textTransform: 'uppercase' },
+  detailsSection: { padding: 10, justifyContent: 'space-between', flex: 1 },
+  productTitle: { fontSize: 14, fontWeight: '700', color: '#1E293B', marginBottom: 6 },
+  cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  priceContainer: { flexDirection: 'row', alignItems: 'baseline', flex: 1, marginRight: 4 },
+  currencySymbol: { fontSize: 12, fontWeight: '700', color: '#1E3A8A' },
+  priceAmount: { fontSize: 16, fontWeight: '800', color: '#1E3A8A', marginHorizontal: 1 },
+  priceUnit: { fontSize: 10, color: '#64748B', fontWeight: '500' },
   cartButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     backgroundColor: '#EFF6FF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 8,
     borderWidth: 1,
     borderColor: '#DBEAFE',
   },
-  buyButton: { flex: 1, height: 40, backgroundColor: '#1E3A8A', borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  buyButtonText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+
   reviewsSection: { padding: 16, marginTop: 10 },
   reviewSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   seeAllText: { fontSize: 12, color: '#3B82F6', fontWeight: '600' },

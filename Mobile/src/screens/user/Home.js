@@ -21,6 +21,7 @@ import * as Location from "expo-location";
 import { auth, db } from "../../firebase";
 import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import BuyNowModal from "./BuyNow";
+
 import BasketIcon from '../../../assets/basket.png';
 import MessageIcon from '../../../assets/message.png';
 
@@ -182,8 +183,8 @@ export default function Home({ navigation }) {
           activeOpacity={0.85}
           onPress={() => handleBuyNow(item)}
         >
-          <Text style={styles.buyBtnText}>Quick Buy</Text>
-          <Feather name="arrow-right" size={13} color="#000" style={{ marginLeft: 4 }} />
+          <Text style={styles.buyBtnText}>Buy Now</Text>
+          <Feather name="arrow-right" size={13} color="#3B82F6" style={{ marginLeft: 4 }} />
         </TouchableOpacity>
       </Animated.View>
     );
@@ -283,7 +284,7 @@ export default function Home({ navigation }) {
             </TouchableOpacity>
 
             <TouchableOpacity 
-              onPress={() => navigation.navigate("InboxScreen")} 
+              onPress={() => navigation.navigate("InboxScreenUser")} 
               style={[styles.iconCircle, { marginLeft: 12 }]}
               activeOpacity={0.8}
             >
@@ -359,7 +360,7 @@ export default function Home({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: '#FCFCFC' },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: '#FCFCFC', marginTop: 30},
   headerSafe: { backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', marginTop: 35 },
   topHeader: { 
     flexDirection: "row", 
@@ -483,12 +484,13 @@ const styles = StyleSheet.create({
     position: 'absolute', 
     top: 8, 
     left: 8, 
-    backgroundColor: 'rgba(15, 23, 42, 0.85)', 
-    paddingHorizontal: 8, 
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
+    borderWidth: 0.5,    paddingHorizontal: 8, 
     paddingVertical: 4, 
     borderRadius: 8 
   },
-  cardBadgeText: { fontSize: 8, fontWeight: '900', color: '#FFF', letterSpacing: 0.5 },
+  cardBadgeText: { fontSize: 8, fontWeight: '900', color: '#3b82f6', letterSpacing: 0.5 },
   cardContent: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
   productName: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
   cardBottomMeta: { marginTop: 4, gap: 2 },
@@ -499,6 +501,7 @@ const styles = StyleSheet.create({
   buyBtn: { 
     backgroundColor: '#eff6ff',
     borderColor: '#3b82f6',
+    borderWidth: 0.5,
     marginHorizontal: 10, 
     marginBottom: 10, 
     paddingVertical: 9, 
@@ -507,7 +510,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     justifyContent: 'center'
   },
-  buyBtnText: { color: '#000', fontWeight: '800', fontSize: 11, letterSpacing: 0.2 },
+  buyBtnText: { color: '#3b82f6', fontWeight: '800', fontSize: 11, letterSpacing: 0.2 },
 
   paginationRow: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 12 },
   pageDot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#E2E8F0' },

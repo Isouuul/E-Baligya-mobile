@@ -1,575 +1,663 @@
-// src/screens/Users/CartShop.js
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
-  FlatList,
-  TouchableOpacity,
   StyleSheet,
-  Alert,
-  ActivityIndicator,
+  FlatList,
   Image,
-  Animated,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
   StatusBar,
+  SafeAreaView,
   Dimensions
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { auth, db } from '../../firebase';
-import { collection, getDocs, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import {
+  collection,
+  query,
+  onSnapshot,
+  doc,
+  deleteDoc,
+  updateDoc,
+  increment
+} from "firebase/firestore";
 import { useNavigation } from '@react-navigation/native';
-import { Swipeable } from 'react-native-gesture-handler';
 
 const { width } = Dimensions.get('window');
 
 export default function CartShop() {
   const navigation = useNavigation();
-  const user = auth.currentUser;
   const [cartItems, setCartItems] = useState([]);
-  const [selectedItems, setSelectedItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const opacityRefs = useRef({});
+  
+  // Tracks active selections
+  const [selectedItemIds, setSelectedItemIds] = useState([]);
 
-  useEffect(() => { fetchCartItems(); }, []);
+  // Real-time Sync with Firestore Cart collection
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-  const fetchCartItems = async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      const snapshot = await getDocs(collection(db, 'Carts', user.uid, 'items'));
-      const data = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
-      setCartItems(data);
+    const cartRef = collection(db, 'Carts', user.uid, 'items');
+    const q = query(cartRef);
 
-      const newRefs = {};
-      data.forEach(item => (newRefs[item.id] = new Animated.Value(1)));
-      opacityRefs.current = newRefs;
-    } catch (err) {
-      console.error(err);
-      Alert.alert('Error', 'Failed to load cart items.');
-    } finally { setLoading(false); }
-  };
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items = [];
+      snapshot.forEach((doc) => {
+        items.push({ cartItemId: doc.id, ...doc.data() });
+      });
+      setCartItems(items);
 
-  const groupedItems = useMemo(() => {
-    const groups = {};
-    cartItems.forEach(item => {
-      const vendorKey = item.uploadedBy?.email;
-      if (!vendorKey) return;
+      // Clean up selections if items are deleted by external actions
+      setSelectedItemIds((prevSelected) => {
+        const incomingIds = items.map(i => i.cartItemId);
+        return prevSelected.filter(id => incomingIds.includes(id));
+      });
 
-      if (!groups[vendorKey]) {
-        groups[vendorKey] = {
-          vendorEmail: vendorKey,
-          businessName: item.uploadedBy?.businessName || 'Unknown Vendor',
-          items: [],
-        };
-      }
-      groups[vendorKey].items.push(item);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching cart items:", error);
+      setLoading(false);
     });
-    return Object.values(groups);
+
+    return () => unsubscribe();
+  }, []);
+
+  // Compute Total Cost of ONLY Selected Items in Basket
+  const cartSubtotal = useMemo(() => {
+    return cartItems
+      .filter((item) => selectedItemIds.includes(item.cartItemId))
+      .reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+  }, [cartItems, selectedItemIds]);
+
+  // Group cart items dynamically by businessName
+  const groupedCart = useMemo(() => {
+    const groups = {};
+    cartItems.forEach((item) => {
+      const businessName = item.uploadedBy?.businessName || 'Independent Seller'; 
+      if (!groups[businessName]) {
+        groups[businessName] = [];
+      }
+      groups[businessName].push(item);
+    });
+    
+    return Object.keys(groups).map((businessName) => ({
+      businessName,
+      items: groups[businessName],
+    }));
   }, [cartItems]);
 
-  const toggleSelectItem = id =>
-    setSelectedItems(prev => (prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]));
+  // Derived helper to identify which business currently owns the selection 
+  const currentSelectedShop = useMemo(() => {
+    if (selectedItemIds.length === 0) return null;
+    const firstSelected = cartItems.find(i => selectedItemIds.includes(i.cartItemId));
+    return firstSelected?.uploadedBy?.businessName || 'Independent Seller';
+  }, [selectedItemIds, cartItems]);
 
-  const toggleSelectShop = shopItems => {
-    const shopItemIds = shopItems.map(i => i.id);
-    const allSelected = shopItemIds.every(id => selectedItems.includes(id));
-    setSelectedItems(prev =>
-      allSelected
-        ? prev.filter(id => !shopItemIds.includes(id))
-        : [...prev, ...shopItemIds.filter(id => !prev.includes(id))]
+  // Toggle single item selection with single-shop constraint
+  const toggleItemSelection = (item) => {
+    const targetShop = item.uploadedBy?.businessName || 'Independent Seller';
+    const isSelected = selectedItemIds.includes(item.cartItemId);
+
+    if (!isSelected && currentSelectedShop && currentSelectedShop !== targetShop) {
+      Alert.alert(
+        "One Shop Allowed",
+        `You currently have items selected from "${currentSelectedShop}". Please checkout those items first, or uncheck them to order from "${targetShop}".`
+      );
+      return;
+    }
+
+    setSelectedItemIds((prev) =>
+      isSelected ? prev.filter((id) => id !== item.cartItemId) : [...prev, item.cartItemId]
     );
   };
 
-  const updateQuantity = async (item, newQty) => {
-    if (newQty < 1) return;
-    try {
-      await updateDoc(doc(db, 'Carts', user.uid, 'items', item.id), { quantity: newQty });
-      setCartItems(prev => prev.map(i => (i.id === item.id ? { ...i, quantity: newQty } : i)));
-    } catch (err) {
-      console.error(err);
-      Alert.alert('Error', 'Failed to update quantity.');
+  // Toggle selection for an entire business group with single-shop constraint
+  const toggleShopGroupSelection = (shopGroupName, shopGroupItems) => {
+    const groupItemIds = shopGroupItems.map((item) => item.cartItemId);
+    const allGroupItemsSelected = groupItemIds.every((id) => selectedItemIds.includes(id));
+
+    if (allGroupItemsSelected) {
+      // De-select group safely
+      setSelectedItemIds((prev) => prev.filter((id) => !groupItemIds.includes(id)));
+    } else {
+      // Validate single shop rule before selecting
+      if (currentSelectedShop && currentSelectedShop !== shopGroupName) {
+        Alert.alert(
+          "One Shop Allowed",
+          `You currently have items selected from "${currentSelectedShop}". Please complete that checkout first before adding items from "${shopGroupName}".`
+        );
+        return;
+      }
+      setSelectedItemIds((prev) => [...new Set([...prev, ...groupItemIds])]);
     }
   };
 
-  const removeItem = item => {
-    Animated.timing(opacityRefs.current[item.id], { toValue: 0, duration: 300, useNativeDriver: true })
-      .start(async () => {
-        try {
-          await deleteDoc(doc(db, 'Carts', user.uid, 'items', item.id));
-          setCartItems(prev => prev.filter(i => i.id !== item.id));
-          setSelectedItems(prev => prev.filter(id => id !== item.id));
-        } catch (err) {
-          console.error(err);
-          Alert.alert('Error', 'Failed to remove item.');
-        }
+  // Handle Incrementing / Decrementing quantities
+  const updateQuantity = async (item, delta) => {
+    const newQty = item.quantity + delta;
+    if (newQty < 1) {
+      confirmDelete(item);
+      return;
+    }
+
+    try {
+      const itemRef = doc(db, 'Carts', auth.currentUser.uid, 'items', item.cartItemId);
+      const singleUnitCost = item.totalPrice / item.quantity; 
+
+      await updateDoc(itemRef, {
+        quantity: increment(delta),
+        totalPrice: increment(singleUnitCost * delta)
       });
+    } catch (err) {
+      Alert.alert('Error', 'Could not update quantity');
+    }
   };
 
-  const removeShop = shopItems => {
-    const animations = shopItems.map(item =>
-      Animated.timing(opacityRefs.current[item.id], { toValue: 0, duration: 200, useNativeDriver: true })
+  // Confirm Line Item Deletion
+  const confirmDelete = (item) => {
+    Alert.alert(
+      "Remove Item",
+      `Are you sure you want to remove ${item.productName} from your cart?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Remove", 
+          style: "destructive", 
+          onPress: () => removeItem(item.cartItemId) 
+        }
+      ]
     );
-    Animated.stagger(50, animations).start(async () => {
-      try {
-        await Promise.all(shopItems.map(item => deleteDoc(doc(db, 'Carts', user.uid, 'items', item.id))));
-        const shopItemIds = shopItems.map(i => i.id);
-        setCartItems(prev => prev.filter(i => !shopItemIds.includes(i.id)));
-        setSelectedItems(prev => prev.filter(id => !shopItemIds.includes(id)));
-      } catch (err) {
-        console.error(err);
-        Alert.alert('Error', 'Failed to remove shop items.');
-      }
+  };
+
+  const removeItem = async (itemId) => {
+    try {
+      const itemRef = doc(db, 'Carts', auth.currentUser.uid, 'items', itemId);
+      await deleteDoc(itemRef);
+    } catch (err) {
+      Alert.alert('Error', 'Failed to remove item');
+    }
+  };
+
+  const handleCheckoutAll = () => {
+    const checkoutPayload = cartItems.filter((item) => selectedItemIds.includes(item.cartItemId));
+    if (checkoutPayload.length === 0) {
+      Alert.alert('Selection Required', 'Please select items from a shop to proceed.');
+      return;
+    }
+    
+    // Pass items downstream along with information reminding the user to come back for remaining products if multi-vendor exists
+    navigation.navigate('CheckedOut', { 
+      cartItems: checkoutPayload, 
+      totalAmount: cartSubtotal, 
+      origin: 'cart' 
     });
   };
 
-  const selectedTotal = useMemo(() => {
-    return cartItems.reduce((sum, item) => {
-      if (!selectedItems.includes(item.id)) return sum;
-      const base = Number(item.basePrice || 0);
-      const servicesTotal = (item.selectedServices || []).reduce((a, s) => a + Number(s.price || 0), 0);
-      return sum + (base + servicesTotal) * (item.quantity || 1);
-    }, 0);
-  }, [selectedItems, cartItems]);
-
-  const handleCheckout = () => {
-    if (!selectedItems.length) return Alert.alert('Notice', 'Please select items to checkout.');
-    navigation.navigate('CheckedOut', { selectedItems: cartItems.filter(i => selectedItems.includes(i.id)) });
-  };
-
-  const renderItemCard = item => {
-    const isSelected = selectedItems.includes(item.id);
-    const base = Number(item.basePrice || 0);
-    const servicesTotal = (item.selectedServices || []).reduce((a, s) => a + Number(s.price || 0), 0);
-    const itemTotal = (base + servicesTotal) * (item.quantity || 1);
+  const renderCartItem = (item) => {
+    const isSelected = selectedItemIds.includes(item.cartItemId);
 
     return (
-      <Swipeable key={item.id} renderRightActions={() => renderRightActions(item)}>
-        <Animated.View
-          style={[
-            styles.itemCard,
-            isSelected && styles.itemSelected,
-            { opacity: opacityRefs.current[item.id] },
-          ]}
+      <View key={item.cartItemId} style={styles.cartCard}>
+        {/* Radio Button Selector */}
+        <TouchableOpacity 
+          style={styles.radioContainer} 
+          onPress={() => toggleItemSelection(item)}
         >
-          <View style={styles.productRow}>
-            <TouchableOpacity style={styles.checkboxContainer} onPress={() => toggleSelectItem(item.id)}>
-              <Ionicons 
-                name={isSelected ? 'checkmark-circle' : 'ellipse-outline'} 
-                size={22} 
-                color={isSelected ? '#0F172A' : '#94A3B8'} 
-              />
+          <MaterialCommunityIcons 
+            name={isSelected ? "checkbox-marked-circle" : "circle-outline"} 
+            size={22} 
+            color={isSelected ? "#0EA5E9" : "#94A3B8"} 
+          />
+        </TouchableOpacity>
+
+        {/* Product Image */}
+        {item.productImage ? (
+          <Image source={{ uri: item.productImage }} style={styles.productImg} />
+        ) : (
+          <View style={styles.imgPlaceholder}>
+            <MaterialCommunityIcons name="image-off" size={24} color="#94A3B8" />
+          </View>
+        )}
+
+        {/* Details Wrapper */}
+        <View style={styles.detailsContainer}>
+          <View style={styles.cardHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.productCategory}>{item.category?.toUpperCase()}</Text>
+              <Text style={styles.productName} numberOfLines={1}>{item.productName}</Text>
+            </View>
+            <TouchableOpacity onPress={() => confirmDelete(item)} style={styles.deleteBtn}>
+              <Ionicons name="trash-outline" size={18} color="#EF4444" />
             </TouchableOpacity>
+          </View>
 
-            {item.productImage ? (
-              <Image source={{ uri: item.productImage }} style={styles.productImage} />
-            ) : (
-              <View style={styles.placeholderImage}>
-                <Ionicons name="image-outline" size={24} color="#94A3B8" />
-              </View>
-            )}
-
-            <View style={styles.productDetails}>
-              <Text style={styles.productText} numberOfLines={1}>{item.productName}</Text>
-              
-              <View style={styles.badgeRow}>
-                {item.category && (
-                  <View style={styles.categoryBadge}>
-                    <Text style={styles.categoryBadgeText}>{item.category.toUpperCase()}</Text>
-                  </View>
-                )}
-                {item.selectedServices && item.selectedServices.length > 0 && (
-                  <Text style={styles.servicesCountText}>
-                    • {item.selectedServices.length} custom service(s)
-                  </Text>
-                )}
-              </View>
-
-              <View style={styles.priceQtyRow}>
-                <Text style={styles.itemTotal}>₱{itemTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
-                
-                <View style={styles.qtyContainer}>
-                  <TouchableOpacity onPress={() => updateQuantity(item, item.quantity - 1)} style={styles.qtyBtn}>
-                    <Ionicons name="remove" size={14} color="#0F172A" />
-                  </TouchableOpacity>
-                  <Text style={styles.qtyText}>{item.quantity}</Text>
-                  <TouchableOpacity onPress={() => updateQuantity(item, item.quantity + 1)} style={styles.qtyBtn}>
-                    <Ionicons name="add" size={14} color="#0F172A" />
-                  </TouchableOpacity>
+          {/* Render Services Selected if they exist */}
+          {item.selectedServices && item.selectedServices.length > 0 && (
+            <View style={styles.servicesTagContainer}>
+              {item.selectedServices.map((srv, idx) => (
+                <View key={idx} style={styles.serviceTag}>
+                  <Text style={styles.serviceTagText}>{srv.label}</Text>
                 </View>
-              </View>
+              ))}
+            </View>
+          )}
+
+          {/* Pricing & Control Bar */}
+          <View style={styles.cardBottomRow}>
+            <Text style={styles.itemPrice}>
+              ₱{item.totalPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </Text>
+            
+            <View style={styles.qtyControls}>
+              <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(item, -1)}>
+                <Ionicons name="remove" size={14} color="#0F172A" />
+              </TouchableOpacity>
+              <Text style={styles.qtyText}>{item.quantity}</Text>
+              <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity(item, 1)}>
+                <Ionicons name="add" size={14} color="#0F172A" />
+              </TouchableOpacity>
             </View>
           </View>
-        </Animated.View>
-      </Swipeable>
+        </View>
+      </View>
     );
   };
 
-  const renderRightActions = item => (
-    <TouchableOpacity style={styles.deleteSwipeBtn} onPress={() => removeItem(item)}>
-      <Ionicons name="trash-outline" size={22} color="#FFFFFF" />
-    </TouchableOpacity>
-  );
+  // Renders each distinct Business Group
+  const renderShopGroup = ({ item: shopGroup }) => {
+    const groupItemIds = shopGroup.items.map((i) => i.cartItemId);
+    const isGroupAllSelected = groupItemIds.every((id) => selectedItemIds.includes(id));
 
-  if (loading)
     return (
-      <View style={styles.center}>
+      <View style={styles.shopGroupContainer}>
+        <View style={styles.shopHeaderRow}>
+          {/* Shop level dynamic selector toggle */}
+          <TouchableOpacity 
+            onPress={() => toggleShopGroupSelection(shopGroup.businessName, shopGroup.items)}
+            style={{ marginRight: 8 }}
+          >
+            <MaterialCommunityIcons 
+              name={isGroupAllSelected ? "checkbox-marked-circle" : "circle-outline"} 
+              size={22} 
+              color={isGroupAllSelected ? "#0EA5E9" : "#94A3B8"} 
+            />
+          </TouchableOpacity>
+          <MaterialCommunityIcons name="storefront-outline" size={20} color="#0F172A" />
+          <Text style={styles.shopGroupTitle}>{shopGroup.businessName}</Text>
+        </View>
+        {shopGroup.items.map((item) => renderCartItem(item))}
+      </View>
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.centerLayout}>
         <ActivityIndicator size="large" color="#0F172A" />
       </View>
     );
+  }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
-      {/* HEADER */}
+
+      {/* STYLISH HEADER */}
       <View style={styles.customHeader}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconCircle}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerCircleBtn}>
           <Ionicons name="chevron-back" size={22} color="#0F172A" />
         </TouchableOpacity>
-        <Text style={styles.headerTitleText}>My Basket</Text>
-        <View style={styles.iconCircle}>
-           <Ionicons name="basket-outline" size={20} color="#0F172A" />
+        <Text style={styles.headerTitle}>My Basket</Text>
+        <View style={[styles.headerCircleBtn, { opacity: 0 }]}>
+          <Ionicons name="chevron-back" size={22} />
         </View>
       </View>
 
+      {/* CART CONTENT */}
       {cartItems.length === 0 ? (
-        <View style={styles.emptyContainer}>
+        <View style={styles.emptyStateContainer}>
           <View style={styles.emptyIconCircle}>
-            <Ionicons name="basket-outline" size={54} color="#94A3B8" />
+            <MaterialCommunityIcons name="basket-outline" size={48} color="#64748B" />
           </View>
-          <Text style={styles.emptyText}>Your basket is empty</Text>
-          <Text style={styles.emptySubText}>Looks like you haven't added any seafood selections yet.</Text>
-          <TouchableOpacity 
-            style={styles.browseBtn} 
-            onPress={() => navigation.navigate('ConsumerTabs')}
-          >
-            <Text style={styles.browseBtnText}>Explore Market</Text>
+          <Text style={styles.emptyTitle}>Your basket is empty</Text>
+          <Text style={styles.emptySubtitle}>Looks like you haven't added any fresh seafood listings to your cart yet.</Text>
+          <TouchableOpacity style={styles.shopNowBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.shopNowText}>Explore Market</Text>
           </TouchableOpacity>
         </View>
       ) : (
-        <FlatList
-          data={groupedItems}
-          keyExtractor={group => group.vendorEmail}
-          contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item: group }) => {
-            const shopAllSelected = group.items.every(i => selectedItems.includes(i.id));
-            return (
-              <View key={group.vendorEmail} style={styles.shopBlock}>
-                <View style={styles.shopHeader}>
-                  <TouchableOpacity onPress={() => toggleSelectShop(group.items)} style={styles.selectAllButton}>
-                    <Ionicons 
-                      name={shopAllSelected ? 'checkmark-circle' : 'ellipse-outline'} 
-                      size={22} 
-                      color={shopAllSelected ? '#0F172A' : '#94A3B8'} 
-                    />
-                    <View style={styles.shopInfo}>
-                        <MaterialCommunityIcons name="storefront-outline" size={18} color="#475569" style={{marginLeft: 8}} />
-                        <Text style={styles.selectAllText}>{group.businessName}</Text>
-                    </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => removeShop(group.items)} style={styles.shopDeleteButton}>
-                    <Ionicons name="trash-outline" size={16} color="#EF4444" />
-                  </TouchableOpacity>
-                </View>
-                {group.items.map(item => renderItemCard(item))}
-              </View>
-            );
-          }}
-        />
-      )}
+        <>
+          {/* Top warning info badge when another vendor is blocked out */}
+          {groupedCart.length > 1 && (
+            <View style={styles.restrictionBadge}>
+              <Ionicons name="information-circle-outline" size={16} color="#0369A1" />
+              <Text style={styles.restrictionText}>
+                Multi-shop orders: Please complete checkout for one shop first.
+              </Text>
+            </View>
+          )}
 
-      {cartItems.length > 0 && (
-        <View style={styles.bottomFooter}>
-          <View style={styles.totalContainer}>
-            <Text style={styles.totalLabel}>Grand Total ({selectedItems.length} Selected)</Text>
-            <Text style={styles.totalAmount}>₱{selectedTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
+          <FlatList
+            data={groupedCart}
+            keyExtractor={(item) => item.businessName}
+            renderItem={renderShopGroup}
+            contentContainerStyle={styles.listContainer}
+            showsVerticalScrollIndicator={false}
+          />
+
+          {/* CHECKOUT SUMMARY BAR */}
+          <View style={styles.summaryBar}>
+            <View style={styles.summaryRow}>
+              <View>
+                <Text style={styles.totalLabel}>
+                  {selectedItemIds.length > 0 ? `${currentSelectedShop}` : 'No shop selected'}
+                </Text>
+                <Text style={styles.totalAmount}>
+                  ₱{cartSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </Text>
+              </View>
+              
+              <TouchableOpacity 
+                style={[
+                  styles.checkoutBtn, 
+                  selectedItemIds.length === 0 && { backgroundColor: '#94A3B8' }
+                ]} 
+                onPress={handleCheckoutAll}
+                disabled={selectedItemIds.length === 0}
+              >
+                <Text style={styles.checkoutText}>Proceed to Checkout</Text>
+                <Ionicons name="arrow-forward" size={16} color="#3B82F6" style={{ marginLeft: 6 }} />
+              </TouchableOpacity>
+            </View>
           </View>
-          <TouchableOpacity 
-            style={[styles.checkoutButton, !selectedItems.length && styles.disabledBtn]} 
-            onPress={handleCheckout} 
-            disabled={!selectedItems.length}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.checkoutText}>Proceed to Checkout</Text>
-            <Ionicons name="arrow-forward" size={16} color="#FFFFFF" style={{marginLeft: 6}} />
-          </TouchableOpacity>
-        </View>
+        </>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  center: {
+  container: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+    marginTop: 35
+  },
+  centerLayout: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#FAFAFA',
   },
-  container: {
-    flex: 1,
-    backgroundColor: '#FAFAFA',
-  },
   customHeader: {
+    height: 60,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    height: 56,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
-  headerTitleText: {
+  headerCircleBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  restrictionBadge: {
+    flexDirection: 'row',
+    backgroundColor: '#E0F2FE',
+    padding: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  restrictionText: {
+    color: '#0369A1',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 6,
+    flex: 1,
+  },
+  listContainer: {
+    padding: 16,
+    paddingBottom: 120,
+  },
+  shopGroupContainer: {
+    marginBottom: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  shopHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  shopGroupTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#0F172A',
-    fontFamily: 'System',
-    textAlign: 'center',
-    flex: 1,
+    marginLeft: 4,
   },
-  iconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#F8FAFC',
+  cartCard: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
   },
-  emptyContainer: {
-    flex: 0.85,
+  radioContainer: {
+    paddingRight: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  productImg: {
+    width: 80,
+    height: 80,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  imgPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 10,
+    backgroundColor: '#F1F5F9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  detailsContainer: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: 'space-between',
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  productCategory: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#0EA5E9',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  productName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1E293B',
+    paddingRight: 8,
+  },
+  deleteBtn: {
+    padding: 4,
+  },
+  servicesTagContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginVertical: 4,
+  },
+  serviceTag: {
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginRight: 6,
+    marginBottom: 4,
+  },
+  serviceTagText: {
+    fontSize: 10,
+    color: '#475569',
+    fontWeight: '500',
+  },
+  cardBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  itemPrice: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  qtyControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  qtyBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  qtyText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
+    paddingHorizontal: 10,
+  },
+  emptyStateContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
   },
   emptyIconCircle: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: '#F1F5F9',
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 20,
   },
-  emptyText: {
+  emptyTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#0F172A',
-    marginBottom: 6,
+    color: '#1E293B',
+    marginBottom: 8,
   },
-  emptySubText: {
-    fontSize: 13,
+  emptySubtitle: {
+    fontSize: 14,
     color: '#64748B',
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 20,
     marginBottom: 24,
   },
-  browseBtn: {
+  shopNowBtn: {
     backgroundColor: '#0F172A',
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 24,
   },
-  browseBtnText: {
+  shopNowText: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
   },
-  shopBlock: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    padding: 14,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.02,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  shopHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    marginBottom: 12,
-  },
-  selectAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  shopInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  selectAllText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0F172A',
-    marginLeft: 6,
-  },
-  shopDeleteButton: {
-    padding: 6,
-    borderRadius: 8,
-    backgroundColor: '#FEF2F2',
-  },
-  itemCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  itemSelected: {
-    backgroundColor: '#F8FAFC',
-  },
-  productRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  checkboxContainer: {
-    paddingVertical: 12,
-    paddingRight: 10,
-  },
-  productImage: {
-    width: 68,
-    height: 68,
-    borderRadius: 10,
-    backgroundColor: '#F1F5F9',
-  },
-  placeholderImage: {
-    width: 68,
-    height: 68,
-    borderRadius: 10,
-    backgroundColor: '#F1F5F9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  productDetails: {
-    flex: 1,
-    marginLeft: 12,
-    justifyContent: 'space-between',
-    height: 68,
-  },
-  productText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  categoryBadge: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  categoryBadgeText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  servicesCountText: {
-    fontSize: 11,
-    color: '#64748B',
-  },
-  priceQtyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  itemTotal: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  qtyContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 8,
-    padding: 3,
-    gap: 10,
-  },
-  qtyBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qtyText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0F172A',
-    minWidth: 16,
-    textAlign: 'center',
-  },
-  deleteSwipeBtn: {
-    backgroundColor: '#EF4444',
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 68,
-    height: 68,
-    borderRadius: 12,
-    marginLeft: 12,
-  },
-  bottomFooter: {
+  summaryBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: '#FFFFFF',
+    paddingTop: 16,
+    paddingBottom: 24,
+    paddingHorizontal: 20,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 28,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 10,
   },
-  totalContainer: {
+  summaryRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'space-between',
   },
   totalLabel: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#64748B',
-    fontWeight: '500',
+    fontWeight: '600',
+    marginBottom: 2,
   },
   totalAmount: {
     fontSize: 20,
     fontWeight: '800',
     color: '#0F172A',
   },
-  checkoutButton: {
-    backgroundColor: '#0F172A',
+  checkoutBtn: {
     flexDirection: 'row',
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',  
+    borderWidth: 0.5, paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 48,
-    borderRadius: 12,
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
   },
   checkoutText: {
-    color: '#FFFFFF',
+    color: '#3b82f6',
     fontSize: 14,
     fontWeight: '700',
-  },
-  disabledBtn: {
-    backgroundColor: '#E2E8F0',
-    shadowOpacity: 0,
-    elevation: 0,
   },
 });

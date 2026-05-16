@@ -16,6 +16,7 @@ import { db } from "../../../firebase";
 
 import CreateProductForm from "./CreateProductForm";
 import ProductCard from "./ProductCard";
+import { StatusBar } from "expo-status-bar";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -78,6 +79,7 @@ const [dropdownOpen, setDropdownOpen] = useState(false);
 
   return (
     <View style={styles.container}>
+      <StatusBar hidden={false} />
       {/* HEADER */}
       <View style={styles.header}>
         <View>
@@ -241,12 +243,12 @@ const [dropdownOpen, setDropdownOpen] = useState(false);
 export default UploadsScreen;
 // Original Stylesheets completely retained without alteration
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8fafc" },
+  container: { flex: 1, backgroundColor: "#f8fafc", marginTop: 35},
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16, backgroundColor: "#1e3a8a", borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
   headerTitle: { fontSize: 24, fontWeight: "800", color: "#fff" },
   headerSubtitle: { fontSize: 13, color: "#bfdbfe", marginTop: 2 },
-  badge: { backgroundColor: "#f1f5f9", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  headerCount: { fontSize: 13, fontWeight: "700", color: "#4f46e5" },
+  badge: { backgroundColor: "#3b82f6", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  headerCount: { fontSize: 13, fontWeight: "700", color: "#fff" },
   searchDateContainer: { flexDirection: "row", paddingHorizontal: 16, marginTop: 16, alignItems: "center", gap: 10 },
   searchBar: { flex: 1, flexDirection: "row", backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 14, alignItems: "center", height: 50, borderWidth: 1, borderColor: "#e2e8f0" },
   searchIcon: { fontSize: 16, marginRight: 8 },

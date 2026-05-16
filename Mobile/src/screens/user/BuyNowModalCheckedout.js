@@ -16,6 +16,8 @@ import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { auth, db } from '../../firebase';
 import * as FileSystem from 'expo-file-system';
 import Toast from 'react-native-toast-message';
+import { useRoute, useNavigation } from '@react-navigation/native';
+
 import {
   collection,
   doc,
@@ -52,8 +54,7 @@ const Base64Image = ({ base64, productId, style }) => {
   return <Image source={{ uri: localUri }} style={style} />;
 };
 
-export default function BuyNowModalCheckedout({ visible, onClose, checkoutData, onAddressSelectRequested }) {
-  const [paymentMethod, setPaymentMethod] = useState('Cash-On-Delivery');
+export default function BuyNowModalCheckedout() {  const [paymentMethod, setPaymentMethod] = useState('Cash-On-Delivery');
   const [deliveryMethod, setDeliveryMethod] = useState('Delivery');
   const [leaveNote, setLeaveNote] = useState('');
   const [address, setAddress] = useState(null);
@@ -92,18 +93,18 @@ export default function BuyNowModalCheckedout({ visible, onClose, checkoutData, 
   }, [visible]);
 
   const subtotal = useMemo(() => {
-    if (!checkoutData) return 0;
-    const base = Number(checkoutData.basePrice || 0);
-    const services = (checkoutData.selectedServices || []).reduce((sum, s) => sum + Number(s.price || 0), 0);
-    return (base + services) * (checkoutData.quantity || 1);
-  }, [checkoutData]);
+    if (!checkoutItem) return 0;
+    const base = Number(checkoutItem.basePrice || 0);
+    const services = (checkoutItem.selectedServices || []).reduce((sum, s) => sum + Number(s.price || 0), 0);
+    return (base + services) * (checkoutItem.quantity || 1);
+  }, [checkoutItem]);
 
   const totalAmount = useMemo(() => {
     return subtotal + (deliveryMethod === 'Delivery' ? SHIPPING_FEE : 0);
   }, [subtotal, deliveryMethod]);
 
   const handleCheckout = async () => {
-    if (loadingCheckout || !checkoutData) return;
+    if (loadingCheckout || !checkoutItem) return;
     const user = auth.currentUser;
     if (!user) return;
 
@@ -124,14 +125,14 @@ export default function BuyNowModalCheckedout({ visible, onClose, checkoutData, 
         userLastName: userData.lastName || '',
         userProfileImage: userData.profileImage || null,
         items: [{
-          productId: checkoutData.id || checkoutData.docId,
-          productName: checkoutData.productName,
-          productImage: checkoutData.productImage || checkoutData.imageBase64 || null,
-          quantity: checkoutData.quantity || 1,
-          basePrice: checkoutData.basePrice,
-          services: checkoutData.selectedServices || [],
-          uploadedBy: checkoutData.uploadedBy || null,
-          category: checkoutData.category || 'Uncategorized',
+          productId: checkoutItem.id || checkoutItem.docId,
+          productName: checkoutItem.productName,
+          productImage: checkoutItem.productImage || checkoutItem.imageBase64 || null,
+          quantity: checkoutItem.quantity || 1,
+          basePrice: checkoutItem.basePrice,
+          services: checkoutItem.selectedServices || [],
+          uploadedBy: checkoutItem.uploadedBy || null,
+          category: checkoutItem.category || 'Uncategorized',
         }],
         deliveryMethod,
         shippingFee: deliveryMethod === 'Delivery' ? SHIPPING_FEE : 0,
@@ -146,7 +147,7 @@ export default function BuyNowModalCheckedout({ visible, onClose, checkoutData, 
 
       await addDoc(collection(db, 'Orders'), orderData);
       Toast.show({ type: 'success', text1: 'Success', text2: 'Order Placed Successfully!' });
-      setTimeout(() => onClose(), 1000);
+setTimeout(() => navigation.goBack(), 1000);
     } catch (error) {
       Toast.show({ type: 'error', text1: 'Checkout Failed', text2: 'Please verify entry values.' });
     } finally {
@@ -155,20 +156,19 @@ export default function BuyNowModalCheckedout({ visible, onClose, checkoutData, 
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={true} onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <View style={styles.modalContainer}>
           <View style={styles.dragHandle} />
           
           <View style={styles.headerPremium}>
-            <TouchableOpacity onPress={onClose} style={styles.backButtonCircle}>
+            <TouchableOpacity onPress={navigation.goBack} style={styles.backButtonCircle}>
               <Feather name="arrow-left" size={20} color="#0F172A" />
             </TouchableOpacity>
             <Text style={styles.headerTitlePremium}>Finalize Checkout</Text>
             <View style={{ width: 36 }} />
           </View>
 
-          {checkoutData && (
+          {checkoutItem && (
             <>
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
                 {/* Address Section */}
@@ -178,7 +178,7 @@ export default function BuyNowModalCheckedout({ visible, onClose, checkoutData, 
                       <Feather name="map-pin" size={16} color="#0F172A" />
                       <Text style={styles.sectionTitlePremium}>Delivery Address</Text>
                     </View>
-                    <TouchableOpacity onPress={onAddressSelectRequested} style={styles.editButton}>
+                    <TouchableOpacity onPress={() => navigation.navigate("AddressScreen")}style={styles.editButton}>
                       <Text style={styles.editButtonText}>Change</Text>
                     </TouchableOpacity>
                   </View>
@@ -198,17 +198,17 @@ export default function BuyNowModalCheckedout({ visible, onClose, checkoutData, 
 
                 {/* Item Details */}
                 <View style={styles.vendorGroup}>
-                  <Text style={styles.vendorNameText}>{checkoutData.uploadedBy?.businessName || 'Merchant Shop'}</Text>
+                  <Text style={styles.vendorNameText}>{checkoutItem.uploadedBy?.businessName || 'Merchant Shop'}</Text>
                   <View style={styles.itemCardPremium}>
                     <View style={styles.productRow}>
-                      <Base64Image base64={checkoutData.imageBase64 || checkoutData.productImage} productId={checkoutData.id} style={styles.productImagePremium} />
+                      <Base64Image base64={checkoutItem.imageBase64 || checkoutItem.productImage} productId={checkoutItem.id} style={styles.productImagePremium} />
                       <View style={styles.productDetailsPremium}>
-                        <Text style={styles.productTextPremium}>{checkoutData.productName}</Text>
-                        {checkoutData.selectedServices?.map((s, i) => (
+                        <Text style={styles.productTextPremium}>{checkoutItem.productName}</Text>
+                        {checkoutItem.selectedServices?.map((s, i) => (
                           <Text key={i} style={styles.serviceText}>+ {s.label} (₱{s.price})</Text>
                         ))}
                         <View style={styles.qtyPriceRowPremium}>
-                          <Text style={styles.qtyTextPremium}>Qty: {checkoutData.quantity}kg</Text>
+                          <Text style={styles.qtyTextPremium}>Qty: {checkoutItem.quantity}kg</Text>
                           <Text style={styles.itemTotalPremium}>₱{subtotal.toLocaleString()}</Text>
                         </View>
                       </View>
@@ -254,7 +254,6 @@ export default function BuyNowModalCheckedout({ visible, onClose, checkoutData, 
           )}
         </View>
       </View>
-    </Modal>
   );
 }
 

@@ -311,7 +311,7 @@ export default function Product() {
             </TouchableOpacity>
 
             <TouchableOpacity 
-              onPress={() => navigation.navigate("InboxScreen")} 
+              onPress={() => navigation.navigate("InboxScreenUser")} 
               style={[styles.iconCircle, { marginLeft: 10 }]}
               activeOpacity={0.7}
             >

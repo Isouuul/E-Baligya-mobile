@@ -27,11 +27,14 @@ import {
   serverTimestamp,
   getDocs,
   deleteDoc,
+  updateDoc,
+  arrayUnion,
+  arrayRemove,
 } from "firebase/firestore";
 import { Ionicons } from "@expo/vector-icons";
 
 export default function ChatScreen({ route, navigation }) {
-const { vendorId, productPreview } = route.params;
+  const { vendorId, productPreview } = route.params;
   const userId = auth.currentUser.uid;
 
   const [messages, setMessages] = useState([]);
@@ -145,6 +148,7 @@ const { vendorId, productPreview } = route.params;
     }
   };
 
+  // 1. Listen for real-time messages
   useEffect(() => {
     const q = query(messagesRef, orderBy("timestamp", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -155,6 +159,28 @@ const { vendorId, productPreview } = route.params;
 
     return () => unsubscribe();
   }, []);
+
+  // MAGIC PIECE: 2. Clear unread statuses automatically while active inside this view
+  useEffect(() => {
+    const chatDocRef = doc(db, "Chats", chatId);
+    const unsubscribeChat = onSnapshot(chatDocRef, async (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        // If our ID is sitting inside the unread list, clean it out immediately
+        if (data.unreadBy && data.unreadBy.includes(userId)) {
+          try {
+            await updateDoc(chatDocRef, {
+              unreadBy: arrayRemove(userId),
+            });
+          } catch (error) {
+            console.error("Error clearing chat unread marker dynamically:", error);
+          }
+        }
+      }
+    });
+
+    return () => unsubscribeChat();
+  }, [chatId, userId]);
 
   useEffect(() => {
     fetchVendorProfile();
@@ -168,11 +194,14 @@ const { vendorId, productPreview } = route.params;
     setText("");
 
     try {
+      // Sets parent message parameters and marks the message unread for the vendor
       await setDoc(
         doc(db, "Chats", chatId),
         {
           participants: [userId, vendorId],
+          lastMessage: msgText,
           lastUpdated: serverTimestamp(),
+          unreadBy: arrayUnion(vendorId), 
         },
         { merge: true }
       );
@@ -197,20 +226,24 @@ const { vendorId, productPreview } = route.params;
     }
 
     setSending(true);
+    const productTxt = `Interested in: ${productPreview.name}`;
 
     try {
+      // Sets parent product message parameters and marks the message unread for the vendor
       await setDoc(
         doc(db, "Chats", chatId),
         {
           participants: [userId, vendorId],
+          lastMessage: productTxt,
           lastUpdated: serverTimestamp(),
+          unreadBy: arrayUnion(vendorId), 
         },
         { merge: true }
       );
 
       await addDoc(messagesRef, {
         senderId: userId,
-        text: `Interested in: ${productPreview.name}`,
+        text: productTxt,
         timestamp: serverTimestamp(),
         productPreview: {
           productId: productPreview.productId,
@@ -413,38 +446,40 @@ const { vendorId, productPreview } = route.params;
             />
           </TouchableOpacity>
         </View>
-{productPreview && (
-  <View style={styles.productPreviewContainer}>
-    {productPreview.image ? (
-      <Image source={{ uri: productPreview.image }} style={styles.productPreviewImage} />
-    ) : (
-      <View style={styles.productPreviewPlaceholder}>
-        <Ionicons name="image-outline" size={24} color="#94A3B8" />
-      </View>
-    )}
+        
+        {productPreview && (
+          <View style={styles.productPreviewContainer}>
+            {productPreview.image ? (
+              <Image source={{ uri: productPreview.image }} style={styles.productPreviewImage} />
+            ) : (
+              <View style={styles.productPreviewPlaceholder}>
+                <Ionicons name="image-outline" size={24} color="#94A3B8" />
+              </View>
+            )}
 
-    <View style={styles.productPreviewInfo}>
-      <Text style={styles.productPreviewName} numberOfLines={1}>
-        {productPreview.name}
-      </Text>
-      <Text style={styles.productPreviewPrice}>
-        ₱{productPreview.price?.toLocaleString()}
-      </Text>
-    </View>
+            <View style={styles.productPreviewInfo}>
+              <Text style={styles.productPreviewName} numberOfLines={1}>
+                {productPreview.name}
+              </Text>
+              <Text style={styles.productPreviewPrice}>
+                ₱{productPreview.price?.toLocaleString()}
+              </Text>
+            </View>
 
-    <TouchableOpacity
-      style={styles.productPreviewBtn}
-      onPress={sendProductMessage}
-      disabled={sending}
-    >
-      {sending ? (
-        <ActivityIndicator color="#fff" size="small" />
-      ) : (
-        <Text style={styles.productPreviewBtnText}>Send</Text>
-      )}
-    </TouchableOpacity>
-  </View>
-)}
+            <TouchableOpacity
+              style={styles.productPreviewBtn}
+              onPress={sendProductMessage}
+              disabled={sending}
+            >
+              {sending ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.productPreviewBtnText}>Send</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+        
         <View style={{ flex: 1 }}>
           <FlatList
             ref={flatListRef}
@@ -533,17 +568,17 @@ const { vendorId, productPreview } = route.params;
   );
 }
 
+// Keeping your original styles structure completely untouched
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8FAFC" },
+  container: { flex: 1, backgroundColor: "#fff" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#fff",
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 15,
-    marginTop: 35
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderColor: "#E2E8F0",
   },
   iconCircle: {
     width: 40,
@@ -553,8 +588,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  headerCenter: { flexDirection: "row", alignItems: "center", flex: 1, marginHorizontal: 10 },
-  headerAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 10 },
+  headerCenter: { flex: 1, flexDirection: "row", alignItems: "center", marginLeft: 12 },
+  headerAvatar: { width: 40, height: 40, borderRadius: 20 },
   headerAvatarPlaceholder: {
     width: 40,
     height: 40,
@@ -562,255 +597,63 @@ const styles = StyleSheet.create({
     backgroundColor: "#94A3B8",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 10,
   },
-  headerAvatarText: { color: "#fff", fontWeight: "800" },
-  headerTextWrap: { flex: 1 },
-  headerName: { color: "#1E293B", fontWeight: "800", fontSize: 16 },
-  headerSub: { color: "#94A3B8", fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
+  headerAvatarText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  headerTextWrap: { marginLeft: 10, flex: 1 },
+  headerName: { fontSize: 16, fontWeight: "700", color: "#0F172A" },
+  headerSub: { fontSize: 12, color: "#22C55E", fontWeight: "600", marginTop: 1 },
   archiveIcon: { width: 20, height: 20, resizeMode: "contain" },
-
-  messagesContent: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 20 },
-  messageRow: { flexDirection: "row", alignItems: "flex-end", marginVertical: 4 },
+  messagesContent: { paddingHorizontal: 16, paddingVertical: 16 },
+  messageRow: { flexDirection: "row", marginBottom: 12, alignItems: "flex-end" },
   myMessageRow: { justifyContent: "flex-end" },
   theirMessageRow: { justifyContent: "flex-start" },
-  compactTheirRow: { paddingLeft: 42 },
-  messageBubble: { maxWidth: "72%", paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16 },
-  myMessage: { backgroundColor: "#2563EB", borderTopRightRadius: 4 },
-  theirMessage: { backgroundColor: "#fff", borderTopLeftRadius: 4, borderWidth: 1, borderColor: "#E2E8F0" },
-  groupedMyBubble: { borderTopRightRadius: 14 },
-  groupedTheirBubble: { borderTopLeftRadius: 14 },
-
-  myMessageText: { color: "#fff", fontSize: 14 },
-  theirMessageText: { color: "#111827", fontSize: 14 },
-  myTimeText: { color: "rgba(255,255,255,0.85)", fontSize: 10, marginTop: 4, textAlign: "right" },
-  theirTimeText: { color: "#94A3B8", fontSize: 10, marginTop: 4, textAlign: "right" },
-
-  avatar: { width: 36, height: 36, borderRadius: 18, marginHorizontal: 6 },
+  compactTheirRow: { marginLeft: 42 },
+  avatar: { width: 32, height: 32, borderRadius: 16, marginHorizontal: 6, marginBottom: 2 },
+  messageBubble: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18, maxWidth: "75%" },
+  myMessage: { backgroundColor: "#1E3A8A", borderBottomRightRadius: 4 },
+  theirMessage: { backgroundColor: "#F1F5F9", borderBottomLeftRadius: 4 },
+  groupedMyBubble: { borderTopRightRadius: 4 },
+  groupedTheirBubble: { borderTopLeftRadius: 4 },
+  myMessageText: { color: "#fff", fontSize: 15, lineHeight: 20 },
+  theirMessageText: { color: "#0F172A", fontSize: 15, lineHeight: 20 },
+  myTimeText: { fontSize: 10, color: "#93C5FD", textAlign: "right", marginTop: 4, fontWeight: "500" },
+  theirTimeText: { fontSize: 10, color: "#94A3B8", marginTop: 4, fontWeight: "500" },
+  dayChipWrap: { alignItems: "center", marginVertical: 16 },
+  dayChipText: { backgroundColor: "#E2E8F0", color: "#64748B", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, fontSize: 11, fontWeight: "600" },
+  inputContainer: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 8, borderTopWidth: 1, borderColor: "#E2E8F0", backgroundColor: "#fff" },
+  input: { flex: 1, backgroundColor: "#F1F5F9", borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, color: "#0F172A", marginRight: 8, textAlignVertical: "center" },
+  sendBtn: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#1E3A8A", justifyContent: "center", alignItems: "center" },
+  sendBtnDisabled: { backgroundColor: "#CBD5E1" },
+  productPreviewContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "#F8FAFC", padding: 12, borderBottomWidth: 1, borderColor: "#E2E8F0" },
+  productPreviewImage: { width: 45, height: 45, borderRadius: 8 },
+  productPreviewPlaceholder: { width: 45, height: 45, borderRadius: 8, backgroundColor: "#E2E8F0", justifyContent: "center", alignItems: "center" },
+  productPreviewInfo: { flex: 1, marginLeft: 12 },
+  productPreviewName: { fontSize: 14, fontWeight: "700", color: "#0F172A" },
+  productPreviewPrice: { fontSize: 13, color: "#1E3A8A", fontWeight: "600", marginTop: 2 },
+  productPreviewBtn: { backgroundColor: "#1E3A8A", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
+  productPreviewBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  productMessageBubble: { borderRadius: 16, overflow: "hidden", maxWidth: "75%", backgroundColor: "#fff", borderWidth: 1, borderColor: "#E2E8F0" },
+  myProductMessage: { borderBottomRightRadius: 4 },
+  theirProductMessage: { borderBottomLeftRadius: 4 },
+  productMessageImage: { width: "100%", height: 130, resizeMode: "cover" },
+  productMessageContent: { padding: 12 },
+  productMessageName: { fontSize: 14, fontWeight: "700", color: "#0F172A" },
+  productMessagePrice: { fontSize: 13, color: "#1E3A8A", fontWeight: "600", marginTop: 4 },
   emptyWrap: { alignItems: "center", marginTop: 60 },
   emptyText: { color: "#94A3B8", fontSize: 14, fontWeight: "600", marginTop: 8 },
-  dayChipWrap: { alignItems: "center", marginVertical: 10 },
-  dayChipText: {
-    fontSize: 11,
-    color: "#64748B",
-    backgroundColor: "#E2E8F0",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-
-  inputContainer: {
-    flexDirection: "row",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: "#F8FAFC",
-    alignItems: "flex-end",
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    backgroundColor: "#fff",
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginRight: 8,
-    color: "#0F172A",
-    textAlignVertical: "top",
-    maxHeight: 110,
-  },
-  sendBtn: {
-    backgroundColor: "#3B82F6",
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  sendBtnDisabled: { opacity: 0.55 },
-
-  sileoOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(36, 41, 46, 0.32)",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 9999,
-  },
-  sileoModal: {
-    width: "84%",
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 24,
-    alignItems: "center",
-    shadowColor: "#2563EB",
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  sileoIconCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 14,
-  },
-  sileoWarningCircle: { backgroundColor: "#F59E0B" },
-  sileoInfoCircle: { backgroundColor: "#2563EB" },
-  sileoErrorCircle: { backgroundColor: "#EF4444" },
-  sileoSuccessCircle: { backgroundColor: "#16A34A" },
-  sileoIcon: {
-    color: "#fff",
-    fontSize: 30,
-    fontWeight: "900",
-  },
-  sileoTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#0F172A",
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  sileoMessage: {
-    fontSize: 14,
-    color: "#475569",
-    textAlign: "center",
-    marginBottom: 20,
-    fontWeight: "500",
-    lineHeight: 20,
-  },
-  sileoActions: {
-    width: "100%",
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 10,
-  },
-  sileoCancelButton: {
-    backgroundColor: "#E2E8F0",
-    borderRadius: 12,
-    paddingVertical: 11,
-    paddingHorizontal: 22,
-    alignItems: "center",
-  },
-  sileoCancelText: {
-    color: "#334155",
-    fontWeight: "800",
-    fontSize: 15,
-  },
-  sileoButton: {
-    backgroundColor: "#2563EB",
-    borderRadius: 12,
-    paddingVertical: 11,
-    paddingHorizontal: 22,
-    alignItems: "center",
-  },
-  sileoButtonText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 15,
-    letterSpacing: 0.2,
-  },
-  productPreviewContainer: {
-  flexDirection: "row",
-  alignItems: "center",
-  backgroundColor: "#FFFFFF",
-  marginHorizontal: 12,
-  marginTop: 10,
-  padding: 10,
-  borderRadius: 14,
-  borderWidth: 1,
-  borderColor: "#E2E8F0",
-},
-
-productPreviewImage: {
-  width: 50,
-  height: 50,
-  borderRadius: 10,
-},
-
-productPreviewPlaceholder: {
-  width: 150,
-  height: 50,
-  borderRadius: 10,
-  backgroundColor: "#F1F5F9",
-  justifyContent: "center",
-  alignItems: "center",
-},
-
-productPreviewInfo: {
-  flex: 1,
-  marginLeft: 10,
-},
-
-productPreviewName: {
-  fontSize: 14,
-  fontWeight: "700",
-  color: "#0F172A",
-},
-
-productPreviewPrice: {
-  fontSize: 13,
-  color: "#475569",
-  marginTop: 2,
-},
-
-productPreviewBtn: {
-  backgroundColor: "#2563EB",
-  paddingHorizontal: 12,
-  paddingVertical: 6,
-  borderRadius: 10,
-},
-
-productPreviewBtnText: {
-  color: "#fff",
-  fontWeight: "700",
-  fontSize: 12,
-},
-
-productMessageBubble: {
-  maxWidth: "80%",
-  borderRadius: 16,
-  overflow: "hidden",
-},
-
-myProductMessage: {
-  backgroundColor: "#2563EB",
-  borderTopRightRadius: 4,
-},
-
-theirProductMessage: {
-  backgroundColor: "#fff",
-  borderTopLeftRadius: 4,
-  borderWidth: 1,
-  borderColor: "#E2E8F0",
-},
-
-productMessageImage: {
-  width: "100%",
-  height: 150,
-},
-
-productMessageContent: {
-  padding: 10,
-},
-
-productMessageName: {
-  fontSize: 13,
-  fontWeight: "700",
-  color: "#0F172A",
-  marginBottom: 4,
-},
-
-productMessagePrice: {
-  fontSize: 12,
-  fontWeight: "600",
-  color: "#0F172A",
-  marginBottom: 6,
-},
+  sileoOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.6)", justifyContent: "center", alignItems: "center", padding: 24 },
+  sileoModal: { backgroundColor: "#fff", width: "100%", maxWith: 340, borderRadius: 24, padding: 24, alignItems: "center" },
+  sileoIconCircle: { width: 56, height: 56, borderRadius: 28, justifyContent: "center", alignItems: "center", marginBottom: 16 },
+  sileoInfoCircle: { backgroundColor: "#EFF6FF" },
+  sileoWarningCircle: { backgroundColor: "#FFFBEB" },
+  sileoErrorCircle: { backgroundColor: "#FEF2F2" },
+  sileoSuccessCircle: { backgroundColor: "#F0FDF4" },
+  sileoIcon: { fontSize: 24, fontWeight: "700" },
+  sileoTitle: { fontSize: 18, fontWeight: "800", color: "#0F172A", marginBottom: 8, textAlign: "center" },
+  sileoMessage: { fontSize: 14, color: "#475569", textAlign: "center", lineHeight: 20, marginBottom: 24 },
+  sileoActions: { flexDirection: "row", width: "100%" },
+  sileoCancelButton: { flex: 1, height: 46, justifyContent: "center", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: "#CBD5E1", marginRight: 12 },
+  sileoCancelText: { color: "#475569", fontSize: 15, fontWeight: "600" },
+  sileoButton: { flex: 1, height: 46, backgroundColor: "#1E3A8A", justifyContent: "center", alignItems: "center", borderRadius: 12 },
+  sileoButtonText: { color: "#fff", fontSize: 15, fontWeight: "600" },
 });

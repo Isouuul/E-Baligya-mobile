@@ -1,4 +1,4 @@
-// src/components/ReportModal.js
+// src/components/ReportShop.js
 import React, { useState } from 'react';
 import {
   View,
@@ -19,7 +19,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 const { height } = Dimensions.get('window');
 
-export default function ReportModal({ visible, onClose, productId, productName, product }) {
+export default function ReportShop({ visible, onClose, vendorId, businessName, vendorProfileImage }) {
   const [selectedReason, setSelectedReason] = useState(null);
   const [reasonText, setReasonText] = useState('');
   const [image, setImage] = useState(null);
@@ -35,11 +35,12 @@ export default function ReportModal({ visible, onClose, productId, productName, 
     onConfirm: null,
   });
 
+  // Updated reasons contextualized for reporting a business/vendor
   const reasons = [
-    "Spoiled Seafood",
-    "Expired Products",
-    "Mislabeling / Wrong Information",
-    "Poor Quality",
+    "Fraudulent Business / Scam",
+    "Unresponsive or Rude Behavior",
+    "Selling Prohibited / Bad Items",
+    "Fake Profile or Incorrect Address",
     "Others",
   ];
 
@@ -77,7 +78,7 @@ export default function ReportModal({ visible, onClose, productId, productName, 
     }
   };
 
-  // Logic Preserved: Submit Handling
+  // Logic Preserved: Submit Handling for Shops
   const handleSubmit = async () => {
     if (!selectedReason) {
       showSileo({
@@ -100,25 +101,23 @@ export default function ReportModal({ visible, onClose, productId, productName, 
     }
 
     if (!auth.currentUser) {
-  showSileo({
-    title: 'Authentication Error',
-    message: 'Please login again.',
-    type: 'error',
-    confirmText: 'OK',
-  });
-  return;
-}
+      showSileo({
+        title: 'Authentication Error',
+        message: 'Please login again.',
+        type: 'error',
+        confirmText: 'OK',
+      });
+      return;
+    }
 
     setLoading(true);
     try {
       const reportData = {
         userId: auth.currentUser.uid,
-        productId,
-        productName,
-        vendorId: product.uploadedBy.uid,
-        productImage: product.imageBase64 ? `data:image/jpeg;base64,${product.imageBase64}` : null,
-        vendorEmail: product.uploadedBy.email,
-        businessName: product.uploadedBy.businessName,
+        userEmail: auth.currentUser.email,
+        vendorId: vendorId,
+        businessName: businessName || "Unknown Shop",
+        vendorProfileImage: vendorProfileImage || null,
         reason: selectedReason,
         details: reasonText,
         evidenceImage: image ? `data:image/jpeg;base64,${image}` : null,
@@ -126,7 +125,8 @@ export default function ReportModal({ visible, onClose, productId, productName, 
         status: 'pending',
       };
 
-      await addDoc(collection(db, 'Reports_Products'), reportData);
+      // Saves specifically into a Reports_Shops Firestore collection
+      await addDoc(collection(db, 'Reports_Shops'), reportData);
 
       setLoading(false);
       setSuccessModal(true);
@@ -135,7 +135,7 @@ export default function ReportModal({ visible, onClose, productId, productName, 
       setImage(null);
     } catch (err) {
       setLoading(false);
-      console.log('Report submission failed:', err);
+      console.log('Shop report submission failed:', err);
       showSileo({
         title: 'Error',
         message: 'Failed to submit report.',
@@ -154,14 +154,14 @@ export default function ReportModal({ visible, onClose, productId, productName, 
             <View style={styles.dragHandle} />
             
             <View style={styles.headerRow}>
-              <Text style={styles.modalTitle}>Report Product</Text>
+              <Text style={styles.modalTitle}>Report Shop</Text>
               <TouchableOpacity style={styles.closeIconBtn} onPress={onClose}>
                 <Ionicons name="close" size={22} color="#64748B" />
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-              <Text style={styles.subTitle}>Help us understand what is wrong with <Text style={styles.boldText}>{productName}</Text></Text>
+              <Text style={styles.subTitle}>Help us understand what is wrong with <Text style={styles.boldText}>{businessName}</Text></Text>
 
               <Text style={styles.label}>Select Reason</Text>
               <View style={styles.reasonGrid}>
@@ -183,7 +183,7 @@ export default function ReportModal({ visible, onClose, productId, productName, 
 
               <Text style={styles.label}>Additional Details</Text>
               <TextInput
-                placeholder="Briefly describe the quality issue..."
+                placeholder="Briefly describe the store operations issue..."
                 placeholderTextColor="#94A3B8"
                 style={styles.textInput}
                 multiline
@@ -230,7 +230,7 @@ export default function ReportModal({ visible, onClose, productId, productName, 
               <Ionicons name="shield-checkmark" size={60} color="#15803D" />
             </View>
             <Text style={styles.successTitle}>Report Received</Text>
-            <Text style={styles.successSub}>Thank you for keeping our marketplace safe. Our team will review this report shortly.</Text>
+            <Text style={styles.successSub}>Thank you for keeping our marketplace safe. Our team will review this shop shortly.</Text>
             <TouchableOpacity
               style={styles.doneButton}
               onPress={() => {
@@ -244,6 +244,7 @@ export default function ReportModal({ visible, onClose, productId, productName, 
         </View>
       </Modal>
 
+      {/* Sileo Custom Errors */}
       <Modal visible={sileoVisible} animationType="fade" transparent>
         <View style={styles.sileoOverlay}>
           <View style={styles.sileoModal}>
@@ -313,7 +314,6 @@ const styles = StyleSheet.create({
   
   label: { fontSize: 15, fontWeight: '800', color: '#1E293B', marginTop: 15, marginBottom: 10 },
   
-  // Reasons Grid
   reasonGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   reasonChip: { 
     flexDirection: 'row', 
@@ -331,7 +331,6 @@ const styles = StyleSheet.create({
   reasonText: { fontSize: 13, fontWeight: '700', color: '#64748B', marginLeft: 6 },
   selectedChipText: { color: '#fff' },
 
-  // Inputs
   textInput: { 
     backgroundColor: '#F8FAFC', 
     borderRadius: 18, 
@@ -345,7 +344,6 @@ const styles = StyleSheet.create({
     borderColor: '#F1F5F9'
   },
 
-  // Upload Area
   uploadArea: { 
     width: '100%', 
     height: 180, 
@@ -362,13 +360,11 @@ const styles = StyleSheet.create({
   uploadPlaceholderText: { marginTop: 8, fontSize: 14, fontWeight: '800', color: '#3B82F6' },
   previewImage: { width: '100%', height: '100%', resizeMode: 'cover' },
 
-  // Footer
   footer: { paddingTop: 20, paddingBottom: 10 },
   submitButton: { backgroundColor: '#EF4444', paddingVertical: 16, borderRadius: 20, alignItems: 'center', shadowColor: '#EF4444', shadowOpacity: 0.3, shadowRadius: 8, elevation: 5 },
   submitContent: { flexDirection: 'row', alignItems: 'center' },
   submitText: { color: '#fff', fontSize: 16, fontWeight: '900' },
 
-  // Success Modal
   successCard: { width: '85%', backgroundColor: '#fff', borderRadius: 30, padding: 30, alignItems: 'center', marginBottom: height * 0.3 },
   successCircle: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   successTitle: { fontSize: 22, fontWeight: '900', color: '#1E293B', marginBottom: 10 },
@@ -378,87 +374,26 @@ const styles = StyleSheet.create({
 
   sileoOverlay: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(36, 41, 46, 0.32)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'center', alignItems: 'center',
     zIndex: 9999,
   },
   sileoModal: {
-    width: '84%',
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    shadowColor: '#2563EB',
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 8,
+    width: '84%', backgroundColor: '#fff', borderRadius: 20, padding: 24, alignItems: 'center',
+    shadowColor: '#2563EB', shadowOpacity: 0.12, shadowRadius: 16, elevation: 8,
   },
-  sileoIconCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
+  sileoIconCircle: { width: 58, height: 58, borderRadius: 29, justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
   sileoWarningCircle: { backgroundColor: '#F59E0B' },
   sileoInfoCircle: { backgroundColor: '#2563EB' },
   sileoErrorCircle: { backgroundColor: '#EF4444' },
   sileoSuccessCircle: { backgroundColor: '#16A34A' },
-  sileoIcon: {
-    color: '#fff',
-    fontSize: 30,
-    fontWeight: '900',
-  },
-  sileoTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  sileoMessage: {
-    fontSize: 14,
-    color: '#475569',
-    textAlign: 'center',
-    marginBottom: 20,
-    fontWeight: '500',
-    lineHeight: 20,
-  },
-  sileoActions: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  sileoCancelButton: {
-    backgroundColor: '#E2E8F0',
-    borderRadius: 12,
-    paddingVertical: 11,
-    paddingHorizontal: 22,
-    alignItems: 'center',
-  },
-  sileoCancelText: {
-    color: '#334155',
-    fontWeight: '800',
-    fontSize: 15,
-  },
-  sileoButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    paddingVertical: 11,
-    paddingHorizontal: 22,
-    alignItems: 'center',
-  },
-  sileoButtonText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 15,
-    letterSpacing: 0.2,
-  },
+  sileoIcon: { color: '#fff', fontSize: 30, fontWeight: '900' },
+  sileoTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' },
+  sileoMessage: { fontSize: 14, color: '#475569', textAlign: 'center', marginBottom: 20, fontWeight: '500', lineHeight: 20 },
+  sileoActions: { width: '100%', flexDirection: 'row', justifyContent: 'center', gap: 10 },
+  sileoCancelButton: { backgroundColor: '#E2E8F0', borderRadius: 12, paddingVertical: 11, paddingHorizontal: 22, alignItems: 'center' },
+  sileoCancelText: { color: '#334155', fontWeight: '800', fontSize: 15 },
+  sileoButton: { backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 11, paddingHorizontal: 22, alignItems: 'center' },
+  sileoButtonText: { color: '#fff', fontWeight: '800', fontSize: 15, letterSpacing: 0.2 },
 });

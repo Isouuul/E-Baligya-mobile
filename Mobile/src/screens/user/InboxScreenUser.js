@@ -11,7 +11,7 @@ import {
   StatusBar,
   Platform,
 } from "react-native";
-import { auth, db } from "../../../firebase"; // Adjust path to match your structure
+import { auth, db } from "../../firebase"; // Adjust path to match your structure
 import {
   collection,
   query,

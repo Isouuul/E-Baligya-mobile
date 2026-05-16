@@ -9,8 +9,8 @@ import {
   ScrollView,
   Modal,
   Dimensions,
-  Alert,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { auth } from '../../firebase';
@@ -21,6 +21,73 @@ import * as Haptics from 'expo-haptics';
 
 const { height: screenHeight } = Dimensions.get('window');
 
+// ----------------- Custom Stock Limit Modal -----------------
+const StockLimitModal = ({ visible, onClose, maxQuantity }) => {
+  const [fadeAnim] = useState(new Animated.Value(0));
+  const [slideAnim] = useState(new Animated.Value(0.3));
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 1,
+          tension: 50,
+          friction: 8,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0.8,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
+      <View style={styles.alertOverlay}>
+        <Animated.View style={[styles.alertBlur, { opacity: fadeAnim }]} />
+        <Animated.View
+          style={[
+            styles.alertContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ scale: slideAnim }],
+            },
+          ]}
+        >
+          <View style={styles.alertIconContainer}>
+            <Feather name="alert-triangle" size={32} color="#D97706" />
+          </View>
+          <Text style={styles.alertTitle}>Stock Limit Reached</Text>
+          <Text style={styles.alertMessage}>
+            We're sorry, but only <Text style={styles.alertHighlight}>{maxQuantity}kg</Text> of this item is currently available.
+          </Text>
+          <TouchableOpacity style={styles.alertButton} onPress={onClose} activeOpacity={0.8}>
+            <Text style={styles.alertButtonText}>Got it</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+};
+
 // ----------------- Base64Image Component -----------------
 const Base64Image = ({ base64, productId, style }) => {
   const [localUri, setLocalUri] = useState(null);
@@ -29,23 +96,13 @@ const Base64Image = ({ base64, productId, style }) => {
     const saveToFile = async () => {
       if (!base64) return;
 
-      const fileUri =
-        FileSystem.cacheDirectory + `buy_now_${productId}.jpg`;
+      const fileUri = FileSystem.cacheDirectory + `buy_now_${productId}.jpg`;
 
       try {
-        const cleanBase64 = base64.replace(
-          /^data:image\/\w+;base64,/,
-          ''
-        );
-
-        await FileSystem.writeAsStringAsync(
-          fileUri,
-          cleanBase64,
-          {
-            encoding: FileSystem.EncodingType.Base64,
-          }
-        );
-
+        const cleanBase64 = base64.replace(/^data:image\/\w+;base64,/, '');
+        await FileSystem.writeAsStringAsync(fileUri, cleanBase64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
         setLocalUri(fileUri);
       } catch (err) {
         console.log('Base64 Error:', err);
@@ -66,16 +123,43 @@ const Base64Image = ({ base64, productId, style }) => {
   return <Image source={{ uri: localUri }} style={style} />;
 };
 
-export default function BuyNowModal({
-  visible,
-  onClose,
-  product,
-}) {
+// ----------------- Main BuyNowModal Component -----------------
+export default function BuyNowModal({ visible, onClose, product }) {
   const navigation = useNavigation();
-
+  const [maxQuantity, setMaxQuantity] = useState(1);
   const [quantity, setQuantity] = useState(1);
   const [selectedServices, setSelectedServices] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [stockAlertVisible, setStockAlertVisible] = useState(false);
+
+  // ---------------- SYNC STOCK LIMIT ----------------
+  useEffect(() => {
+    if (!product) return;
+
+    const stock = Number(product.quantityKg || 1);
+    setMaxQuantity(stock);
+
+    // clamp quantity if product changes
+    setQuantity((prev) => Math.min(prev, stock || 1));
+  }, [product]);
+
+  // ---------------- QUANTITY HANDLER ----------------
+  const updateQuantity = (type) => {
+    Haptics.selectionAsync();
+
+    if (type === 'inc') {
+      setQuantity((prev) => {
+        if (prev >= maxQuantity) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          setStockAlertVisible(true);
+          return prev;
+        }
+        return prev + 1;
+      });
+    } else {
+      setQuantity((prev) => Math.max(prev - 1, 1));
+    }
+  };
 
   // ---------------- RESET ----------------
   useEffect(() => {
@@ -83,6 +167,7 @@ export default function BuyNowModal({
       setQuantity(1);
       setSelectedServices([]);
       setLoading(false);
+      setStockAlertVisible(false);
     }
   }, [visible]);
 
@@ -98,18 +183,12 @@ export default function BuyNowModal({
   const toggleService = (label) => {
     Haptics.selectionAsync();
 
-    const alreadySelected = selectedServices.some(
-      (service) => service.label === label
-    );
+    const alreadySelected = selectedServices.some((service) => service.label === label);
 
     if (alreadySelected) {
-      setSelectedServices((prev) =>
-        prev.filter((service) => service.label !== label)
-      );
+      setSelectedServices((prev) => prev.filter((service) => service.label !== label));
     } else {
-      const serviceObj = enabledServices.find(
-        (service) => service.label === label
-      );
+      const serviceObj = enabledServices.find((service) => service.label === label);
 
       if (serviceObj) {
         setSelectedServices((prev) => [
@@ -123,27 +202,13 @@ export default function BuyNowModal({
     }
   };
 
-  // ---------------- QUANTITY ----------------
-  const updateQuantity = (type) => {
-    Haptics.selectionAsync();
-
-    if (type === 'inc') {
-      setQuantity((prev) => prev + 1);
-    } else {
-      setQuantity((prev) => Math.max(prev - 1, 1));
-    }
-  };
-
   // ---------------- TOTALS ----------------
   const baseTotal = useMemo(() => {
-    return (Number(product?.basePrice || 0)) * quantity;
+    return Number(product?.basePrice || 0) * quantity;
   }, [product, quantity]);
 
   const servicesTotal = useMemo(() => {
-    return selectedServices.reduce(
-      (sum, service) => sum + Number(service.price || 0),
-      0
-    );
+    return selectedServices.reduce((sum, service) => sum + Number(service.price || 0), 0);
   }, [selectedServices]);
 
   const grandTotal = useMemo(() => {
@@ -153,10 +218,7 @@ export default function BuyNowModal({
   // ---------------- BUY NOW ----------------
   const handleBuyNow = async () => {
     if (!auth.currentUser) {
-      Alert.alert(
-        'Login Required',
-        'Please login first.'
-      );
+      alert('Login Required. Please login first.');
       return;
     }
 
@@ -164,58 +226,33 @@ export default function BuyNowModal({
 
     try {
       setLoading(true);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-      await Haptics.notificationAsync(
-        Haptics.NotificationFeedbackType.Success
-      );
-
-      // THIS STRUCTURE MATCHES YOUR ORDER SYSTEM
       const checkoutItem = {
         productId: product.id,
         productName: product.productName,
-        productImage:
-          product.imageBase64 ||
-          product.productImage ||
-          null,
-
-        category:
-          product.category || 'Uncategorized',
-
+        productImage: product.imageBase64 || product.productImage || null,
+        category: product.category || 'Uncategorized',
         quantity,
-
         basePrice: Number(product.basePrice || 0),
-
         selectedServices: selectedServices || [],
-
         uploadedBy: {
           uid: product?.uploadedBy?.uid || null,
-          marketName:
-            product?.uploadedBy?.marketName || '',
-          businessName:
-            product?.uploadedBy?.businessName || '',
-          email:
-            product?.uploadedBy?.email || '',
-          profileImage:
-            product?.uploadedBy?.profileImage || null,
+          marketName: product?.uploadedBy?.marketName || '',
+          businessName: product?.uploadedBy?.businessName || '',
+          email: product?.uploadedBy?.email || '',
+          profileImage: product?.uploadedBy?.profileImage || null,
         },
       };
 
-      // NAVIGATE TO CHECKOUT
-      navigation.navigate(
-        'BuyNowModalCheckedOut',
-        {
-          checkoutData: checkoutItem,
-        }
-      );
+      navigation.navigate('BuyNowCheckedOut', {
+        checkoutData: checkoutItem,
+      });
 
       onClose();
     } catch (error) {
       console.log('BUY NOW ERROR:', error);
-
-      Alert.alert(
-        'Checkout Failed',
-        'Something went wrong.'
-      );
+      alert('Checkout Failed. Something went wrong.');
     } finally {
       setLoading(false);
     }
@@ -224,292 +261,227 @@ export default function BuyNowModal({
   if (!product) return null;
 
   return (
-    <Modal
-      animationType="slide"
-      visible={visible}
-      transparent
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <TouchableOpacity
-          style={styles.dismissOverlay}
-          activeOpacity={1}
-          onPress={onClose}
-        />
+    <>
+      <Modal animationType="slide" visible={visible} transparent onRequestClose={onClose}>
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={styles.dismissOverlay} activeOpacity={1} onPress={onClose} />
 
-        <View style={styles.bottomSheetContainer}>
-          {/* HANDLE */}
-          <View style={styles.grabber} />
+          <View style={styles.bottomSheetContainer}>
+            {/* HANDLE */}
+            <View style={styles.grabber} />
 
-          {/* HEADER */}
-          <View style={styles.modalHeader}>
-            <View>
-              <Text style={styles.modalTitle}>
-                Buy Now
-              </Text>
+            {/* HEADER */}
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Buy Now</Text>
+                <Text style={styles.modalSubtitle}>Confirm your purchase</Text>
+              </View>
 
-              <Text style={styles.modalSubtitle}>
-                Confirm your purchase
-              </Text>
+              <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+                <Ionicons name="close" size={18} color="#475569" />
+              </TouchableOpacity>
             </View>
 
-            <TouchableOpacity
-              style={styles.closeBtn}
-              onPress={onClose}
-            >
-              <Ionicons
-                name="close"
-                size={18}
-                color="#475569"
-              />
-            </TouchableOpacity>
-          </View>
+            {/* CONTENT */}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+              {/* PRODUCT */}
+              <View style={styles.productMainCard}>
+                {product.imageBase64 ? (
+                  <Base64Image base64={product.imageBase64} productId={product.id} style={styles.productImage} />
+                ) : (
+                  <View style={[styles.productImage, styles.noImage]}>
+                    <Feather name="box" size={28} color="#94A3B8" />
+                  </View>
+                )}
 
-          {/* CONTENT */}
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
-            {/* PRODUCT */}
-            <View style={styles.productMainCard}>
-              {product.imageBase64 ? (
-                <Base64Image
-                  base64={product.imageBase64}
-                  productId={product.id}
-                  style={styles.productImage}
-                />
-              ) : (
-                <View
-                  style={[
-                    styles.productImage,
-                    styles.noImage,
-                  ]}
-                >
-                  <Feather
-                    name="box"
-                    size={28}
-                    color="#94A3B8"
-                  />
-                </View>
-              )}
-
-              <View style={styles.productInfoSide}>
-                <View>
-                  <Text
-                    style={styles.productName}
-                    numberOfLines={2}
-                  >
-                    {product.productName}
-                  </Text>
-
-                  <Text style={styles.productPrice}>
-                    ₱
-                    {Number(
-                      product.basePrice || 0
-                    ).toLocaleString()}
-                  </Text>
-                </View>
-
-                {/* QUANTITY */}
-                <View style={styles.qtyRowContainer}>
-                  <Text style={styles.qtyLabel}>
-                    Quantity
-                  </Text>
-
-                  <View style={styles.qtyControls}>
-                    <TouchableOpacity
-                      style={styles.qtyCircle}
-                      onPress={() =>
-                        updateQuantity('dec')
-                      }
-                    >
-                      <Feather
-                        name="minus"
-                        size={14}
-                        color="#0F172A"
-                      />
-                    </TouchableOpacity>
-
-                    <Text style={styles.qtyValue}>
-                      {quantity}
+                <View style={styles.productInfoSide}>
+                  <View>
+                    <Text style={styles.productName} numberOfLines={2}>
+                      {product.productName}
                     </Text>
 
-                    <TouchableOpacity
-                      style={styles.qtyCircle}
-                      onPress={() =>
-                        updateQuantity('inc')
-                      }
-                    >
-                      <Feather
-                        name="plus"
-                        size={14}
-                        color="#0F172A"
-                      />
-                    </TouchableOpacity>
+                    <Text style={styles.productPrice}>₱{Number(product.basePrice || 0).toLocaleString()}</Text>
+                  </View>
+
+                  {/* QUANTITY */}
+                  <View style={styles.qtyRowContainer}>
+                    <View>
+                      <Text style={styles.qtyLabel}>Quantity</Text>
+                      <Text style={styles.maxQtyLabel}>{maxQuantity} kg available</Text>
+                    </View>
+                    <View style={styles.qtyControls}>
+                      <TouchableOpacity style={styles.qtyCircle} onPress={() => updateQuantity('dec')}>
+                        <Feather name="minus" size={14} color="#0F172A" />
+                      </TouchableOpacity>
+
+                      <Text style={styles.qtyValue}>{quantity}</Text>
+
+                      <TouchableOpacity style={styles.qtyCircle} onPress={() => updateQuantity('inc')}>
+                        <Feather name="plus" size={14} color="#0F172A" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
               </View>
-            </View>
 
-            {/* SERVICES */}
-            {enabledServices.length > 0 && (
-              <View style={styles.section}>
-                <View style={styles.sectionHeaderRow}>
-                  <Feather
-                    name="plus-circle"
-                    size={16}
-                    color="#0F172A"
-                  />
+              {/* SERVICES */}
+              {enabledServices.length > 0 && (
+                <View style={styles.section}>
+                  <View style={styles.sectionHeaderRow}>
+                    <Feather name="plus-circle" size={16} color="#3b82f6" />
+                    <Text style={styles.sectionTitle}>Add-on Services</Text>
+                  </View>
 
-                  <Text style={styles.sectionTitle}>
-                    Add-on Services
-                  </Text>
-                </View>
+                  {enabledServices.map((service, idx) => {
+                    const isSelected = selectedServices.some((selected) => selected.label === service.label);
 
-                {enabledServices.map((service, idx) => {
-                  const isSelected =
-                    selectedServices.some(
-                      (selected) =>
-                        selected.label ===
-                        service.label
-                    );
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        activeOpacity={0.8}
+                        style={[styles.serviceRow, isSelected && styles.activeService]}
+                        onPress={() => toggleService(service.label)}
+                      >
+                        <View style={styles.row}>
+                          <View style={[styles.checkSquare, isSelected && styles.checkSquareActive]}>
+                            {isSelected && <Feather name="check" size={12} color="#fff" />}
+                          </View>
 
-                  return (
-                    <TouchableOpacity
-                      key={idx}
-                      activeOpacity={0.8}
-                      style={[
-                        styles.serviceRow,
-                        isSelected &&
-                          styles.activeService,
-                      ]}
-                      onPress={() =>
-                        toggleService(service.label)
-                      }
-                    >
-                      <View style={styles.row}>
-                        <View
-                          style={[
-                            styles.checkSquare,
-                            isSelected &&
-                              styles.checkSquareActive,
-                          ]}
-                        >
-                          {isSelected && (
-                            <Feather
-                              name="check"
-                              size={12}
-                              color="#fff"
-                            />
-                          )}
+                          <Text style={[styles.serviceLabel, isSelected && styles.activeServiceLabel]}>
+                            {service.label}
+                          </Text>
                         </View>
 
-                        <Text
-                          style={[
-                            styles.serviceLabel,
-                            isSelected &&
-                              styles.activeServiceLabel,
-                          ]}
-                        >
-                          {service.label}
+                        <Text style={[styles.servicePrice, isSelected && styles.activeServicePrice]}>
+                          +₱{service.price}
                         </Text>
-                      </View>
-
-                      <Text
-                        style={[
-                          styles.servicePrice,
-                          isSelected &&
-                            styles.activeServicePrice,
-                        ]}
-                      >
-                        +₱{service.price}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-          </ScrollView>
-
-          {/* FOOTER */}
-          <View style={styles.footer}>
-            <View style={styles.breakdownContainer}>
-              <View style={styles.breakdownRow}>
-                <Text style={styles.breakdownLabel}>
-                  Subtotal ({quantity})
-                </Text>
-
-                <Text style={styles.breakdownValue}>
-                  ₱{baseTotal.toLocaleString()}
-                </Text>
-              </View>
-
-              {servicesTotal > 0 && (
-                <View style={styles.breakdownRow}>
-                  <Text style={styles.breakdownLabel}>
-                    Services
-                  </Text>
-
-                  <Text style={styles.breakdownValue}>
-                    +₱{servicesTotal.toLocaleString()}
-                  </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               )}
-            </View>
+            </ScrollView>
 
-            <View style={styles.summaryRow}>
-              <View>
-                <Text style={styles.totalLabel}>
-                  Grand Total
-                </Text>
+            {/* FOOTER */}
+            <View style={styles.footer}>
+              <View style={styles.breakdownContainer}>
+                <View style={styles.breakdownRow}>
+                  <Text style={styles.breakdownLabel}>Subtotal ({quantity})</Text>
+                  <Text style={styles.breakdownValue}>₱{baseTotal.toLocaleString()}</Text>
+                </View>
 
-                <Text style={styles.totalAmount}>
-                  ₱{grandTotal.toLocaleString()}
-                </Text>
+                {servicesTotal > 0 && (
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>Services</Text>
+                    <Text style={styles.breakdownValue}>+₱{servicesTotal.toLocaleString()}</Text>
+                  </View>
+                )}
               </View>
 
-              <TouchableOpacity
-                style={[
-                  styles.primaryBuyBtn,
-                  loading && {
-                    opacity: 0.7,
-                  },
-                ]}
-                onPress={handleBuyNow}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator
-                    color="#FFFFFF"
-                  />
-                ) : (
-                  <>
-                    <Image
-                      source={BasketIcon}
-                      style={styles.buyIcon}
-                    />
+              <View style={styles.summaryRow}>
+                <View>
+                  <Text style={styles.totalLabel}>Grand Total</Text>
+                  <Text style={styles.totalAmount}>₱{grandTotal.toLocaleString()}</Text>
+                </View>
 
-                    <Text style={styles.buyBtnText}>
-                      Checkout
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.primaryBuyBtn, loading && { opacity: 0.7 }]}
+                  onPress={handleBuyNow}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <>
+                      <Image source={BasketIcon} style={styles.buyIcon} />
+                      <Text style={styles.buyBtnText}>Checkout</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>
-      </View>
-    </Modal>
+      </Modal>
+
+      {/* Stock limit sub-modal rendering dynamically right on top */}
+      <StockLimitModal
+        visible={stockAlertVisible}
+        onClose={() => setStockAlertVisible(false)}
+        maxQuantity={maxQuantity}
+      />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
+  // --- CUSTOM BEAUTIFUL MODAL STYLES ---
+  alertOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  alertBlur: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+  },
+  alertContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 10,
+  },
+  alertIconContainer: {
+    backgroundColor: '#FEF3C7',
+    padding: 16,
+    borderRadius: 99,
+    marginBottom: 16,
+  },
+  alertTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  alertMessage: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  alertHighlight: {
+    color: '#D97706',
+    fontWeight: '700',
+  },
+  alertButton: {
+    backgroundColor: '#0F172A',
+    paddingVertical: 12,
+    width: '100%',
+    borderRadius: 99,
+    alignItems: 'center',
+  },
+  alertButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  // --- EXISTING STYLES ---
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15,23,42,0.45)',
     justifyContent: 'flex-end',
   },
-
   dismissOverlay: {
     position: 'absolute',
     top: 0,
@@ -517,7 +489,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
-
   bottomSheetContainer: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 28,
@@ -525,7 +496,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     maxHeight: screenHeight * 0.8,
   },
-
   grabber: {
     width: 36,
     height: 4,
@@ -534,7 +504,6 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 8,
   },
-
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -544,30 +513,25 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
   },
-
   modalTitle: {
     fontSize: 20,
     fontWeight: '800',
     color: '#0F172A',
   },
-
   modalSubtitle: {
     fontSize: 12,
     color: '#64748B',
     marginTop: 2,
   },
-
   closeBtn: {
     backgroundColor: '#F1F5F9',
     padding: 8,
     borderRadius: 99,
   },
-
   scrollContent: {
     padding: 24,
     paddingBottom: 30,
   },
-
   productMainCard: {
     flexDirection: 'row',
     backgroundColor: '#F8FAFC',
@@ -577,14 +541,12 @@ const styles = StyleSheet.create({
     borderColor: '#F1F5F9',
     marginBottom: 24,
   },
-
   productImage: {
     width: 90,
     height: 90,
     borderRadius: 14,
     backgroundColor: '#FFFFFF',
   },
-
   noImage: {
     justifyContent: 'center',
     alignItems: 'center',
@@ -592,38 +554,37 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     borderStyle: 'dashed',
   },
-
   productInfoSide: {
     flex: 1,
     marginLeft: 14,
     justifyContent: 'space-between',
   },
-
   productName: {
     fontSize: 16,
     fontWeight: '700',
     color: '#0F172A',
   },
-
   productPrice: {
     fontSize: 18,
     fontWeight: '800',
     color: '#0F172A',
     marginTop: 4,
   },
-
   qtyRowContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-
   qtyLabel: {
     fontSize: 12,
     fontWeight: '600',
     color: '#64748B',
   },
-
+  maxQtyLabel: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
   qtyControls: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -633,7 +594,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-
   qtyCircle: {
     width: 24,
     height: 24,
@@ -642,31 +602,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   qtyValue: {
     fontSize: 13,
     fontWeight: '700',
     color: '#0F172A',
     marginHorizontal: 12,
   },
-
   section: {
     marginBottom: 16,
   },
-
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
   },
-
   sectionTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: '#0F172A',
     marginLeft: 6,
   },
-
   serviceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -678,17 +633,14 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
   },
-
   activeService: {
-    borderColor: '#0F172A',
+    borderColor: '#3b82f6',
     backgroundColor: '#F8FAFC',
   },
-
   row: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-
   checkSquare: {
     width: 20,
     height: 20,
@@ -699,32 +651,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 12,
   },
-
   checkSquareActive: {
-    backgroundColor: '#0F172A',
-    borderColor: '#0F172A',
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
   },
-
   serviceLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: '#475569',
   },
-
   activeServiceLabel: {
     color: '#0F172A',
   },
-
   servicePrice: {
     fontSize: 14,
     fontWeight: '700',
     color: '#64748B',
   },
-
   activeServicePrice: {
     color: '#0F172A',
   },
-
   footer: {
     paddingHorizontal: 24,
     paddingTop: 16,
@@ -733,65 +679,56 @@ const styles = StyleSheet.create({
     borderTopColor: '#F1F5F9',
     backgroundColor: '#FFFFFF',
   },
-
   breakdownContainer: {
     marginBottom: 16,
     gap: 6,
   },
-
   breakdownRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-
   breakdownLabel: {
     fontSize: 13,
     color: '#64748B',
   },
-
   breakdownValue: {
     fontSize: 13,
     fontWeight: '700',
     color: '#0F172A',
   },
-
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-
   totalLabel: {
     fontSize: 11,
     fontWeight: '700',
     color: '#64748B',
     textTransform: 'uppercase',
   },
-
   totalAmount: {
     fontSize: 24,
     fontWeight: '900',
     color: '#0F172A',
   },
-
   primaryBuyBtn: {
     flexDirection: 'row',
-    backgroundColor: '#0F172A',
-    paddingVertical: 14,
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
+    borderWidth: 1,
+   paddingVertical: 14,
     paddingHorizontal: 22,
     borderRadius: 999,
     alignItems: 'center',
   },
-
   buyIcon: {
     width: 16,
     height: 16,
-    tintColor: '#FFFFFF',
     marginRight: 8,
   },
-
   buyBtnText: {
-    color: '#FFFFFF',
+    color: '#3b82f6',
     fontSize: 14,
     fontWeight: '700',
   },

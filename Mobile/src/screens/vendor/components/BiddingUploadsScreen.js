@@ -97,7 +97,7 @@ const BiddingUploadsScreen = () => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      <StatusBar hidden={false} />
 
       {/* Header */}
       <View style={styles.header}>
@@ -288,11 +288,11 @@ const BiddingUploadsScreen = () => {
 export default BiddingUploadsScreen;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f8fafc" },
+  container: { flex: 1, backgroundColor: "#f8fafc", marginTop: 35 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16, backgroundColor: "#1e3a8a", borderBottomWidth: 1, borderBottomColor: "#e2e8f0" },
   headerTitle: { fontSize: 24, fontWeight: "800", color: "#fff" },
   headerSubtitle: { fontSize: 13, color: "#fff", marginTop: 2 },
-  badge: { backgroundColor: "#f1f5f9", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  badge: { backgroundColor: "#3b82f6", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   headerCount: { fontSize: 13, fontWeight: "700", color: "#fff" },
   searchDateContainer: { flexDirection: "row", paddingHorizontal: 16, marginTop: 16, alignItems: "center", gap: 10 },
   searchBar: { flex: 1, flexDirection: "row", backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 14, alignItems: "center", height: 50, borderWidth: 1, borderColor: "#e2e8f0" },

@@ -16,7 +16,8 @@ import {
 import { db, auth } from '../../../firebase';
 import { collection, query, onSnapshot, orderBy, doc, updateDoc, deleteDoc, setDoc, runTransaction } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons'; // Added for better iconography
+import { Ionicons } from '@expo/vector-icons'; 
+import { StatusBar } from 'expo-status-bar';
 
 const { width } = Dimensions.get('window');
 
@@ -30,6 +31,7 @@ export default function VendorOrdersScreen() {
   const [activeStatus, setActiveStatus] = useState('Pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [processing, setProcessing] = useState(null);
+  const [activeDateFilter, setActiveDateFilter] = useState('All');
   
   // Sileo Modal State
   const [sileoVisible, setSileoVisible] = useState(false);
@@ -42,14 +44,17 @@ export default function VendorOrdersScreen() {
   });
   const [pendingDeclineOrder, setPendingDeclineOrder] = useState(null);
 
-const STATUSES = [
-  'Pending',
-  'Preparing',
-  'To Deliver',
-  'To Pickup',
-  'Complete',
-  'Cancelled'
-];
+  const STATUSES = [
+    'Pending',
+    'Preparing',
+    'To Deliver',
+    'To Pickup',
+    'Complete',
+    'Cancelled'
+  ];
+
+  const DATE_FILTERS = ['All', 'Today', 'Yesterday', 'Last Week', 'Last Month'];
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'Pending': return '#F59E0B'; 
@@ -88,20 +93,17 @@ const STATUSES = [
   }, []);
 
   useEffect(() => {
-  const ref = collection(db, 'To_Pickup_Orders');
-  const q = query(ref, orderBy('createdAt', 'desc'));
-
-  const unsubscribe = onSnapshot(q, snapshot => {
-    const data = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
-    setToPickupOrders(data);
-  });
-
-  return () => unsubscribe();
-}, []);
+    const ref = collection(db, 'To_Pickup_Orders');
+    const q = query(ref, orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, snapshot => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setToPickupOrders(data);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const ref = collection(db, 'Completed_Orders');
@@ -131,7 +133,7 @@ const STATUSES = [
     }, error => {
       console.log(error);
       setLoading(false);
-      Alert.alert('Error', 'Failed to fetch orders.');
+      showSileo({ title: 'Error', message: 'Failed to fetch orders.', type: 'error' });
     });
     return () => unsubscribe();
   }, [vendorId]);
@@ -150,7 +152,7 @@ const STATUSES = [
       });
       showSileo({
         title: 'Order Declined',
-        message: `Order ${order.orderNumber} has been declined successfully.`,
+        message: `Order ${order.orderNumber} has been successfully declined and cancelled.`,
         type: 'success',
         onPress: () => setPendingDeclineOrder(null),
       });
@@ -171,118 +173,126 @@ const STATUSES = [
     });
   };
 
-const handleDeliverOrder = async (order) => {
-  if (processing === order.id) return;
-
-  setProcessing(order.id);
-
-  try {
-    const ordersRef = doc(db, 'Orders', order.id);
-
-    const deliverRef = doc(db, 'To_Deliver_Orders', order.id);
-
-    const pickupRef = doc(db, 'To_Pickup_Orders', order.id);
-
-    await runTransaction(db, async (transaction) => {
-      const productSnapshots = [];
-
-      for (const item of order.items) {
-        const productRef = doc(db, 'Products', item.productId);
-
-        const productSnap = await transaction.get(productRef);
-
-        if (productSnap.exists()) {
-          productSnapshots.push({
-            ref: productRef,
-            snap: productSnap,
-            item,
-          });
-        }
-      }
-
-      for (const { ref, snap, item } of productSnapshots) {
-        const currentQty = snap.data().quantityKg || 0;
-
-        const orderQty = item.quantity || 0;
-
-        const newQty = currentQty - orderQty;
-
-        if (newQty < 0) {
-          throw new Error(`Insufficient stock for ${item.productName}`);
-        }
-
-        transaction.update(ref, {
-          quantityKg: newQty,
-        });
-      }
-
-      // DELIVERY
-      if (order.deliveryMethod === 'Delivery') {
-        transaction.set(deliverRef, {
-          ...order,
-          status: 'To Deliver',
-        });
-      }
-
-      // PICKUP
-      if (order.deliveryMethod === 'Pickup') {
-        transaction.set(pickupRef, {
-          ...order,
-          status: 'To Pickup',
-        });
-
-        // USER NOTIFICATION
-        const notifRef = doc(
-          collection(db, 'User_Notifications_Product')
-        );
-
-        transaction.set(notifRef, {
-          userId: order.userId,
-          orderId: order.id,
-
-          title: 'Order Ready for Pickup',
-
-          message:
-            'Your order is now ready for pickup.',
-
-          type: 'ORDER_TO_PICKUP',
-
-          deliveryMethod: 'Pickup',
-
-          read: false,
-
-          createdAt: new Date(),
-        });
-      }
-
-      transaction.delete(ordersRef);
-    });
-
-    Alert.alert(
-      'Success',
-      order.deliveryMethod === 'Pickup'
-        ? `Order ${order.orderNumber} is ready for pickup.`
-        : `Order ${order.orderNumber} moved to To Deliver.`
-    );
-  } catch (error) {
-    Alert.alert(
-      'Error',
-      error.message || 'Failed to process order.'
-    );
-  }
-
-  setProcessing(null);
-};
-
   const handleAcceptOrder = async (order) => {
     if (processing === order.id) return;
     setProcessing(order.id);
     try {
       const orderRef = doc(db, 'Orders', order.id);
-      await updateDoc(orderRef, { status: 'Preparing' });
-      Alert.alert('Accepted', `Order ${order.orderNumber} is now being prepared.`);
+      const notifRef = doc(collection(db, 'User_Notifications_Product'));
+      
+      // Extract properties from the first item
+      const sampleProductImage = order.items?.[0]?.productImage || null;
+      const sampleProductName = order.items?.[0]?.productName || null;
+
+      await runTransaction(db, async (transaction) => {
+        transaction.update(orderRef, { status: 'Preparing' });
+        
+        // Add notification for customer
+        transaction.set(notifRef, {
+          userId: order.userId,
+          orderId: order.id,
+          title: 'Order Accepted',
+          message: `Your order #${order.orderNumber} has been accepted and is now being prepared!`,
+          type: 'ORDER_ACCEPTED',
+          imageUrl: sampleProductImage,
+          productName: sampleProductName,
+          read: false,
+          createdAt: new Date(),
+        });
+      });
+
+      showSileo({
+        title: 'Order Accepted',
+        message: `Order ${order.orderNumber} is now being prepared. The customer has been notified.`,
+        type: 'success',
+      });
     } catch (error) {
-      Alert.alert('Error', 'Failed to accept order.');
+      showSileo({ title: 'Error', message: 'Failed to accept order.', type: 'error' });
+    }
+    setProcessing(null);
+  };
+
+  const handleDeliverOrder = async (order) => {
+    if (processing === order.id) return;
+    setProcessing(order.id);
+
+    try {
+      const ordersRef = doc(db, 'Orders', order.id);
+      const deliverRef = doc(db, 'To_Deliver_Orders', order.id);
+      const pickupRef = doc(db, 'To_Pickup_Orders', order.id);
+      
+      // Extract properties from the first item
+      const sampleProductImage = order.items?.[0]?.productImage || null;
+      const sampleProductName = order.items?.[0]?.productName || null;
+
+      await runTransaction(db, async (transaction) => {
+        const productSnapshots = [];
+        for (const item of order.items) {
+          const productRef = doc(db, 'Products', item.productId);
+          const productSnap = await transaction.get(productRef);
+          if (productSnap.exists()) {
+            productSnapshots.push({ ref: productRef, snap: productSnap, item });
+          }
+        }
+
+        for (const { ref, snap, item } of productSnapshots) {
+          const currentQty = snap.data().quantityKg || 0;
+          const orderQty = item.quantity || 0;
+          const newQty = currentQty - orderQty;
+          if (newQty < 0) {
+            throw new Error(`Insufficient stock for ${item.productName}`);
+          }
+          transaction.update(ref, { quantityKg: newQty });
+        }
+
+        if (order.deliveryMethod === 'Delivery') {
+          transaction.set(deliverRef, { ...order, status: 'To Deliver' });
+          
+          // Shipping notification with image and name
+          const notifRef = doc(collection(db, 'User_Notifications_Product'));
+          transaction.set(notifRef, {
+            userId: order.userId,
+            orderId: order.id,
+            title: 'Order Shipped Out',
+            message: `Good news! Your order #${order.orderNumber} has been handed over to dispatch.`,
+            type: 'ORDER_SHIPPED',
+            imageUrl: sampleProductImage,
+            productName: sampleProductName,
+            read: false,
+            createdAt: new Date(),
+          });
+        }
+
+        if (order.deliveryMethod === 'Pickup') {
+          transaction.set(pickupRef, { ...order, status: 'To Pickup' });
+          
+          // Pickup Notification with image and name
+          const notifRef = doc(collection(db, 'User_Notifications_Product'));
+          transaction.set(notifRef, {
+            userId: order.userId,
+            orderId: order.id,
+            title: 'Order Ready for Pickup',
+            message: `Your order #${order.orderNumber} is now packaged and ready for pickup.`,
+            type: 'ORDER_TO_PICKUP',
+            deliveryMethod: 'Pickup',
+            imageUrl: sampleProductImage,
+            productName: sampleProductName,
+            read: false,
+            createdAt: new Date(),
+          });
+        }
+        transaction.delete(ordersRef);
+      });
+
+      showSileo({
+        title: 'Status Updated',
+        message: order.deliveryMethod === 'Pickup'
+          ? `Order ${order.orderNumber} is ready! The customer has received a pickup notification.`
+          : `Order ${order.orderNumber} has been handed off to dispatch and moved to shipping.`,
+        type: 'success',
+      });
+    } catch (error) {
+      showSileo({ title: 'Error', message: error.message || 'Failed to process order.', type: 'error' });
     }
     setProcessing(null);
   };
@@ -301,82 +311,60 @@ const handleDeliverOrder = async (order) => {
         transaction.set(completeRef, { ...order, status: 'Complete', completedAt: new Date() });
         transaction.delete(deliverRef);
       });
-      Alert.alert('Completed', `Order ${order.orderNumber} has been completed.`);
+      showSileo({
+        title: 'Order Completed',
+        message: `Order ${order.orderNumber} has been successfully delivered and finalized.`,
+        type: 'success',
+      });
     } catch (error) {
-      Alert.alert('Error', error.message || 'Failed to complete order.');
+      showSileo({ title: 'Error', message: error.message || 'Failed to complete order.', type: 'error' });
     }
     setProcessing(null);
   };
 
   const handleCompletePickup = async (order) => {
-  if (processing === order.id) return;
+    if (processing === order.id) return;
+    setProcessing(order.id);
 
-  setProcessing(order.id);
+    try {
+      const completeRef = doc(db, 'Completed_Orders', order.id);
+      const pickupRef = doc(db, 'To_Pickup_Orders', order.id);
+      
+      // Extract properties from the first item
+      const sampleProductImage = order.items?.[0]?.productImage || null;
+      const sampleProductName = order.items?.[0]?.productName || null;
 
-  try {
-    const completeRef = doc(
-      db,
-      'Completed_Orders',
-      order.id
-    );
+      await runTransaction(db, async (transaction) => {
+        const completeSnap = await transaction.get(completeRef);
+        if (completeSnap.exists()) throw new Error('Order already completed.');
 
-    const pickupRef = doc(
-      db,
-      'To_Pickup_Orders',
-      order.id
-    );
+        transaction.set(completeRef, { ...order, status: 'Complete', completedAt: new Date() });
+        transaction.delete(pickupRef);
 
-    await runTransaction(db, async (transaction) => {
-      const completeSnap =
-        await transaction.get(completeRef);
-
-      if (completeSnap.exists()) {
-        throw new Error('Order already completed.');
-      }
-
-      transaction.set(completeRef, {
-        ...order,
-        status: 'Complete',
-        completedAt: new Date(),
+        const notifRef = doc(collection(db, 'User_Notifications_Product'));
+        transaction.set(notifRef, {
+          userId: order.userId,
+          orderId: order.id,
+          title: 'Pickup Completed',
+          message: 'Your pickup order has been completed successfully.',
+          type: 'ORDER_COMPLETED',
+          imageUrl: sampleProductImage,
+          productName: sampleProductName,
+          read: false,
+          createdAt: new Date(),
+        });
       });
 
-      transaction.delete(pickupRef);
-
-      // NOTIFICATION
-      const notifRef = doc(
-        collection(db, 'User_Notifications_Product')
-      );
-
-      transaction.set(notifRef, {
-        userId: order.userId,
-        orderId: order.id,
-
-        title: 'Pickup Completed',
-
-        message:
-          'Your pickup order has been completed successfully.',
-
-        type: 'ORDER_COMPLETED',
-
-        read: false,
-
-        createdAt: new Date(),
+      showSileo({
+        title: 'Handover Successful',
+        message: `Pickup order ${order.orderNumber} has been collected by the client and marked as complete.`,
+        type: 'success',
       });
-    });
-
-    Alert.alert(
-      'Completed',
-      `Pickup order ${order.orderNumber} completed.`
-    );
-  } catch (error) {
-    Alert.alert(
-      'Error',
-      error.message || 'Failed to complete pickup.'
-    );
-  }
-
-  setProcessing(null);
-};
+    } catch (error) {
+      showSileo({ title: 'Error', message: error.message || 'Failed to complete pickup.', type: 'error' });
+    }
+    setProcessing(null);
+  };
 
   const getStatusCount = (status) => {
     if (status === 'To Deliver') return toDeliverOrders.length;
@@ -385,18 +373,43 @@ const handleDeliverOrder = async (order) => {
     return orders.filter(o => o.status === status).length;
   };
 
-const sourceOrders =
-  activeStatus === 'To Deliver'
-    ? toDeliverOrders
-    : activeStatus === 'To Pickup'
-    ? toPickupOrders
-    : activeStatus === 'Complete'
-    ? completedOrders
+  const checkDateMatch = (orderDateSeconds) => {
+    if (activeDateFilter === 'All') return true;
+    if (!orderDateSeconds) return false;
+
+    const orderDate = new Date(orderDateSeconds * 1000);
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+
+    if (activeDateFilter === 'Today') return orderDate >= todayStart;
+    if (activeDateFilter === 'Yesterday') return orderDate >= yesterdayStart && orderDate < todayStart;
+    
+    if (activeDateFilter === 'Last Week') {
+      const oneWeekAgo = new Date(todayStart);
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      return orderDate >= oneWeekAgo;
+    }
+    if (activeDateFilter === 'Last Month') {
+      const oneMonthAgo = new Date(todayStart);
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      return orderDate >= oneMonthAgo;
+    }
+    return true;
+  };
+
+  const sourceOrders =
+    activeStatus === 'To Deliver' ? toDeliverOrders
+    : activeStatus === 'To Pickup' ? toPickupOrders
+    : activeStatus === 'Complete' ? completedOrders
     : orders;
-      const filteredOrders = sourceOrders.filter(o => {
+
+  const filteredOrders = sourceOrders.filter(o => {
     const matchesStatus = (activeStatus === 'To Deliver' || activeStatus === 'Complete') ? true : o.status === activeStatus;
     const matchesSearch = searchQuery === '' || o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) || o.items.some(i => i.productName.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesStatus && matchesSearch;
+    const matchesDate = checkDateMatch(o.createdAt?.seconds);
+    return matchesStatus && matchesSearch && matchesDate;
   });
 
   const renderOrderItem = ({ item }) => {
@@ -417,7 +430,7 @@ const sourceOrders =
         <View style={styles.orderHeader}>
           <View>
             <View style={styles.orderIdBadge}>
-                <Text style={styles.orderIDLabel}>ORDER REFERENCE</Text>
+              <Text style={styles.orderIDLabel}>ORDER REFERENCE</Text>
             </View>
             <Text style={styles.orderNumber}>#{item.orderNumber}</Text>
           </View>
@@ -428,33 +441,33 @@ const sourceOrders =
         </View>
 
         <View style={styles.cardContent}>
-            {item.items.map((i, idx) => (
+          {item.items.map((i, idx) => (
             <View key={idx} style={styles.itemRow}>
-                {i.productImage ? (
+              {i.productImage ? (
                 <Image source={{ uri: i.productImage }} style={styles.itemImage} />
-                ) : (
+              ) : (
                 <View style={styles.itemImagePlaceholder}>
-                    <Ionicons name="cube-outline" size={24} color="#94A3B8" />
+                  <Ionicons name="cube-outline" size={24} color="#94A3B8" />
                 </View>
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.itemName} numberOfLines={1}>{i.productName}</Text>
+                <View style={styles.qtyContainer}>
+                  <Text style={styles.itemQty}>Quantity: <Text style={styles.qtyHigh}>{i.quantity}</Text></Text>
+                </View>
+                {i.selectedVariation && (
+                  <Text style={styles.itemSub}><Ionicons name="pricetag-outline" size={12}/> {i.selectedVariation}</Text>
                 )}
-                <View style={{ flex: 1 }}>
-                    <Text style={styles.itemName} numberOfLines={1}>{i.productName}</Text>
-                    <View style={styles.qtyContainer}>
-                        <Text style={styles.itemQty}>Quantity: <Text style={styles.qtyHigh}>{i.quantity}</Text></Text>
-                    </View>
-                    {i.selectedVariation && (
-                        <Text style={styles.itemSub}><Ionicons name="pricetag-outline" size={12}/> {i.selectedVariation}</Text>
-                    )}
-                </View>
+              </View>
             </View>
-            ))}
+          ))}
         </View>
 
         <View style={styles.footerContainer}>
-            <View style={styles.revenueBox}>
-                <Text style={styles.totalLabel}>TOTAL REVENUE</Text>
-                <Text style={styles.totalAmount}>₱{total.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
-            </View>
+          <View style={styles.revenueBox}>
+            <Text style={styles.totalLabel}>TOTAL REVENUE</Text>
+            <Text style={styles.totalAmount}>₱{total.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
+          </View>
           
           <View style={styles.actionContainer}>
             {item.status === 'Pending' && (
@@ -484,10 +497,8 @@ const sourceOrders =
                 onPress={() => handleDeliverOrder(item)}
               >
                 {processing === item.id ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.btnPrimaryText}>
-  {item.deliveryMethod === 'Pickup'
-    ? 'Ready Pickup'
-    : 'Ship Order'}
-</Text>}
+                  {item.deliveryMethod === 'Pickup' ? 'Ready Pickup' : 'Ship Order'}
+                </Text>}
               </TouchableOpacity>
             )}
 
@@ -502,23 +513,14 @@ const sourceOrders =
             )}
 
             {item.status === 'To Pickup' && (
-  <TouchableOpacity
-    style={[
-      styles.btnPrimary,
-      { backgroundColor: '#8B5CF6' },
-    ]}
-    disabled={processing === item.id}
-    onPress={() => handleCompletePickup(item)}
-  >
-    {processing === item.id ? (
-      <ActivityIndicator color="#FFFFFF" size="small" />
-    ) : (
-      <Text style={styles.btnPrimaryText}>
-        Complete Pickup
-      </Text>
-    )}
-  </TouchableOpacity>
-)}
+              <TouchableOpacity
+                style={[styles.btnPrimary, { backgroundColor: '#8B5CF6' }]}
+                disabled={processing === item.id}
+                onPress={() => handleCompletePickup(item)}
+              >
+                {processing === item.id ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={styles.btnPrimaryText}>Complete Pickup</Text>}
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </TouchableOpacity>
@@ -533,13 +535,14 @@ const sourceOrders =
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar hidden={false} />
       <View style={styles.headerSection}>
         <View style={styles.titleRow}>
-            <Text style={styles.screenTitle}>Orders</Text>
-            <View style={styles.onlineStatus}>
-                <View style={styles.onlineDot} />
-                <Text style={styles.onlineText}>Live</Text>
-            </View>
+          <Text style={styles.screenTitle}>Orders</Text>
+          <View style={styles.onlineStatus}>
+            <View style={styles.onlineDot} />
+            <Text style={styles.onlineText}>Live</Text>
+          </View>
         </View>
         <View style={styles.searchContainer}>
           <Ionicons name="search-outline" size={18} color="#94A3B8" style={{marginRight: 8}} />
@@ -551,6 +554,32 @@ const sourceOrders =
             onChangeText={setSearchQuery}
           />
         </View>
+      </View>
+
+      <View style={{ marginBottom: 5, marginTop: 10 }}>
+        <FlatList
+          data={DATE_FILTERS}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={(item) => item}
+          contentContainerStyle={{ paddingHorizontal: 16 }}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              onPress={() => setActiveDateFilter(item)}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 8,
+                marginRight: 8,
+                backgroundColor: activeDateFilter === item ? '#1e3a8a' : '#e2e8f0',
+              }}
+            >
+              <Text style={{ color: activeDateFilter === item ? '#fff' : '#475569', fontSize: 12, fontWeight: '600' }}>
+                {item}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
       </View>
 
       <View style={styles.tabsWrapper}>
@@ -584,7 +613,7 @@ const sourceOrders =
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <View style={styles.emptyCircle}>
-                <Ionicons name="receipt-outline" size={40} color="#CBD5E1" />
+              <Ionicons name="receipt-outline" size={40} color="#CBD5E1" />
             </View>
             <Text style={styles.emptyText}>No orders found</Text>
             <Text style={styles.emptySubText}>Check back later for new requests</Text>
@@ -611,74 +640,34 @@ const sourceOrders =
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  container: { flex: 1, backgroundColor: '#F8FAFC', marginTop: 35 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
-  
-  headerSection: { 
-    paddingHorizontal: 20, 
-    paddingTop: 20, 
-    paddingBottom: 16,
-    backgroundColor: '#1e3a8a',
-  },
+  headerSection: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, backgroundColor: '#1e3a8a' },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   screenTitle: { fontSize: 32, fontWeight: '900', color: '#fff', letterSpacing: -1 },
   onlineStatus: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0FDF4', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
   onlineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E', marginRight: 6 },
   onlineText: { fontSize: 11, fontWeight: '700', color: '#166534', textTransform: 'uppercase' },
-
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    height: 50,
-  },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 16, paddingHorizontal: 16, height: 50 },
   searchInput: { flex: 1, fontSize: 15, color: '#1E293B', fontWeight: '500' },
-
   tabsWrapper: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingVertical: 14 },
   tabsContainer: { paddingHorizontal: 16 },
-  tab: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingVertical: 8, 
-    paddingHorizontal: 14, 
-    borderRadius: 12, 
-    marginRight: 10, 
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0'
-  },
-  activeTab: { backgroundColor: '#eff6ff', borderColor: '#3b82f6',},
+  tab: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12, marginRight: 10, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0' },
+  activeTab: { backgroundColor: '#eff6ff', borderColor: '#3b82f6' },
   tabText: { color: '#64748B', fontWeight: '700', fontSize: 13 },
   activeTabText: { color: '#000' },
   countBadge: { marginLeft: 8, backgroundColor: '#E2E8F0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   activeCountBadge: { backgroundColor: 'rgba(29, 22, 22, 0.74)' },
   countText: { fontSize: 10, color: '#000', fontWeight: 'bold' },
   activeCountText: { color: '#fff' },
-  
-  orderCard: {
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-  },
+  orderCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2, borderWidth: 1, borderColor: '#F1F5F9' },
   orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
   orderIdBadge: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start' },
   orderIDLabel: { fontSize: 10, color: '#64748B', fontWeight: '800', letterSpacing: 0.5 },
   orderNumber: { fontSize: 20, fontWeight: '900', color: '#0F172A', marginTop: 4 },
-  
-  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10, marginLeft: -25, marginTop: -10},
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10, marginLeft: -25, marginTop: -10 },
   statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
   statusBadgeText: { fontWeight: '900', fontSize: 10, textTransform: 'uppercase' },
-  
   cardContent: { paddingVertical: 10 },
   itemRow: { flexDirection: 'row', marginBottom: 12, alignItems: 'center' },
   itemImage: { width: 56, height: 56, borderRadius: 16, marginRight: 14 },
@@ -688,22 +677,18 @@ const styles = StyleSheet.create({
   itemQty: { fontSize: 13, color: '#64748B' },
   qtyHigh: { fontWeight: '800', color: '#1E293B' },
   itemSub: { fontSize: 12, color: '#94A3B8', marginTop: 4 },
-  
   footerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 16, marginTop: 4 },
   revenueBox: { flex: 1 },
   totalLabel: { fontSize: 9, color: '#94A3B8', fontWeight: '800', letterSpacing: 1 },
   totalAmount: { fontSize: 22, fontWeight: '900', color: '#0F172A' },
-  
   actionContainer: { flexDirection: 'row', gap: 8 },
   btnPrimary: { backgroundColor: '#1e3a8a', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 14, justifyContent: 'center' },
   btnPrimaryText: { color: '#fff', fontWeight: '800', fontSize: 14 },
   btnIconSecondary: { backgroundColor: '#FEF2F2', width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  
   emptyContainer: { alignItems: 'center', justifyContent: 'center', marginTop: 60 },
   emptyCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
   emptyText: { textAlign: 'center', color: '#1E293B', fontSize: 18, fontWeight: '800' },
   emptySubText: { textAlign: 'center', color: '#94A3B8', fontSize: 14, marginTop: 4 },
-
   sileoOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.7)', justifyContent: 'center', alignItems: 'center' },
   sileoModal: { width: '85%', backgroundColor: '#fff', borderRadius: 32, padding: 24, alignItems: 'center' },
   sileoIconCircle: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
@@ -713,6 +698,7 @@ const styles = StyleSheet.create({
   sileoIconText: { color: '#fff', fontSize: 28, fontWeight: '900' },
   sileoTitle: { fontSize: 22, fontWeight: '900', color: '#0F172A', textAlign: 'center' },
   sileoMessage: { fontSize: 16, color: '#64748B', textAlign: 'center', marginTop: 10, lineHeight: 22, marginBottom: 24 },
-  sileoButton: { backgroundColor: '#0F172A', width: '100%', paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
-  sileoButtonText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  sileoButton: {    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6', borderWidth: 0.5, width: '100%', paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
+  sileoButtonText: { color: '#3b82f6', fontWeight: '800', fontSize: 16 },
 });

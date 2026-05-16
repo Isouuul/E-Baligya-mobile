@@ -36,7 +36,7 @@ const Base64Image = ({ base64, productId, style }) => {
   useEffect(() => {
     if (!base64) return;
     const saveToFile = async () => {
-      const fileUri = FileSystem.cacheDirectory + `${productId}.jpg`;
+      const fileUri = FileSystem.cacheDirectory + `${productId || Date.now()}.jpg`;
       try {
         const cleanBase64 = base64.replace(/^data:image\/\w+;base64,/, '');
         await FileSystem.writeAsStringAsync(fileUri, cleanBase64, {
@@ -62,7 +62,11 @@ const Base64Image = ({ base64, productId, style }) => {
 export default function BuyNowCheckedOut() {
   const navigation = useNavigation();
   const route = useRoute();
-  const product = route.params?.product || null;
+
+  // Unified fallback layer matching either "product" or "checkoutData" keys
+  const product = useMemo(() => {
+    return route.params?.product || route.params?.checkoutData || null;
+  }, [route.params]);
 
   const [paymentMethod, setPaymentMethod] = useState('Cash-On-Delivery');
   const [deliveryMethod, setDeliveryMethod] = useState('Delivery');
@@ -114,7 +118,7 @@ export default function BuyNowCheckedOut() {
     return unsubscribe;
   }, [navigation, route.params?.selectedAddress]);
 
-  // Derived price calculation (Removed variations)
+  // Derived price calculation
   const subtotal = useMemo(() => {
     if (!product) return 0;
     const base = Number(product.basePrice || 0);
@@ -179,11 +183,11 @@ export default function BuyNowCheckedOut() {
         userLastName: userData.lastName,
         userProfileImage: userData.profileImage,
         items: [{
-          productId: product.id || product.docId,
-          productName: product.productName,
-          productImage: product.productImage,
+          productId: product.productId || product.id || product.docId || '',
+          productName: product.productName || '',
+          productImage: product.productImage || null,
           quantity: product.quantity || 1,
-          basePrice: product.basePrice,
+          basePrice: Number(product.basePrice || 0),
           services: product.selectedServices || [],
           uploadedBy: product.uploadedBy || null,
           category: product.category || 'Uncategorized',
@@ -211,6 +215,7 @@ export default function BuyNowCheckedOut() {
         navigation.navigate('ConsumerTabs', { screen: 'Product' });
       }, 1200);
     } catch (error) {
+      console.error("CHECKOUT ERROR: ", error);
       Toast.show({
         type: 'error',
         text1: 'Checkout Failed',
@@ -272,14 +277,14 @@ export default function BuyNowCheckedOut() {
         <View style={styles.vendorGroup}>
           <View style={styles.vendorHeader}>
             <Feather name="shopping-bag" size={14} color="#64748B" />
-            <Text style={styles.vendorNameText}>{product.uploadedBy?.businessName || 'Unknown Vendor'}</Text>
+            <Text style={styles.vendorNameText}>{product.uploadedBy?.businessName || product.uploadedBy?.marketName || 'Unknown Vendor'}</Text>
           </View>
 
           <View style={styles.itemCardPremium}>
             <View style={styles.productRow}>
               {product.productImage ? (
                 product.productImage.startsWith('data:image') ? (
-                  <Base64Image base64={product.productImage} productId={product.id} style={styles.productImagePremium} />
+                  <Base64Image base64={product.productImage} productId={product.productId || product.id} style={styles.productImagePremium} />
                 ) : (
                   <Image source={{ uri: product.productImage }} style={styles.productImagePremium} />
                 )
@@ -307,15 +312,15 @@ export default function BuyNowCheckedOut() {
                     {product.selectedServices.map((s, i) => (
                       <View key={i} style={styles.serviceItemRow}>
                         <Feather name="plus" size={10} color="#64748B" />
-                        <Text style={styles.serviceTextPremium}>{s.label} (+₱{s.price})</Text>
+                        <Text style={styles.serviceTextPremium}>{s.label} (+₱{Number(s.price || 0).toLocaleString()})</Text>
                       </View>
                     ))}
                   </View>
                 )}
                 
                 <View style={styles.qtyPriceRowPremium}>
-                  <Text style={styles.qtyTextPremium}>Qty: {product.quantity || 1}</Text>
-                  <Text style={styles.itemTotalPremium}>₱ {subtotal.toLocaleString()}</Text>
+                  <Text style={styles.qtyTextPremium}>Qty: {product.quantity || 1}kg</Text>
+                  <Text style={styles.itemTotalPremium}>₱ {Number(product.basePrice || 0).toLocaleString()}</Text>
                 </View>
               </View>
             </View>
@@ -343,16 +348,23 @@ export default function BuyNowCheckedOut() {
           </View>
 
           <View style={styles.dividerPremium} />
-           
+            
           <Text style={[styles.sectionTitlePremium, { marginBottom: 12 }]}>Payment Method</Text>
-          <TouchableOpacity style={styles.paymentMethodSelector} activeOpacity={0.9}>
+
+          <TouchableOpacity
+            style={styles.paymentMethodSelector}
+            onPress={() => setPaymentMethod('Cash-On-Delivery')}
+          >
             <View style={styles.row}>
-              <View style={styles.iconCircleSlate}>
-                <MaterialCommunityIcons name="cash-multiple" size={18} color="#0F172A" />
+              <View style={styles.iconCircleGreen}>
+                <MaterialCommunityIcons name="cash-multiple" size={20} color="#10B981" />
               </View>
-              <Text style={styles.paymentMainText}>Cash on Delivery</Text>
+              <View style={{ marginLeft: 12 }}>
+                <Text style={styles.paymentMainText}>Cash on Delivery</Text>
+                <Text style={styles.paymentSubText}>Pay when you receive the items</Text>
+              </View>
             </View>
-            <Ionicons name="checkmark-circle" size={22} color="#0F172A" />
+            <Ionicons name="checkmark-circle" size={24} color="#10B981" />
           </TouchableOpacity>
         </View>
 
@@ -406,7 +418,7 @@ export default function BuyNowCheckedOut() {
           ) : (
             <>
               <Text style={styles.checkoutTextPremium}>Place Order</Text>
-              <Ionicons name="chevron-forward" size={16} color="#fff" />
+              <Ionicons name="chevron-forward" size={16} color="#3b82f6" />
             </>
           )}
         </TouchableOpacity>
@@ -462,8 +474,10 @@ const styles = StyleSheet.create({
   sectionHeaderPremium: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   titleIconRow: { flexDirection: 'row', alignItems: 'center' },
   sectionTitlePremium: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginLeft: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  editButton: { backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99 },
-  editButtonText: { color: '#0F172A', fontSize: 11, fontWeight: '700' },
+  editButton: { backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
+    borderWidth: 1,  paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99 },
+  editButtonText: { color: '#3b82f6', fontSize: 11, fontWeight: '700' },
   addressBox: { backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#F1F5F9' },
   addressName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
   addressPhone: { fontSize: 12, color: '#64748B', marginTop: 2, fontWeight: '500' },
@@ -504,9 +518,11 @@ const styles = StyleSheet.create({
   // Pill & Toggle Styles
   optionGrid: { flexDirection: 'row', gap: 10, marginTop: 12 },
   optionPill: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 14, backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: '#E2E8F0' },
-  optionPillActive: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
+  optionPillActive: {   backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
+    borderWidth: 1.5},
   optionPillText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
-  optionPillTextActive: { color: '#FFFFFF', fontWeight: '700' },
+  optionPillTextActive: { color: '#3b82f6', fontWeight: '700' },
   dividerPremium: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 16 },
   paymentMethodSelector: { 
     flexDirection: 'row', 
@@ -523,22 +539,21 @@ const styles = StyleSheet.create({
   premiumInput: { backgroundColor: '#F8FAFC', borderRadius: 14, padding: 14, marginTop: 12, height: 80, fontSize: 13, color: '#0F172A', borderWidth: 1, borderColor: '#F1F5F9', textAlignVertical: 'top' },
 
   // Summary Card
-summaryCardPremium: {
+  summaryCardPremium: {
     marginHorizontal: 16,
     marginTop: 24,
     padding: 20,
-    backgroundColor: '#FFFFFF', // Luxurious pure white background
-    borderRadius: 20,           // Smooth organic corners
+    backgroundColor: '#FFFFFF', 
+    borderRadius: 20,          
     borderWidth: 1.5,
-    borderColor: '#F1F5F9',     // Ultra-thin metallic slate boundary
-    
-    // Smooth premium drop shadows
+    borderColor: '#F1F5F9',    
     shadowColor: '#0F172A',
     shadowOpacity: 0.03,
     shadowOffset: { width: 0, height: 6 },
     shadowRadius: 16,
     elevation: 3,
-  },  summaryTitlePremium: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.5 },
+  },
+  summaryTitlePremium: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.5 },
   summaryRowPremium: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   summaryLabel: { fontSize: 13, color: '#64748B', fontWeight: '500' },
   summaryValue: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
@@ -555,13 +570,19 @@ summaryCardPremium: {
   footerTotalLabel: { fontSize: 11, color: '#94A3B8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   footerTotalValue: { fontSize: 22, fontWeight: '900', color: '#0F172A', letterSpacing: -0.5 },
   checkoutButtonPremium: {
-    backgroundColor: '#0F172A', paddingHorizontal: 22, paddingVertical: 14, borderRadius: 99, flexDirection: 'row', alignItems: 'center',
+       backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6', paddingHorizontal: 22, paddingVertical: 14, borderRadius: 99, flexDirection: 'row', alignItems: 'center',
     shadowColor: '#0F172A', shadowOpacity: 0.15, shadowOffset: { width: 0, height: 4 }, shadowRadius: 10, elevation: 4
   },
-  checkoutTextPremium: { color: '#FFFFFF', fontSize: 14, fontWeight: '800', marginRight: 6 },
+  checkoutTextPremium: { color: '#3b82f6', fontSize: 14, fontWeight: '800', marginRight: 6 },
 
   // Empty State Fallback
   emptyTitle: { fontSize: 16, fontWeight: '800', color: '#64748B', marginTop: 12 },
-  browseButtonPremium: { backgroundColor: '#0F172A', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 99, marginTop: 24 },
+  browseButtonPremium: { backgroundColor: '#3b82f6', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 99, marginTop: 24 },
   browseTextPremium: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+    iconCircleGreen: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center' },
+  paymentMainText: { fontSize: 14, fontWeight: '600', color: '#14532D' },
+  paymentSubText: { fontSize: 11, color: '#166534' },
+    paymentMethodSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#F0FDF4', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#DCFCE7' },
+
 });

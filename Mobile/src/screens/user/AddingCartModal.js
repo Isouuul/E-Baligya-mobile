@@ -1,4 +1,5 @@
 // src/screens/Users/AddingCartModal.js
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
@@ -9,34 +10,48 @@ import {
   Image,
   ScrollView,
   Animated,
-  Easing,
   Dimensions,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
+
 import { Ionicons, Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as FileSystem from 'expo-file-system';
+
 import { auth, db } from '../../firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import * as FileSystem from "expo-file-system";
 
-const { height: screenHeight, width: screenWidth } = Dimensions.get('window');
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  query,
+  where,
+  getDocs,
+  updateDoc,
+} from 'firebase/firestore';
 
-// Optimized Base64Image
+const { height: screenHeight } = Dimensions.get('window');
+
+// ==========================================
+// PREMIUM LOCAL IMAGE CACHE COMPONENT
+// ==========================================
 const Base64Image = ({ base64, productId, style }) => {
   const [localUri, setLocalUri] = useState(null);
 
   useEffect(() => {
     const saveToFile = async () => {
       if (!base64) return;
-      const fileUri = FileSystem.cacheDirectory + `${productId}.jpg`;
       try {
+        const fileUri = FileSystem.cacheDirectory + `${productId}.jpg`;
         const cleanBase64 = base64.replace(/^data:image\/\w+;base64,/, '');
+
         await FileSystem.writeAsStringAsync(fileUri, cleanBase64, {
           encoding: FileSystem.EncodingType.Base64,
         });
         setLocalUri(fileUri);
       } catch (err) {
-        console.error("Error saving image:", err);
+        console.log('Image Error:', err);
       }
     };
     saveToFile();
@@ -44,14 +59,18 @@ const Base64Image = ({ base64, productId, style }) => {
 
   if (!localUri) {
     return (
-      <View style={[style, styles.noImagePlaceholder]}>
-        <Feather name="image" size={20} color="#94A3B8" />
+      <View style={[style, styles.imagePlaceholder]}>
+        <Feather name="image" size={24} color="#94A3B8" />
       </View>
     );
   }
+
   return <Image source={{ uri: localUri }} style={style} />;
 };
 
+// ==========================================
+// MAIN PREMIUM COMPONENT
+// ==========================================
 export default function AddingCartModal({
   visible,
   onClose,
@@ -64,99 +83,128 @@ export default function AddingCartModal({
   const [loading, setLoading] = useState(false);
   const [successVisible, setSuccessVisible] = useState(false);
 
-  // Success Animation Values
-  const successScale = useRef(new Animated.Value(0.7)).current;
+  const successScale = useRef(new Animated.Value(0.8)).current;
   const successOpacity = useRef(new Animated.Value(0)).current;
+
+  const maxQuantity = product?.quantityKg || 0;
 
   const enabledServices = useMemo(() => {
     if (!product?.services) return [];
-    return Object.keys(product.services)
-      .map(key => product.services[key])
-      .filter(s => s.enabled);
+    return Object.entries(product.services)
+      .filter(([_, service]) => service.enabled)
+      .map(([key, service]) => ({ key, ...service }));
   }, [product]);
 
   useEffect(() => {
     if (!visible) {
       setQuantity(1);
-      setSelectedServices([]);
       setLoading(false);
+      setSelectedServices([]);
     }
   }, [visible]);
 
   const showSuccessAnimation = () => {
     setSuccessVisible(true);
     Animated.parallel([
-      Animated.spring(successScale, {
-        toValue: 1,
-        friction: 6,
-        useNativeDriver: true,
-      }),
-      Animated.timing(successOpacity, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
+      Animated.spring(successScale, { toValue: 1, friction: 8, useNativeDriver: true }),
+      Animated.timing(successOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
     ]).start();
 
     setTimeout(() => {
-      Animated.timing(successOpacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
+      Animated.timing(successOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
         setSuccessVisible(false);
-        successScale.setValue(0.7); // Reset
+        successScale.setValue(0.8);
         onClose();
       });
-    }, 1800);
+    }, 1600);
   };
 
-  const toggleService = (label) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (selectedServices.some(s => s.label === label)) {
-      setSelectedServices(selectedServices.filter(s => s.label !== label));
+  const toggleService = (service) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const exists = selectedServices.some(s => s.key === service.key);
+    if (exists) {
+      setSelectedServices(selectedServices.filter(s => s.key !== service.key));
     } else {
-      const serviceObj = enabledServices.find(s => s.label === label);
-      if (serviceObj) {
-        setSelectedServices([...selectedServices, { label: serviceObj.label, price: serviceObj.price }]);
-      }
+      setSelectedServices([...selectedServices, { key: service.key, label: service.label, price: service.price }]);
     }
   };
 
   const updateQuantity = (type) => {
     Haptics.selectionAsync();
-    if (type === 'inc') setQuantity(prev => prev + 1);
-    else setQuantity(prev => Math.max(prev - 1, 1));
+    if (type === 'inc') {
+      if (quantity >= maxQuantity) {
+        Alert.alert('Stock Limit', `Only ${maxQuantity}kg available`);
+        return;
+      }
+      setQuantity(prev => prev + 1);
+    } else {
+      setQuantity(prev => Math.max(1, prev - 1));
+    }
   };
 
-  const totalPrice = () => {
+  const totalPrice = useMemo(() => {
     const basePrice = parseFloat(product?.basePrice) || 0;
     const servicesPrice = selectedServices.reduce((sum, s) => sum + (parseFloat(s.price) || 0), 0);
-    return ((basePrice * quantity) + servicesPrice).toFixed(2);
-  };
+    return (basePrice + servicesPrice) * quantity;
+  }, [product, selectedServices, quantity]);
 
   const handleAddToCart = async () => {
+    if (loading) return;
     setLoading(true);
+
     try {
-      const cartData = {
-        userId: auth.currentUser?.uid || 'guest',
-        productId: product.id,
-        productName: product.productName,
-        basePrice: parseFloat(product.basePrice),
-        selectedServices,
-        quantity,
-        totalPrice: parseFloat(totalPrice()),
-        createdAt: serverTimestamp(),
-      };
-      await addDoc(collection(db, 'Carts', auth.currentUser.uid, 'items'), cartData);
+      if (!auth.currentUser) {
+        Alert.alert('Authentication Error', 'Please login first.');
+        return;
+      }
+      if (maxQuantity === 0 || quantity > maxQuantity) {
+        Alert.alert('Stock Error', 'Requested quantity is unavailable.');
+        return;
+      }
+
+      const cartRef = collection(db, 'Carts', auth.currentUser.uid, 'items');
+      const q = query(cartRef, where('productId', '==', product.id));
+      const snapshot = await getDocs(q);
+
+      if (!snapshot.empty) {
+        const existingDoc = snapshot.docs[0];
+        const existingData = existingDoc.data();
+        const newQty = (existingData.quantity || 0) + quantity;
+
+        if (newQty > maxQuantity) {
+          Alert.alert('Stock Limit Reached', `You already have ${existingData.quantity}kg in cart.`);
+          return;
+        }
+
+        await updateDoc(existingDoc.ref, {
+          quantity: newQty,
+          totalPrice: (existingData.totalPrice || 0) + totalPrice,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        await addDoc(cartRef, {
+          userId: auth.currentUser.uid,
+          productId: product.id,
+          productName: product.productName,
+          category: product.category || 'Fish',
+          productImage: product.imageBase64 || null,
+          basePrice: parseFloat(product.basePrice),
+          selectedServices,
+          quantity,
+          totalPrice,
+          uploadedBy: product.uploadedBy || null,
+          createdAt: serverTimestamp(),
+        });
+      }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-      setLoading(false);
       showSuccessAnimation();
       onAddToCart && onAddToCart();
     } catch (err) {
+      console.log(err);
+      Alert.alert('Error', 'Failed to add product to cart.');
+    } finally {
       setLoading(false);
-      alert('Failed to add product.');
     }
   };
 
@@ -166,61 +214,73 @@ export default function AddingCartModal({
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.dismissArea} activeOpacity={1} onPress={onClose} />
-        
+
         <View style={styles.bottomSheet}>
           <View style={styles.dragHandle} />
-          
+
+          {/* HEADER */}
           <View style={styles.header}>
-            <Text style={styles.categoryLabel}>{product.category}</Text>
+            <View>
+              <Text style={styles.categoryLabel}>{product.category?.toUpperCase()}</Text>
+              <Text style={styles.productName}>{product.productName}</Text>
+            </View>
             <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-              <Ionicons name="close" size={20} color="#64748B" />
+              <Ionicons name="close" size={20} color="#1E293B" />
             </TouchableOpacity>
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-            <View style={styles.productRow}>
+            {/* HERO HERO PRODUCT IMAGE & INFO */}
+            <View style={styles.heroSection}>
               <Base64Image base64={product.imageBase64} productId={product.id} style={styles.productImage} />
-              <View style={styles.priceInfo}>
-                <Text style={styles.productName}>{product.productName}</Text>
-                <View style={styles.unitPriceRow}>
+              
+              <View style={styles.priceContainer}>
+                <View style={styles.priceRow}>
                   <Text style={styles.unitPrice}>₱{parseFloat(product.basePrice).toLocaleString()}</Text>
-                  <View style={styles.kgBadge}>
-                    <Text style={styles.kgBadgeText}>/ per KG</Text>
-                  </View>
+                  <Text style={styles.unitType}>/ kg</Text>
                 </View>
+                <Text style={styles.stockText}>{maxQuantity}kg left in stock</Text>
               </View>
-              <View style={styles.miniQtyContainer}>
-                <TouchableOpacity style={styles.miniQtyBtn} onPress={() => updateQuantity('dec')}>
-                  <Feather name="minus" size={16} color="#1E293B" />
+            </View>
+
+            {/* QUANTITY PICKER CONTROLLER */}
+            <View style={styles.quantitySection}>
+              <Text style={styles.sectionHeading}>Select Quantity</Text>
+              <View style={styles.qtyControlContainer}>
+                <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity('dec')}>
+                  <Feather name="minus" size={18} color="#3B82F6" />
                 </TouchableOpacity>
-                <Text style={styles.miniQtyText}>{quantity}</Text>
-                <TouchableOpacity style={styles.miniQtyBtn} onPress={() => updateQuantity('inc')}>
-                  <Feather name="plus" size={16} color="#1E293B" />
+                <Text style={styles.qtyText}>{quantity} <Text style={styles.qtyWeightLabel}>kg</Text></Text>
+                <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQuantity('inc')}>
+                  <Feather name="plus" size={18} color="#3B82F6" />
                 </TouchableOpacity>
               </View>
             </View>
 
-            <View style={styles.divider} />
-
+            {/* PREMIUM EXTRA SERVICES LIST */}
             {enabledServices.length > 0 && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Select Services</Text>
-                {enabledServices.map((s, idx) => {
-                  const isSelected = selectedServices.some(sel => sel.label === s.label);
+              <View style={styles.servicesSection}>
+                <Text style={styles.sectionHeading}>Add-on Services</Text>
+                {enabledServices.map((service, idx) => {
+                  const isSelected = selectedServices.some(s => s.key === service.key);
                   return (
-                    <TouchableOpacity 
-                      key={idx} 
-                      activeOpacity={0.7}
-                      style={[styles.serviceRow, isSelected && styles.serviceRowActive]} 
-                      onPress={() => toggleService(s.label)}
+                    <TouchableOpacity
+                      key={idx}
+                      activeOpacity={0.8}
+                      style={[styles.serviceCard, isSelected && styles.serviceCardActive]}
+                      onPress={() => toggleService(service)}
                     >
-                      <View style={styles.serviceInfo}>
-                         <View style={[styles.radio, isSelected && styles.radioActive]}>
-                           {isSelected && <View style={styles.radioInner} />}
-                         </View>
-                         <Text style={[styles.serviceLabel, isSelected && styles.textActive]}>{s.label}</Text>
+                      <View style={styles.serviceLeft}>
+                        <View style={[styles.checkbox, isSelected && styles.checkboxActive]}>
+                          {isSelected && <Ionicons name="checkmark" size={14} color="#FFF" />}
+                        </View>
+                        <Text style={[styles.serviceLabel, isSelected && styles.serviceTextActive]}>
+                          {service.label}
+                        </Text>
                       </View>
-                      <Text style={[styles.servicePrice, isSelected && styles.textActive]}>+₱{s.price}</Text>
+                      <Text style={[styles.servicePrice, isSelected && styles.serviceTextActive]}>
+                        +₱{parseFloat(service.price).toLocaleString()}
+                      </Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -228,40 +288,35 @@ export default function AddingCartModal({
             )}
           </ScrollView>
 
+          {/* PREMIUM FOOTER */}
           <View style={styles.footer}>
-            <View style={styles.totalBlock}>
-              <Text style={styles.totalSub}>Total Amount</Text>
-              <Text style={styles.totalAmount}>₱{parseFloat(totalPrice()).toLocaleString()}</Text>
+            <View style={styles.totalContainer}>
+              <Text style={styles.totalLabel}>Total Price</Text>
+              <Text style={styles.totalAmount}>₱{totalPrice.toLocaleString()}</Text>
             </View>
 
-            <TouchableOpacity 
-              style={[styles.primaryButton, loading && styles.buttonDisabled]} 
+            <TouchableOpacity
+              style={[styles.premiumButton, loading && styles.buttonDisabled]}
               onPress={handleAddToCart}
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator color="#2563eb" />
+                <ActivityIndicator color="#3B82F6" />
               ) : (
-                <Text style={styles.primaryButtonText}>Confirm Order</Text>
+                <Text style={styles.premiumButtonText}>Add to Cart</Text>
               )}
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* CENTERED SUCCESS CARD */}
+        {/* RE-DESIGNED MINIMALIST SUCCESS MODAL */}
         {successVisible && (
           <View style={styles.successOverlay}>
-            <Animated.View 
-              style={[
-                styles.successCard, 
-                { opacity: successOpacity, transform: [{ scale: successScale }] }
-              ]}
-            >
+            <Animated.View style={[styles.successCard, { opacity: successOpacity, transform: [{ scale: successScale }] }]}>
               <View style={styles.successIconCircle}>
-                <Ionicons name="checkmark" size={40} color="#FFF" />
+                <Ionicons name="cart" size={28} color="#3B82F6" />
               </View>
-              <Text style={styles.successTitle}>Added to Cart</Text>
-              <Text style={styles.successSub}>Your item is ready for checkout</Text>
+              <Text style={styles.successTitle}>Added to Basket</Text>
             </Animated.View>
           </View>
         )}
@@ -270,117 +325,277 @@ export default function AddingCartModal({
   );
 }
 
+// ==========================================
+// CUSTOM STYLES (PREMIUM MINIMALIST)
+// ==========================================
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    backgroundColor: 'rgba(15, 23, 42, 0.40)', // Sophisticated dark backdrop blur effect
     justifyContent: 'flex-end',
   },
-  dismissArea: { ...StyleSheet.absoluteFillObject },
+  dismissArea: {
+    flex: 1,
+  },
   bottomSheet: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    paddingBottom: 40,
-    maxHeight: screenHeight * 0.8,
-    shadowColor: "#000",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: screenHeight * 0.85,
+    paddingBottom: 34,
+    shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: -10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 15,
-    elevation: 20,
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 10,
   },
   dragHandle: {
     width: 38,
-    height: 5,
+    height: 4,
     backgroundColor: '#E2E8F0',
-    borderRadius: 3,
+    borderRadius: 2,
     alignSelf: 'center',
-    marginTop: 12,
+    marginTop: 10,
+    marginBottom: 15,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 16,
+    marginBottom: 16,
   },
-  categoryLabel: { fontSize: 12, fontWeight: '800', color: '#6366F1', textTransform: 'uppercase', letterSpacing: 1 },
-  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
-  scrollContent: { paddingHorizontal: 24 },
-  productRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 8 },
-  productImage: { width: 70, height: 70, borderRadius: 16, backgroundColor: '#F1F5F9' },
-  priceInfo: { flex: 1, marginLeft: 16 },
-  productName: { fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 4 },
-  unitPriceRow: { flexDirection: 'row', alignItems: 'center' },
-  unitPrice: { fontSize: 20, fontWeight: '800', color: '#1E293B' },
-  kgBadge: { marginLeft: 8, backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  kgBadgeText: { fontSize: 10, color: '#64748B', fontWeight: '700' },
-  miniQtyContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 14, padding: 6, borderWidth: 1, borderColor: '#F1F5F9' },
-  miniQtyBtn: { width: 32, height: 32, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 10, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3 },
-  miniQtyText: { paddingHorizontal: 12, fontSize: 16, fontWeight: '800', color: '#1E293B' },
-  divider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 24 },
-  sectionTitle: { fontSize: 12, fontWeight: '800', color: '#94A3B8', marginBottom: 16, textTransform: 'uppercase', letterSpacing: 1 },
-  serviceRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, marginBottom: 8, backgroundColor: '#F8FAFC' },
-  serviceRowActive: { backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#BFDBFE' },
-  serviceInfo: { flexDirection: 'row', alignItems: 'center' },
-  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#CBD5E1', marginRight: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF' },
-  radioActive: { borderColor: '#3B82F6' },
-  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#3B82F6' },
-  serviceLabel: { fontSize: 15, fontWeight: '600', color: '#334155' },
-  servicePrice: { fontSize: 14, fontWeight: '700', color: '#64748B' },
-  textActive: { color: '#1E40AF' },
-  footer: { flexDirection: 'row', paddingHorizontal: 24, paddingTop: 20, alignItems: 'center', borderTopWidth: 1, borderColor: '#F1F5F9' },
-  totalBlock: { flex: 1 },
-  totalSub: { fontSize: 11, fontWeight: '700', color: '#94A3B8', textTransform: 'uppercase' },
-  totalAmount: { fontSize: 24, fontWeight: '900', color: '#0F172A' },
-  primaryButton: { backgroundColor: '#EFF6FF', height: 56, paddingHorizontal: 32, borderRadius: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#3B82F6' },
-  primaryButtonText: { color: '#2563EB', fontSize: 16, fontWeight: '800' },
-  
-  /* SUCCESS CARD STYLES */
-  successOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 999,
+  categoryLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+    letterSpacing: 1.2,
+    marginBottom: 2,
   },
-  successCard: {
-    width: screenWidth * 0.75,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 30,
-    padding: 30,
-    alignItems: 'center',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.2,
-    shadowRadius: 25,
-    elevation: 30,
-  },
-  successIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#22C55E',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-    shadowColor: "#22C55E",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-  },
-  successTitle: {
+  productName: {
     fontSize: 22,
-    fontWeight: '900',
+    fontWeight: '700',
     color: '#0F172A',
-    marginBottom: 8,
   },
-  successSub: {
+  closeBtn: {
+    backgroundColor: '#F1F5F9',
+    padding: 8,
+    borderRadius: 20,
+  },
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+  },
+  heroSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 24,
+  },
+  productImage: {
+    width: 85,
+    height: 85,
+    borderRadius: 14,
+    backgroundColor: '#E2E8F0',
+  },
+  imagePlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  priceContainer: {
+    marginLeft: 18,
+    flex: 1,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  unitPrice: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  unitType: {
     fontSize: 14,
     color: '#64748B',
-    textAlign: 'center',
-    lineHeight: 20,
+    marginLeft: 4,
+    fontWeight: '500',
   },
-  noImagePlaceholder: { justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
+  stockText: {
+    fontSize: 13,
+    color: '#10B981',
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  quantitySection: {
+    marginBottom: 24,
+  },
+  sectionHeading: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0F172A',
+    marginBottom: 12,
+  },
+  qtyControlContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 6,
+    alignSelf: 'flex-start',
+  },
+  qtyBtn: {
+    backgroundColor: '#FFFFFF',
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  qtyText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0F172A',
+    paddingHorizontal: 24,
+  },
+  qtyWeightLabel: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  servicesSection: {
+    marginBottom: 16,
+  },
+  serviceCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 10,
+  },
+  serviceCardActive: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6',
+  },
+  serviceLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  checkboxActive: {
+    backgroundColor: '#3B82F6',
+    borderColor: '#3B82F6',
+  },
+  serviceLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#475569',
+  },
+  servicePrice: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  serviceTextActive: {
+    color: '#1D4ED8',
+    fontWeight: '600',
+  },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 16,
+    paddingHorizontal: 24,
+    borderTopWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  totalContainer: {
+    flex: 1,
+  },
+  totalLabel: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  totalAmount: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 2,
+  },
+  premiumButton: {
+    flex: 1,
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6',
+    borderWidth: 1.5,
+    borderRadius: 16,
+    height: 54,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 24,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  premiumButtonText: {
+    color: '#3B82F6',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  successOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  successCard: {
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 24,
+    paddingHorizontal: 36,
+    borderRadius: 24,
+    alignItems: 'center',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  successIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  successTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
 });

@@ -8,12 +8,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { db, auth } from '../../firebase';
 import { 
   collection, query, where, onSnapshot, doc, 
-  setDoc, serverTimestamp, getDocs 
+  setDoc, deleteDoc, serverTimestamp, getDocs, runTransaction 
 } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
-const STATUSES = ['Pending', 'Preparing', 'To Deliver', 'Complete', 'Cancelled'];
+const STATUSES = ['Pending', 'Preparing', 'To Deliver', 'To Pickup', 'Complete', 'Cancelled'];
+const DATE_FILTERS = ['All', 'Today', 'Yesterday', 'Last Week', 'Last Month'];
+
 const statusColors = {
   Pending: '#F59E0B',
   Preparing: '#3B82F6',
@@ -30,6 +32,7 @@ const OrdersDetails = () => {
   const [completedOrders, setCompletedOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeStatus, setActiveStatus] = useState('Pending');
+  const [activeDateFilter, setActiveDateFilter] = useState('All'); 
   const [searchQuery, setSearchQuery] = useState('');
   const [ratings, setRatings] = useState({}); 
   const [submittingRating, setSubmittingRating] = useState(false);
@@ -39,7 +42,7 @@ const OrdersDetails = () => {
   const navigation = useNavigation();
   const userId = auth.currentUser?.uid;
 
-  // --- Logic (Unchanged) ---
+  // --- Listeners ---
   useEffect(() => {
     if (!userId) return;
     const q = query(collection(db, 'Orders'), where('userId', '==', userId));
@@ -90,6 +93,7 @@ const OrdersDetails = () => {
     setSileoVisible(true);
   };
 
+  // --- UPDATED: Handles Moving & Submitting Reviews simultaneously ---
   const handleSubmitRating = async (order) => {
     const currentRating = ratings[order.id]?.stars || 0;
     const currentFeedback = ratings[order.id]?.feedback || '';
@@ -103,7 +107,7 @@ const OrdersDetails = () => {
     try {
       const reviewId = `review_${order.id}`;
       const currentUser = auth.currentUser;
-      const uniqueVendorUids = [...new Set(order.items.map(item => item.uploadedBy.uid))];
+      const uniqueVendorUids = [...new Set((order.items || []).map(item => item.uploadedBy?.uid).filter(Boolean))];
 
       const reviewData = {
         orderId: order.id,
@@ -113,26 +117,61 @@ const OrdersDetails = () => {
         userProfileImage: order.userProfileImage || null, 
         rating: currentRating,
         feedback: currentFeedback,
-        createdAt: serverTimestamp(),
+        createdAt: new Date(), // Using local Date object inside Atomic Transactions
       };
 
-      await setDoc(doc(db, 'Reviews', reviewId), { ...reviewData, vendorIds: uniqueVendorUids });
+      // Atomic execution using transaction strategy
+      await runTransaction(db, async (transaction) => {
+        // 1. Submit global review document
+        const reviewDocRef = doc(db, 'Reviews', reviewId);
+        transaction.set(reviewDocRef, { ...reviewData, vendorIds: uniqueVendorUids, createdAt: serverTimestamp() });
 
-      const ratingPromises = uniqueVendorUids.map(async (vUid) => {
-        const vendorQuery = query(collection(db, "ApprovedVendors"), where("userId", "==", vUid));
-        const vendorSnap = await getDocs(vendorQuery);
-        if (!vendorSnap.empty) {
-          const vendorDocId = vendorSnap.docs[0].id;
-          return setDoc(doc(db, 'ApprovedVendors', vendorDocId, 'Rating', reviewId), reviewData);
+        // 2. Submit review document down to individual vendors sub-collections
+        for (const vUid of uniqueVendorUids) {
+          const vendorQuery = query(collection(db, "ApprovedVendors"), where("userId", "==", vUid));
+          const vendorSnap = await getDocs(vendorQuery);
+          if (!vendorSnap.empty) {
+            const vendorDocId = vendorSnap.docs[0].id;
+            const subRatingRef = doc(db, 'ApprovedVendors', vendorDocId, 'Rating', reviewId);
+            transaction.set(subRatingRef, reviewData);
+          }
+        }
+
+        // 3. Conditional Migration paths
+        const completedRef = doc(db, 'Completed_Orders', order.id);
+        
+        if (activeStatus === 'To Pickup') {
+          // If rated directly from Pickup tab: Migrate document, mark true, update label state
+          const pickupRef = doc(db, 'To_Pickup_Orders', order.id);
+          transaction.set(completedRef, { 
+            ...order, 
+            status: 'Complete', 
+            isRated: true, 
+            completedAt: new Date() 
+          });
+          transaction.delete(pickupRef);
+        } else {
+          // Standard execution layer if already inside complete
+          transaction.set(completedRef, { isRated: true }, { merge: true });
         }
       });
 
-      await Promise.all(ratingPromises);
-      await setDoc(doc(db, 'Completed_Orders', order.id), { isRated: true }, { merge: true });
+      showSileo({ 
+        title: 'Thank you!', 
+        message: 'Your feedback helps our fishery community grow.', 
+        type: 'success' 
+      });
 
-      showSileo({ title: 'Thank you!', message: 'Your feedback helps our fishery community grow.', type: 'success' });
+      // Clear input fields for this specific card
+      setRatings(prev => {
+        const copy = { ...prev };
+        delete copy[order.id];
+        return copy;
+      });
+
     } catch (error) {
-      showSileo({ title: 'Error', message: 'Failed to submit rating.', type: 'error' });
+      console.error(error);
+      showSileo({ title: 'Error', message: 'Failed to submit rating and complete order.', type: 'error' });
     } finally {
       setSubmittingRating(false);
     }
@@ -146,6 +185,32 @@ const OrdersDetails = () => {
       : activeStatus === 'Complete'
       ? completedOrders
       : orders;
+
+  const checkDateMatch = (orderDateSeconds) => {
+    if (activeDateFilter === 'All') return true;
+    if (!orderDateSeconds) return false;
+
+    const orderDate = new Date(orderDateSeconds * 1000);
+    const now = new Date();
+
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+
+    if (activeDateFilter === 'Today') return orderDate >= todayStart;
+    if (activeDateFilter === 'Yesterday') return orderDate >= yesterdayStart && orderDate < todayStart;
+    if (activeDateFilter === 'Last Week') {
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      return orderDate >= oneWeekAgo;
+    }
+    if (activeDateFilter === 'Last Month') {
+      const oneMonthAgo = new Date();
+      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+      return orderDate >= oneMonthAgo;
+    }
+    return true;
+  };
       
   const filteredOrders = sourceOrders.filter(o => {
     const matchesStatus =
@@ -156,14 +221,19 @@ const OrdersDetails = () => {
         : o.status === activeStatus;
 
     const matchesSearch = searchQuery === '' || o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesStatus && matchesSearch;
+    const matchesDate = checkDateMatch(o.createdAt?.seconds);
+
+    return matchesStatus && matchesSearch && matchesDate;
   });
 
   const getStatusCount = (status) => {
-    if (status === 'To Deliver') return toDeliverOrders.length;
-    if (status === 'To Pickup') return toPickupOrders.length;
-    if (status === 'Complete') return completedOrders.length;
-    return orders.filter(o => o.status === status).length;
+    const baseList = 
+      status === 'To Deliver' ? toDeliverOrders :
+      status === 'To Pickup' ? toPickupOrders :
+      status === 'Complete' ? completedOrders : 
+      orders.filter(o => o.status === status);
+
+    return baseList.filter(o => checkDateMatch(o.createdAt?.seconds)).length;
   };
 
   // --- UI Rendering ---
@@ -177,26 +247,29 @@ const OrdersDetails = () => {
             <View style={styles.orderIdContainer}>
               <Text style={styles.orderNumberValue}>#{item.orderNumber}</Text>
             </View>
-            <Text style={styles.orderDateText}>{new Date(item.createdAt?.seconds * 1000).toLocaleDateString() || 'Recently'}</Text>
+            <Text style={styles.orderDateText}>
+              {item.createdAt?.seconds 
+                ? new Date(item.createdAt.seconds * 1000).toLocaleDateString() 
+                : 'Recently'}
+            </Text>
             {item.deliveryMethod === 'Pickup' && (
-                <View style={styles.pickupBadge}>
-                  <Text style={styles.pickupBadgeText}>PICKUP</Text>
-                </View>
-              )}
+              <View style={styles.pickupBadge}>
+                <Text style={styles.pickupBadgeText}>PICKUP</Text>
+              </View>
+            )}
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusColors[item.status] + '15' }]}>
-            <View style={[styles.statusDot, { backgroundColor: statusColors[item.status] }]} />
-            <Text style={[styles.statusBadgeText, { color: statusColors[item.status] }]}>{item.status}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: (statusColors[item.status] || '#64748B') + '15' }]}>
+            <View style={[styles.statusDot, { backgroundColor: statusColors[item.status] || '#64748B' }]} />
+            <Text style={[styles.statusBadgeText, { color: statusColors[item.status] || '#64748B' }]}>{item.status}</Text>
           </View>
         </View>
 
         <View style={styles.itemsContainer}>
-          {item.items.map((i, idx) => (
+          {(item.items || []).map((i, idx) => (
             <View key={idx} style={styles.itemRow}>
               <Image source={i.productImage ? { uri: i.productImage } : null} style={styles.itemImage} />
               <View style={{ flex: 1, justifyContent: 'center' }}>
                 <Text style={styles.itemName} numberOfLines={1}>{i.productName}</Text>
-                
                 <Text style={styles.itemDetails}>Qty: {i.quantity} × ₱{Number(i.basePrice).toLocaleString()}</Text>
               </View>
             </View>
@@ -213,23 +286,22 @@ const OrdersDetails = () => {
           </TouchableOpacity>
           
           <View style={{ alignItems: 'flex-end' }}>
-          
             <Text style={styles.totalLabel}>Total Amount</Text>
             <Text style={styles.totalValue}>₱{total.toLocaleString()}</Text>
-            
           </View>
         </View>
 
-        {activeStatus === 'Complete' && (
+        {/* --- MODIFIED RENDERING BLOCK: Show rating structure for both tabs --- */}
+        {(activeStatus === 'Complete' || activeStatus === 'To Pickup') && (
           <View style={styles.ratingWrapper}>
             {item.isRated ? (
               <View style={styles.ratedContainer}>
-<Ionicons name="ribbon" size={20} color="#10B981" />
+                <Ionicons name="ribbon" size={20} color="#10B981" />
                 <Text style={styles.ratedText}>Review Submitted</Text>
               </View>
             ) : (
               <View style={styles.ratingBox}>
-                <Text style={styles.ratingTitle}>How was your order?</Text>
+                <Text style={styles.ratingTitle}>How was your pickup order?</Text>
                 <View style={styles.starRow}>
                   {[1, 2, 3, 4, 5].map(num => (
                     <TouchableOpacity key={num} onPress={() => handleStarPress(item.id, num)} activeOpacity={0.7}>
@@ -255,7 +327,7 @@ const OrdersDetails = () => {
                   onPress={() => handleSubmitRating(item)}
                   disabled={submittingRating}
                 >
-                  {submittingRating ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.submitBtnText}>Submit Review</Text>}
+                  {submittingRating ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.submitBtnText}>Submit & Complete Order</Text>}
                 </TouchableOpacity>
               </View>
             )}
@@ -292,6 +364,26 @@ const OrdersDetails = () => {
         </View>
       </View>
 
+      <View style={styles.dateFilterContainer}>
+        <FlatList
+          data={DATE_FILTERS}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16 }}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[styles.dateTabItem, activeDateFilter === item && styles.activeDateTabItem]}
+              onPress={() => setActiveDateFilter(item)}
+            >
+              <Text style={[styles.dateTabText, activeDateFilter === item && styles.activeDateTabText]}>
+                {item}
+              </Text>
+            </TouchableOpacity>
+          )}
+          keyExtractor={item => item}
+        />
+      </View>
+
       <View style={styles.tabContainer}>
         <FlatList
           data={STATUSES}
@@ -308,7 +400,9 @@ const OrdersDetails = () => {
               </Text>
               {getStatusCount(item) > 0 && (
                 <View style={[styles.countBadge, activeStatus === item ? styles.activeCountBadge : styles.inactiveCountBadge]}>
-                  <Text style={[styles.countText, activeStatus === item && styles.activeCountText]}>{getStatusCount(item)}</Text>
+                  <Text style={[styles.countText, activeStatus === item && styles.activeCountText]}>
+                    {getStatusCount(item)}
+                  </Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -333,14 +427,14 @@ const OrdersDetails = () => {
               <View style={styles.emptyIconCircle}>
                 <Ionicons name="receipt-outline" size={60} color="#CBD5E1" />
               </View>
-              <Text style={styles.emptyText}>No {activeStatus} orders</Text>
-              <Text style={styles.emptySubText}>Try switching tabs or check back later.</Text>
+              <Text style={styles.emptyText}>No matches found</Text>
+              <Text style={styles.emptySubText}>Try clearing your date or status filters.</Text>
             </View>
           )}
         />
       )}
 
-      {/* SILEO MODAL (Simplified) */}
+      {/* SILEO MODAL */}
       {sileoVisible && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -363,6 +457,7 @@ const OrdersDetails = () => {
   );
 };
 
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: { 
@@ -373,13 +468,13 @@ const styles = StyleSheet.create({
     paddingTop: 15,
     paddingBottom: 15,
     backgroundColor: '#fff',
-    marginTop: 30
+    marginTop: Platform.OS === 'android' ? 30 : 0
   },
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#1E3A8A', letterSpacing: -0.5 },
   backBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center' },
   headerActionBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   
-  searchWrapper: { paddingHorizontal: 16, marginVertical: 12 },
+  searchWrapper: { paddingHorizontal: 16, marginTop: 12, marginBottom: 8 },
   searchInner: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -396,6 +491,19 @@ const styles = StyleSheet.create({
     elevation: 2
   },
   searchInput: { flex: 1, marginLeft: 10, fontSize: 15, color: '#1E293B' },
+
+  // NEW: Date Filter Styles
+  dateFilterContainer: { marginBottom: 12 },
+  dateTabItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginRight: 8,
+    backgroundColor: '#E2E8F0',
+  },
+  activeDateTabItem: { backgroundColor: '#1E3A8A' },
+  dateTabText: { fontSize: 12, fontWeight: '600', color: '#475569' },
+  activeDateTabText: { color: '#fff' },
 
   tabContainer: { marginBottom: 10 },
   tabItem: { 

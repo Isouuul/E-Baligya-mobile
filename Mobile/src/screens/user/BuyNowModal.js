@@ -55,7 +55,7 @@ export default function BuyNowModal({ visible, onClose, product }) {
   const navigation = useNavigation();
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
-
+const [selectedServices, setSelectedServices] = useState([]);
   const enabledServices = useMemo(() => {
     if (!product?.services) return [];
     return Object.keys(product.services)
@@ -117,7 +117,7 @@ export default function BuyNowModal({ visible, onClose, product }) {
     
     // Close modal and navigate to Checkout with the data
     onClose();
-    navigation.navigate('BuyNowModalCheckedOut', { checkoutItem });
+    navigation.navigate('BuyNowCheckedOut', { checkoutItem });
     setLoading(false);
   };
 

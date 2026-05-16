@@ -134,7 +134,7 @@ export default function VendorDashboardScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#1e3a8a" />
+      <StatusBar hidden={false}/>
       
       <View style={styles.header}>
         <View>
@@ -241,7 +241,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f8fafc" },
   header: { 
     backgroundColor: "#1e3a8a", 
-    paddingTop: 50, 
+    marginTop: 35,
+    paddingTop: 20,
     paddingBottom: 20, 
     paddingHorizontal: 20, 
     flexDirection: 'row', 

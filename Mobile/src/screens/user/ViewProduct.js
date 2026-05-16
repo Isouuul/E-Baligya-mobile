@@ -27,7 +27,7 @@ import {
   where,
   getDocs,
   deleteDoc,
-  updateDoc, increment 
+  updateDoc, increment, onSnapshot
 } from "firebase/firestore";
 import { useRoute, useNavigation } from '@react-navigation/native';
 import ReportModal from '../user/ReportModal';
@@ -40,7 +40,8 @@ export default function ViewProduct() {
   const route = useRoute();
   const navigation = useNavigation();
   const { productId } = route.params;
-
+const [addingToCart, setAddingToCart] = useState(false);
+const [buyingNow, setBuyingNow] = useState(false);
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedServices, setSelectedServices] = useState([]);
@@ -52,11 +53,37 @@ export default function ViewProduct() {
   const [followersCount, setFollowersCount] = useState(0);
   const [successModalVisible, setSuccessModalVisible] = useState(false);
   const scaleAnim = useState(new Animated.Value(0))[0];
+  const [cartCount, setCartCount] = useState(0);
+  // Safe extraction with fallback values
+  const maxQuantity = product?.quantityKg ?? 0;
+  const basePrice = product?.basePrice || 0;
+  const productImageURI = product?.imageBase64 ? (product.imageBase64.startsWith('data:image') ? product.imageBase64 : `data:image/jpeg;base64,${product.imageBase64}`) : null;
 
   // Dynamic state for real-time freshness text/countdown
   const [freshnessStatusText, setFreshnessStatusText] = useState('Checking freshness...');
-  const [freshnessStatusColor, setFreshnessStatusColor] = useState('#64748B'); 
+  const [freshnessStatusColor, setFreshnessStatusColor] = useState('#64748B');
   const [isExpired, setIsExpired] = useState(false);
+
+
+  useEffect(() => {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  const cartRef = collection(db, 'Carts', user.uid, 'items');
+
+  const unsubscribe = onSnapshot(cartRef, (snapshot) => {
+    let total = 0;
+
+    snapshot.forEach(doc => {
+      total += doc.data().quantity || 1;
+    });
+
+    setCartCount(total);
+  });
+
+  return () => unsubscribe();
+}, []);
+
 
   // Logic Preserved: Load User
   useEffect(() => {
@@ -77,7 +104,12 @@ export default function ViewProduct() {
         const docRef = doc(db, 'Products', productId);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setProduct(docSnap.data());
+          const data = docSnap.data();
+          setProduct(data);
+          // Safe adjustment if initial stock data is 0
+          if ((data?.quantityKg ?? 0) === 0) {
+            setQuantity(0);
+          }
         } else {
           Alert.alert('Error', 'Product not found');
         }
@@ -103,7 +135,7 @@ export default function ViewProduct() {
           const followersRef = collection(db, 'ApprovedVendors', vendorDoc.id, 'followers');
           const followersSnap = await getDocs(followersRef);
           setFollowersCount(followersSnap.size);
-          
+
           const user = auth.currentUser;
           if (user) {
             const followerRef = doc(db, "ApprovedVendors", vendorDoc.id, "followers", user.uid);
@@ -125,7 +157,7 @@ export default function ViewProduct() {
 
       if (freshnessDb.toLowerCase() === 'rotten') {
         setFreshnessStatusText('Expired / Not Fresh (Spoiled Initial Scan)');
-        setFreshnessStatusColor('#EF4444'); 
+        setFreshnessStatusColor('#EF4444');
         setIsExpired(true);
         return;
       }
@@ -136,39 +168,37 @@ export default function ViewProduct() {
 
       if (!warningTime || !expiryTime) {
         setFreshnessStatusText(`Freshness: ${freshnessDb}`);
-        setFreshnessStatusColor('#0EA5E9'); 
+        setFreshnessStatusColor('#0EA5E9');
         setIsExpired(false);
         return;
       }
 
       if (now >= expiryTime) {
         setFreshnessStatusText('Expired / Not Fresh');
-        setFreshnessStatusColor('#EF4444'); 
+        setFreshnessStatusColor('#EF4444');
         setIsExpired(true);
       } else if (now >= warningTime) {
         const timeLeftMs = expiryTime - now;
         const hoursLeft = Math.floor(timeLeftMs / (1000 * 60 * 60));
         const minsLeft = Math.floor((timeLeftMs % (1000 * 60 * 60)) / (1000 * 60));
         setFreshnessStatusText(`Almost not fresh (${hoursLeft}h ${minsLeft}m left)`);
-        setFreshnessStatusColor('#F59E0B'); 
+        setFreshnessStatusColor('#F59E0B');
         setIsExpired(false);
       } else {
         const timeLeftMs = warningTime - now;
         const hoursLeft = Math.floor(timeLeftMs / (1000 * 60 * 60));
         const minsLeft = Math.floor((timeLeftMs % (1000 * 60 * 60)) / (1000 * 60));
         setFreshnessStatusText(`Fresh (Degrading in ${hoursLeft}h ${minsLeft}m)`);
-        setFreshnessStatusColor('#10B981'); 
+        setFreshnessStatusColor('#10B981');
         setIsExpired(false);
       }
     };
 
     checkFreshnessClock();
-    const interval = setInterval(checkFreshnessClock, 60000); 
+    const interval = setInterval(checkFreshnessClock, 60000);
 
     return () => clearInterval(interval);
   }, [product]);
-
-  const basePrice = product?.basePrice || 0;
 
   const servicePrice = useMemo(() => {
     if (!Array.isArray(selectedServices)) return 0;
@@ -187,10 +217,10 @@ export default function ViewProduct() {
       const vendorDocId = vendorSnap.docs[0].id;
       const followerRef = doc(db, "ApprovedVendors", vendorDocId, "followers", user.uid);
       if (!isFollowing) {
-        await setDoc(followerRef, { 
-          followerId: user.uid, 
+        await setDoc(followerRef, {
+          followerId: user.uid,
           followerName: `${userData?.firstName || ''} ${userData?.lastName || ''}`,
-          followedAt: new Date() 
+          followedAt: new Date()
         });
         setIsFollowing(true);
         setFollowersCount(prev => prev + 1);
@@ -203,6 +233,21 @@ export default function ViewProduct() {
   };
 
   const getCartPayload = () => {
+    const services = Array.isArray(selectedServices)
+      ? selectedServices
+          .map((key) => {
+            const service = product?.services?.[key];
+            if (!service) return null;
+
+            return {
+              key,
+              label: service.label,
+              price: service.price,
+            };
+          })
+          .filter(Boolean)
+      : [];
+
     return {
       id: productId,
       userId: auth.currentUser.uid,
@@ -212,10 +257,7 @@ export default function ViewProduct() {
       basePrice: basePrice,
       productImage: productImageURI,
       category: product.category || 'Uncategorized',
-      selectedServices: selectedServices.map(key => ({
-        label: product.services[key].label,
-        price: product.services[key].price,
-      })),
+      selectedServices: services,
       quantity,
       totalPrice,
       createdAt: serverTimestamp(),
@@ -223,33 +265,29 @@ export default function ViewProduct() {
   };
 
 const handleAddToCart = async () => {
-  if (isExpired) {
-    return Alert.alert('Quality Restriction', 'Cannot buy this listing. The seafood is no longer fresh.');
-  }
+  if (addingToCart) return; // prevent double tap
+  setAddingToCart(true);
 
   try {
+    if (isExpired) {
+      return Alert.alert('Quality Restriction', 'Cannot buy this listing. The seafood is no longer fresh.');
+    }
+
+    if (quantity > maxQuantity || maxQuantity === 0) {
+      return Alert.alert("Not enough stock", `Only ${maxQuantity} kg available.`);
+    }
+
     const cartRef = collection(db, 'Carts', auth.currentUser.uid, 'items');
-
-    const q = query(
-      cartRef,
-      where('productId', '==', productId)
-    );
-
+    const q = query(cartRef, where('productId', '==', productId));
     const snap = await getDocs(q);
 
-    const newQty = quantity;
-
     if (!snap.empty) {
-      // 🔥 ITEM EXISTS → MERGE QUANTITY
       const existingDoc = snap.docs[0];
-
       await updateDoc(existingDoc.ref, {
-        quantity: increment(newQty),
+        quantity: increment(quantity),
         totalPrice: increment(totalPrice),
       });
-
     } else {
-      // 🆕 NEW ITEM
       await addDoc(cartRef, getCartPayload());
     }
 
@@ -258,21 +296,32 @@ const handleAddToCart = async () => {
   } catch (err) {
     Alert.alert('Error', 'Failed to add to cart');
     console.log(err);
+  } finally {
+    setAddingToCart(false);
   }
 };
+const handleBuyNow = async () => {
+  if (buyingNow) return;
+  setBuyingNow(true);
 
-  const handleBuyNow = async () => {
+  try {
     if (isExpired) {
       return Alert.alert('Quality Restriction', 'Cannot buy this listing. The seafood is no longer fresh.');
     }
-    try {
-      const checkoutPayload = getCartPayload();
-      // Navigate directly to checkout with product data
-      navigation.navigate('BuyNowCheckedOut', { product: checkoutPayload });
-    } catch (err) {
-      Alert.alert('Error', 'Failed to initialize direct purchase');
+
+    if (quantity > maxQuantity || maxQuantity === 0) {
+      return Alert.alert("Not enough stock", `Only ${maxQuantity} kg available.`);
     }
-  };
+
+    const checkoutPayload = getCartPayload();
+    navigation.navigate('BuyNowCheckedOut', { product: checkoutPayload });
+
+  } catch (err) {
+    Alert.alert('Error', 'Failed to initialize direct purchase');
+  } finally {
+    setBuyingNow(false);
+  }
+};
 
   const showSuccessModal = () => {
     setSuccessModalVisible(true);
@@ -286,12 +335,11 @@ const handleAddToCart = async () => {
   if (!product) return null;
 
   const enabledServices = product.services ? Object.entries(product.services).filter(([_, s]) => s.enabled).map(([key, s]) => ({ key, ...s })) : [];
-  const productImageURI = product.imageBase64 ? (product.imageBase64.startsWith('data:image') ? product.imageBase64 : `data:image/jpeg;base64,${product.imageBase64}`) : null;
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      
+
       {/* PREMIUM HEADER */}
       <View style={styles.customHeader}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerCircleBtn}>
@@ -300,11 +348,22 @@ const handleAddToCart = async () => {
         <Text style={styles.headerTitle} numberOfLines={1}>Product Details</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity style={styles.headerCircleBtn} onPress={() => setReportVisible(true)}>
-             <Image source={WarningIcon} style={styles.headerAssetIcon} resizeMode="contain" />
+            <Image source={WarningIcon} style={styles.headerAssetIcon} resizeMode="contain" />
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.headerCircleBtn, {marginLeft: 12}]} onPress={() => navigation.navigate('CartShop')}>
-             <Image source={BasketIcon} style={styles.headerAssetIcon} resizeMode="contain" />
-          </TouchableOpacity>
+<TouchableOpacity
+  style={[styles.headerCircleBtn, { marginLeft: 12 }]}
+  onPress={() => navigation.navigate('CartShop')}
+>
+  <Image source={BasketIcon} style={styles.headerAssetIcon} resizeMode="contain" />
+
+  {cartCount > 0 && (
+    <View style={styles.cartBadge}>
+      <Text style={styles.cartBadgeText}>
+        {cartCount > 99 ? "99+" : cartCount}
+      </Text>
+    </View>
+  )}
+</TouchableOpacity>
         </View>
       </View>
 
@@ -344,13 +403,15 @@ const handleAddToCart = async () => {
             <Text style={styles.mainProductName}>{product.productName}</Text>
             <View style={styles.priceRow}>
               <View style={styles.priceUnitWrapper}>
-                <Text style={styles.mainPrice}>₱{basePrice.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
+                <Text style={styles.mainPrice}>₱{basePrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
                 <Text style={styles.perUnit}>/kg</Text>
               </View>
               <View style={[styles.stockBadge, isExpired ? styles.stockExpired : styles.stockAvailable]}>
                 <View style={[styles.stockDot, isExpired ? styles.dotExpired : styles.dotAvailable]} />
                 <Text style={[styles.stockText, isExpired ? styles.textExpired : styles.textAvailable]}>
-                  {isExpired ? 'Spoiled' : 'In Stock'}
+                  {isExpired
+                    ? 'Spoiled'
+                    : `${product?.quantityKg ?? 0} kg available`}
                 </Text>
               </View>
             </View>
@@ -372,24 +433,25 @@ const handleAddToCart = async () => {
                 <Text style={[styles.followActionText, isFollowing && styles.followedText]}>{isFollowing ? "Following" : "Follow"}</Text>
               </TouchableOpacity>
             </View>
-            
+
             <View style={styles.vendorActions}>
               <TouchableOpacity onPress={() => navigation.navigate('ViewShop', { vendorId: product.uploadedBy?.uid })} style={styles.vSecondaryBtn}>
                 <MaterialCommunityIcons name="store-outline" size={18} color="#0F172A" />
                 <Text style={styles.vSecondaryText}>View Store</Text>
               </TouchableOpacity>
-<TouchableOpacity 
-  onPress={() => navigation.navigate('ChatScreen', { 
-    vendorId: product.uploadedBy?.uid,
-    productPreview: {
-      productId,
-      name: product.productName,
-      price: basePrice,
-      image: productImageURI,
-    }
-  })} 
-  style={styles.vSecondaryBtn}
->                <MaterialCommunityIcons name="message-text-outline" size={18} color="#0F172A" />
+              <TouchableOpacity
+                onPress={() => navigation.navigate('ChatScreen', {
+                  vendorId: product.uploadedBy?.uid,
+                  productPreview: {
+                    productId,
+                    name: product.productName,
+                    price: basePrice,
+                    image: productImageURI,
+                  }
+                })}
+                style={styles.vSecondaryBtn}
+              >
+                <MaterialCommunityIcons name="message-text-outline" size={18} color="#0F172A" />
                 <Text style={styles.vSecondaryText}>Message</Text>
               </TouchableOpacity>
             </View>
@@ -410,13 +472,21 @@ const handleAddToCart = async () => {
               {enabledServices.map((s, i) => {
                 const isSelected = selectedServices.includes(s.key);
                 return (
-                  <TouchableOpacity 
-                    key={i} 
+                  <TouchableOpacity
+                    key={i}
                     style={[styles.serviceRow, isSelected && styles.serviceRowActive]}
-                    onPress={() => setSelectedServices(prev => isSelected ? prev.filter(k => k !== s.key) : [...prev, s.key])}
+                    onPress={() =>
+                      setSelectedServices(prev => {
+                        if (prev.includes(s.key)) {
+                          return prev.filter(k => k !== s.key);
+                        }
+                        return [...prev, s.key];
+                      })
+                    }
                     activeOpacity={0.7}
                   >
-                    <Ionicons name={isSelected ? "checkmark-circle" : "ellipse-outline"} size={22} color={isSelected ? "#0F172A" : "#94A3B8"} />
+
+                    <Ionicons name={isSelected ? "checkmark-circle" : "ellipse-outline"} size={22} color={isSelected ? "#3b82f6" : "#3b82f6"} />
                     <Text style={[styles.serviceLabel, isSelected && styles.serviceLabelActive]}>{s.label}</Text>
                     <Text style={styles.servicePrice}>+₱{s.price}</Text>
                   </TouchableOpacity>
@@ -429,11 +499,14 @@ const handleAddToCart = async () => {
           <View style={styles.quantityCard}>
             <Text style={styles.sectionTitle}>Quantity (kg)</Text>
             <View style={styles.qtyControls}>
-              <TouchableOpacity style={styles.qtyCircle} onPress={() => setQuantity(q => Math.max(1, q - 1))}>
+              <TouchableOpacity style={styles.qtyCircle} onPress={() => setQuantity(q => Math.max(maxQuantity > 0 ? 1 : 0, q - 1))}>
                 <Ionicons name="remove" size={18} color="#0F172A" />
               </TouchableOpacity>
               <Text style={styles.qtyDisplay}>{quantity}</Text>
-              <TouchableOpacity style={styles.qtyCircle} onPress={() => setQuantity(q => q + 1)}>
+              <TouchableOpacity
+                style={styles.qtyCircle}
+                onPress={() => setQuantity(q => Math.min(maxQuantity, q + 1))}
+              >
                 <Ionicons name="add" size={18} color="#0F172A" />
               </TouchableOpacity>
             </View>
@@ -445,28 +518,36 @@ const handleAddToCart = async () => {
       <View style={styles.bottomBar}>
         <View style={styles.totalContainer}>
           <Text style={styles.totalLabel}>Grand Total</Text>
-          <Text style={styles.totalAmount}>₱{totalPrice.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
+          <Text style={styles.totalAmount}>₱{totalPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
         </View>
-        
-        <View style={styles.actionsContainer}>
-          <TouchableOpacity 
-            style={[styles.cartMainBtn, isExpired && styles.disabledBtn]} 
-            onPress={handleAddToCart}
-            disabled={isExpired}
-            activeOpacity={0.8}
-          >
-            <Image source={BasketIcon} style={[styles.cartMainAssetIcon, isExpired && { tintColor: '#94A3B8' }]} resizeMode="contain" />
-            <Text style={[styles.cartMainText, isExpired && { color: '#94A3B8' }]}>Add to Cart</Text>
-          </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.buyNowBtn, isExpired && styles.disabledBtn]} 
-            onPress={handleBuyNow}
-            disabled={isExpired}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.buyNowText}>Buy Now</Text>
-          </TouchableOpacity>
+        <View style={styles.actionsContainer}>
+<TouchableOpacity
+  style={[styles.cartMainBtn, isExpired && styles.disabledBtn]}
+  onPress={handleAddToCart}
+  disabled={isExpired || addingToCart}
+>
+  {addingToCart ? (
+    <ActivityIndicator color="#0F172A" />
+  ) : (
+    <>
+      <Image source={BasketIcon} style={styles.cartMainAssetIcon} />
+      <Text style={styles.cartMainText}>Add to Cart</Text>
+    </>
+  )}
+</TouchableOpacity>
+
+<TouchableOpacity
+  style={[styles.buyNowBtn, isExpired && styles.disabledBtn]}
+  onPress={handleBuyNow}
+  disabled={isExpired || buyingNow}
+>
+  {buyingNow ? (
+    <ActivityIndicator color="#0F172A" />
+  ) : (
+    <Text style={styles.buyNowText}>Buy Now</Text>
+  )}
+</TouchableOpacity>
         </View>
       </View>
 
@@ -505,8 +586,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
-        marginTop: 35
-
+    marginTop: 35
   },
   headerTitle: {
     fontSize: 16,
@@ -517,9 +597,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerCircleBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 10,
     backgroundColor: '#F8FAFC',
     alignItems: 'center',
     justifyContent: 'center',
@@ -529,8 +609,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerAssetIcon: {
-    width: 18,
-    height: 18,
+    width: 24,
+    height: 24,
   },
   imageWrapper: {
     width: '100%',
@@ -555,7 +635,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
-    backdropFilter: 'blur(4px)',
   },
   categoryText: {
     color: '#FFFFFF',
@@ -743,8 +822,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#eff6ff',
-    borderColor: '#3b82f6',    borderWidth: 0.5,
-
+    borderColor: '#3b82f6', borderWidth: 0.5,
     paddingVertical: 8,
     borderRadius: 10,
     gap: 6,
@@ -888,7 +966,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#eff6ff',
     borderColor: '#3b82f6',
     borderWidth: 1,
-    
     alignItems: 'center',
     justifyContent: 'center',
     height: 48,
@@ -941,4 +1018,23 @@ const styles = StyleSheet.create({
     marginTop: 6,
     lineHeight: 18,
   },
+
+  cartBadge: {
+  position: 'absolute',
+  top: -6,
+  right: -6,
+  backgroundColor: '#EF4444',
+  minWidth: 18,
+  height: 18,
+  borderRadius: 9,
+  alignItems: 'center',
+  justifyContent: 'center',
+  paddingHorizontal: 4,
+},
+
+cartBadgeText: {
+  color: '#FFFFFF',
+  fontSize: 10,
+  fontWeight: '800',
+}
 });
