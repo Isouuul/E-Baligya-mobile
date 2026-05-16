@@ -114,16 +114,32 @@ export default function Home({ navigation }) {
     return () => sub?.remove();
   }, []);
 
+  /* -------------------------------------
+     FETCH DATA & COMPLIANCE ENGINE FILTER
+  -------------------------------------*/
   const fetchAllData = async () => {
     try {
       const qProducts = query(collection(db, "Products"));
       const snapshotProducts = await getDocs(qProducts);
-      const listProducts = snapshotProducts.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      setProducts(shuffleArray(listProducts));
-      const listTrend = listProducts.filter((i) => i.category === "Trend");
+      
+      // Map all documents into local array structured variables
+      const rawProductsList = snapshotProducts.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      
+      // COMPLIANCE GUARD: Strip out any listing modified to a "restricted" status state
+      const compliantProducts = rawProductsList.filter(item => item.status !== 'restricted');
+
+      // Set standard products display pool
+      setProducts(shuffleArray(compliantProducts));
+      
+      // Set seasonal favorites (Trend) tracking pool from compliant list only
+      const listTrend = compliantProducts.filter((i) => i.category === "Trend");
       setTrendFish(shuffleArray(listTrend));
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); setRefreshing(false); }
+    } catch (err) { 
+      console.error(err); 
+    } finally { 
+      setLoading(false); 
+      setRefreshing(false); 
+    }
   };
 
   useEffect(() => { fetchAllData(); }, []);
@@ -139,7 +155,7 @@ export default function Home({ navigation }) {
     const fadeAnim = useRef(new Animated.Value(0)).current;
     useEffect(() => {
       Animated.timing(fadeAnim, { toValue: 1, duration: 400, delay: index * 80, useNativeDriver: true }).start();
-    }, []);
+    }, [index, fadeAnim]);
 
     return (
       <Animated.View style={[styles.productCard, { opacity: fadeAnim }]}>
@@ -486,7 +502,8 @@ const styles = StyleSheet.create({
     left: 8, 
     backgroundColor: '#eff6ff',
     borderColor: '#3b82f6',
-    borderWidth: 0.5,    paddingHorizontal: 8, 
+    borderWidth: 0.5,
+    paddingHorizontal: 8, 
     paddingVertical: 4, 
     borderRadius: 8 
   },

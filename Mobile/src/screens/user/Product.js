@@ -92,8 +92,6 @@ function AnimatedProductCard({ item, index, navigation, status }) {
   }, []);
 
   const hasStock = item.quantityKg > 0;
-  
-  // Adjusted to fallback gracefully if nested property isn't built yet
   const displayMarketName = item.uploadedBy?.marketName || item.marketName || "Unknown Market";
 
   return (
@@ -133,7 +131,6 @@ function AnimatedProductCard({ item, index, navigation, status }) {
             {item.productName}
           </Text>
 
-          {/* MARKET TAG STYLED PROPERLY */}
           <View style={styles.marketTagContainer}>
             <Ionicons name="location-outline" size={12} color="#64748b" style={{ marginRight: 2 }} />
             <Text style={styles.marketTagText} numberOfLines={1}>
@@ -234,8 +231,10 @@ export default function Product() {
     fetchCartItems();
   }, []);
 
+  // RE-FETCH ON SCREEN FOCUS SESSIONS
   useFocusEffect(
     useCallback(() => {
+      fetchProducts();
       fetchCartItems();
     }, [])
   );
@@ -247,20 +246,22 @@ export default function Product() {
     setRefreshing(false);
   };
 
-  /* ---------------------------
-      FILTER LOGIC UPDATE
-  ----------------------------*/
+  /* -------------------------------------------
+      FILTER LOGIC WITH COMPLIANCE ENGINE FILTER
+  --------------------------------------------*/
   useEffect(() => {
     let filtered = products.filter(p => {
-      const status = getProductStatus(p);
+      // 1. CRITICAL COMPLIANCE GUARD: Strip items set to "restricted"
+      if (p.status && p.status.toLowerCase() === 'restricted') return false;
 
-      // Remove expired products
+      // 2. TIME EXPIRY GUARD
+      const status = getProductStatus(p);
       if (status === 'expired') return false;
 
+      // 3. UI CATEGORY, SEARCH, AND MARKET CHIP FILTER MATCHES
       const matchesCat = category === "All" || p.category === category;
       const matchesSearch = p.productName?.toLowerCase().includes(searchText.toLowerCase());
       
-      // Fixed market matching condition to point securely to uploadedBy.marketName nested schema
       const itemMarketName = p.uploadedBy?.marketName || p.marketName || '';
       const matchesMarket =
         selectedMarket === "All Markets" ||
@@ -311,7 +312,7 @@ export default function Product() {
             </TouchableOpacity>
 
             <TouchableOpacity 
-              onPress={() => navigation.navigate("InboxScreenUser")} 
+              onPress={() => navigation.navigate("InboxScreen")} 
               style={[styles.iconCircle, { marginLeft: 10 }]}
               activeOpacity={0.7}
             >
@@ -319,8 +320,6 @@ export default function Product() {
             </TouchableOpacity>
           </View>
         </View>
-
-
 
         {/* ELEGANT SCROLLABLE CATEGORIES LIST */}
         <ScrollView 
@@ -348,7 +347,7 @@ export default function Product() {
           })}
         </ScrollView>
 
-                {/* HORIZONTAL MARKET FILTER SCROLL */}
+        {/* HORIZONTAL MARKET FILTER SCROLL */}
         <View style={styles.marketFilterContainer}>
           <ScrollView
             horizontal

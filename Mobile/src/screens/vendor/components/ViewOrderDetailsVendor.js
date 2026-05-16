@@ -1,5 +1,5 @@
 // src/screens/Users/ViewOrderDetails.js
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,8 +16,12 @@ import {
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import MapView, { Marker } from 'react-native-maps';
-import { doc, deleteDoc, setDoc } from "firebase/firestore";
+import { doc, deleteDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from '../../../firebase';
+
+// Import the specialized Vendor-to-User report modal and the local asset
+import ReportUserModal from './ReportUserModal';
+import AlertIcon from '../../../../assets/Alert.png';
 
 const { width } = Dimensions.get('window');
 const MAP_HEIGHT = 200;
@@ -44,6 +48,39 @@ export default function ViewOrderDetailsVendor() {
   const route = useRoute();
   const order = route.params?.order;
   const [isCancelling, setIsCancelling] = useState(false);
+
+  // Layout state for report modal visibility
+  const [reportVisible, setReportVisible] = useState(false);
+  
+  // Track if this order has already been reported to disable the button
+  const [hasBeenReported, setHasBeenReported] = useState(false);
+  const [checkingReport, setCheckingReport] = useState(true);
+
+  // Check Firestore on load to verify if a report already exists for this order ID
+  useEffect(() => {
+    let isMounted = true;
+    
+    const checkExistingReport = async () => {
+      if (!order?.id) return;
+      try {
+        const reportsRef = collection(db, "VendorToUserReports");
+        const q = query(reportsRef, where("orderId", "==", order.id));
+        const querySnapshot = await getDocs(q);
+        
+        if (isMounted) {
+          // If query isn't empty, it means this order has already been reported
+          setHasBeenReported(!querySnapshot.empty);
+        }
+      } catch (error) {
+        console.error("Error checking existing reports: ", error);
+      } finally {
+        if (isMounted) setCheckingReport(false);
+      }
+    };
+
+    checkExistingReport();
+    return () => { isMounted = false; };
+  }, [order?.id]);
 
   const groupedItems = useMemo(() => {
     const groups = {};
@@ -129,6 +166,14 @@ export default function ViewOrderDetailsVendor() {
     );
   };
 
+  // Helper listener parameter to update current page status instantly after modal actions close
+  const handleModalClose = (wasSubmitted) => {
+    setReportVisible(false);
+    if (wasSubmitted) {
+      setHasBeenReported(true);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -142,7 +187,27 @@ export default function ViewOrderDetailsVendor() {
           <Text style={styles.headerTitle}>Order Details</Text>
           <Text style={styles.headerSubtitle}>#{order.orderNumber}</Text>
         </View>
-        <View style={styles.headerSpacer} />
+        
+        {/* Dynamic Alert Icon State Management */}
+        {checkingReport ? (
+          <View style={styles.alertIconButtonDisabled}>
+            <ActivityIndicator size="small" color="#94A3B8" />
+          </View>
+        ) : hasBeenReported ? (
+          // Disabled state styling when already reported
+          <View style={styles.alertIconButtonDisabled}>
+            <Image source={AlertIcon} style={[styles.alertIconImage, { opacity: 0.3 }]} />
+          </View>
+        ) : (
+          // Active state styling when clean
+          <TouchableOpacity 
+            onPress={() => setReportVisible(true)} 
+            style={styles.alertIconButton}
+            activeOpacity={0.7}
+          >
+            <Image source={AlertIcon} style={styles.alertIconImage} />
+          </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
@@ -247,6 +312,14 @@ export default function ViewOrderDetailsVendor() {
         </TouchableOpacity>
 
       </ScrollView>
+
+      {/* Declarative mount of the vendor-to-user report modal */}
+      <ReportUserModal
+        visible={reportVisible}
+        onClose={(wasSubmitted) => handleModalClose(wasSubmitted)}
+        orderId={order.id}
+        orderData={order}
+      />
     </View>
   );
 }
@@ -290,7 +363,32 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '500'
   },
-  headerSpacer: { width: 40 },
+  alertIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#FFF1F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FEE2E2'
+  },
+  // Gray styling fallback for disabled state indicators
+  alertIconButtonDisabled: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
+  },
+  alertIconImage: {
+    width: 22,
+    height: 22,
+    resizeMode: 'contain',
+  },
 
   statusSection: {
     alignItems: 'center',

@@ -16,10 +16,10 @@ import {
   Dimensions,
   Animated,
 } from 'react-native';
-import { Feather } from '@expo/vector-icons'; // Switched to Feather for a lighter, premium feel
+import { Feather } from '@expo/vector-icons';
 import { auth, db } from '../../firebase';
 import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth';
-import { collection, getDocs, query, where, updateDoc } from 'firebase/firestore';
+import { collection, getDocs, query, where, updateDoc, increment } from 'firebase/firestore';
 import LoginSuccess from '../../../assets/Login.png';
 import MarketImage from '../../../assets/Market.png';
 import EbaligyaLogo from '../../images/ebaligya.png';
@@ -31,14 +31,21 @@ const VendorLoginScreen = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [focusedInput, setFocusedInput] = useState(null); // For active input styling
+  const [focusedInput, setFocusedInput] = useState(null);
   const emailInputRef = useRef(null);
   const passwordInputRef = useRef(null);
   const loginButtonScale = useRef(new Animated.Value(1)).current;
+  
+  // Timing References
   const loginTimeoutRef = useRef(null);
+  const forcedTimerRef = useRef(null);
 
+  // Modals Engine
   const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [warningVisible, setWarningVisible] = useState(false);
+  const [countdownVisible, setCountdownVisible] = useState(false);
   const [sileoVisible, setSileoVisible] = useState(false);
+  
   const [sileoConfig, setSileoConfig] = useState({
     title: '',
     message: '',
@@ -46,11 +53,13 @@ const VendorLoginScreen = ({ navigation }) => {
     type: 'info',
     onPress: null,
   });
-  const [countdownVisible, setCountdownVisible] = useState(false);
+
+  // Restriction Metrics Context
   const [countdownTime, setCountdownTime] = useState('');
   const [countdownLabel, setCountdownLabel] = useState('');
   const [penaltyLabel, setPenaltyLabel] = useState('');
   const [strikeCount, setStrikeCount] = useState(0);
+  const [forcedSeconds, setForcedSeconds] = useState(10);
 
   useEffect(() => {
     StatusBar.setBarStyle('dark-content');
@@ -58,6 +67,7 @@ const VendorLoginScreen = ({ navigation }) => {
 
     return () => {
       if (loginTimeoutRef.current) clearTimeout(loginTimeoutRef.current);
+      if (forcedTimerRef.current) clearInterval(forcedTimerRef.current);
     };
   }, []);
 
@@ -86,6 +96,8 @@ const VendorLoginScreen = ({ navigation }) => {
   const formatCountdownTime = (restrictedUntilDate) => {
     const now = new Date();
     const diffMs = restrictedUntilDate - now;
+    if (diffMs <= 0) return { time: '0 minutes', label: 'Restriction Expired' };
+
     const diffMins = Math.floor(diffMs / (1000 * 60));
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -97,6 +109,81 @@ const VendorLoginScreen = ({ navigation }) => {
     } else {
       return { time: `${diffMins} minute${diffMins !== 1 ? 's' : ''}`, label: 'Restriction Active' };
     }
+  };
+
+  /**
+   * Core engine running compliance validation rules for Vendor data.
+   * Returns true if locked out or delayed by an active penalty modal.
+   */
+  const processVendorRestrictions = async (vendorDoc, onSuccessCallback) => {
+    const vendorData = vendorDoc.data();
+    let accountStatus = (vendorData.accountStatus || 'active').toLowerCase();
+    const verifiedCount = Number(vendorData.verifiedReports || 0);
+    const loginWarningCount = Number(vendorData.loginWarningCount || 0);
+    const now = new Date();
+    const restrictedUntil = vendorData.restrictedUntil?.toDate ? vendorData.restrictedUntil.toDate() : null;
+
+    // 🛑 1. HARD BLOCK: PERMANENT BAN
+    if (accountStatus === 'banned') {
+      await signOut(auth);
+      setLoading(false);
+      showSileo({ 
+        title: 'Access Denied', 
+        message: 'This account has been permanently deactivated from running business listings.', 
+        type: 'warning' 
+      });
+      return true;
+    }
+
+    // ⏳ 2. HARD BLOCK: ACTIVE RESTRICTIONS COUNTDOWN
+    if (accountStatus === 'restricted') {
+      if (restrictedUntil && restrictedUntil > now) {
+        const { time, label } = formatCountdownTime(restrictedUntil);
+        setCountdownTime(time);
+        setCountdownLabel(label);
+        setPenaltyLabel(vendorData.lastPenaltyLabel || '⚡ Account Restricted');
+        setStrikeCount(vendorData.reportStrikeCount || 0);
+        setCountdownVisible(true);
+        await signOut(auth);
+        setLoading(false);
+        return true;
+      } else {
+        // 💡 TIME SERVED: Automatically reinstate clean status if timeframe expired
+        await updateDoc(vendorDoc.ref, { accountStatus: 'active', restrictedUntil: null });
+        accountStatus = 'active'; // Mutate local reference state to avoid getting caught down below
+      }
+    }
+
+    // ⚠️ 3. WARNING DELAY LAYER: Intercepts up to 5 times maximum
+    if ((verifiedCount === 1 || verifiedCount === 2) && loginWarningCount < 5) {
+      await updateDoc(vendorDoc.ref, {
+        loginWarningCount: increment(1)
+      });
+
+      setPenaltyLabel(vendorData.lastPenaltyLabel || '⚠️ Vendor Warning Notice');
+      setStrikeCount(vendorData.reportStrikeCount || 0);
+      setForcedSeconds(10);
+      setWarningVisible(true);
+      setLoading(false);
+
+      if (forcedTimerRef.current) clearInterval(forcedTimerRef.current);
+
+      forcedTimerRef.current = setInterval(() => {
+        setForcedSeconds((prev) => {
+          if (prev <= 1) {
+            clearInterval(forcedTimerRef.current);
+            setWarningVisible(false);
+            onSuccessCallback();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return true;
+    }
+
+    return false;
   };
 
   const handleLogin = async () => {
@@ -112,41 +199,19 @@ const VendorLoginScreen = ({ navigation }) => {
     setLoading(true);
     try {
       const { user } = await signInWithEmailAndPassword(auth, email.trim(), password);
+      
       const approvedQ = query(collection(db, 'ApprovedVendors'), where('userId', '==', user.uid));
       const approvedSnap = await getDocs(approvedQ);
 
       if (!approvedSnap.empty) {
         const approvedDoc = approvedSnap.docs[0];
-        const approvedData = approvedDoc.data();
-        const accountStatus = (approvedData.accountStatus || 'active').toLowerCase();
-        const now = new Date();
-        const restrictedUntil = approvedData.restrictedUntil?.toDate ? approvedData.restrictedUntil.toDate() : null;
-
-        if (accountStatus === 'banned') {
-          await signOut(auth);
-          showSileo({ title: 'Access Denied', message: 'This account has been permanently deactivated.', type: 'warning' });
-          return;
+        
+        // Evaluate systemic rules
+        const isIntercepted = await processVendorRestrictions(approvedDoc, executeSuccessTransition);
+        
+        if (!isIntercepted) {
+          executeSuccessTransition();
         }
-
-        if (accountStatus === 'restricted') {
-          if (restrictedUntil && restrictedUntil > now) {
-            const { time, label } = formatCountdownTime(restrictedUntil);
-            setCountdownTime(time);
-            setCountdownLabel(label);
-            setPenaltyLabel(approvedData.lastPenaltyLabel || '⚡ Account Restricted');
-            setStrikeCount(approvedData.reportStrikeCount || 0);
-            setCountdownVisible(true);
-            await signOut(auth);
-            return;
-          }
-          await updateDoc(approvedDoc.ref, { accountStatus: 'active', restrictedUntil: null });
-        }
-
-        setSuccessModalVisible(true);
-        loginTimeoutRef.current = setTimeout(() => {
-          setSuccessModalVisible(false);
-          navigation.replace('VendorDashboard');
-        }, 1500);
 
       } else {
         const pendingQ = query(collection(db, 'PendingVendors'), where('userId', '==', user.uid));
@@ -161,8 +226,17 @@ const VendorLoginScreen = ({ navigation }) => {
       }
     } catch (err) {
       let msg = 'An unexpected error occurred. Please try again.';
-      if (err.code === 'auth/wrong-password') {
-        showSileo({ title: 'Security', message: 'The password entered is incorrect.', buttonText: 'Reset Password', type: 'warning', onPress: handlePasswordReset });
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        showSileo({ 
+          title: 'Security', 
+          message: 'The password entered is incorrect.', 
+          buttonText: 'OK', 
+          type: 'warning',
+          onPress: () => {
+            setPassword(''); // Instantly clear input field for a clean retry state
+            passwordInputRef.current?.focus();
+          }
+        });
         return;
       }
       if (err.code === 'auth/user-not-found') msg = 'No account found with this email.';
@@ -170,6 +244,19 @@ const VendorLoginScreen = ({ navigation }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleUserSwitch = () => {
+    if (forcedTimerRef.current) clearInterval(forcedTimerRef.current);
+    navigation.navigate('Login');
+  };
+
+  const executeSuccessTransition = () => {
+    setSuccessModalVisible(true);
+    loginTimeoutRef.current = setTimeout(() => {
+      setSuccessModalVisible(false);
+      navigation.replace('VendorDashboard');
+    }, 1500);
   };
 
   const handlePasswordReset = async () => {
@@ -190,7 +277,8 @@ const VendorLoginScreen = ({ navigation }) => {
       {/* Switch Button */}
       <TouchableOpacity 
         style={styles.switchButton} 
-        onPress={() => navigation.navigate('Login')}
+        onPress={handleUserSwitch}
+        disabled={loading}
       >
         <Feather name="repeat" size={16} color="#0F172A" />
         <Text style={styles.switchText}>Switch to User</Text>
@@ -202,7 +290,6 @@ const VendorLoginScreen = ({ navigation }) => {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        
         {/* Header Section */}
         <View style={styles.headerContainer}>
           <View style={styles.brandCircle}>
@@ -215,11 +302,7 @@ const VendorLoginScreen = ({ navigation }) => {
         {/* Form Card */}
         <View style={styles.formCard}>
           <View style={styles.cardWatermarkWrap} pointerEvents="none">
-            <Image
-              source={EbaligyaLogo}
-              style={styles.cardWatermark}
-              resizeMode="contain"
-            />
+            <Image source={EbaligyaLogo} style={styles.cardWatermark} resizeMode="contain" />
           </View>
 
           <Text style={styles.label}>Email Address</Text>
@@ -307,28 +390,33 @@ const VendorLoginScreen = ({ navigation }) => {
         </View>
       </ScrollView>
 
-      {/* Modern Dialog (Sileo) */}
-      {sileoVisible && (
+      {/* ⚠️ MODAL A: MANDATORY 10-SECOND PENALTY WARNING SCREEN */}
+      <Modal transparent animationType="fade" visible={warningVisible} onRequestClose={() => {}}>
         <View style={styles.sileoOverlay}>
-          <View style={styles.sileoModal}>
-            <View style={[styles.sileoIconCircle, sileoConfig.type === 'success' ? styles.bgSuccess : sileoConfig.type === 'warning' ? styles.bgWarning : styles.bgInfo]}>
-               <Feather 
-                name={sileoConfig.type === 'success' ? 'check' : sileoConfig.type === 'warning' ? 'alert-circle' : 'info'} 
-                size={28} 
-                color="#fff" 
-               />
+          <View style={styles.countdownModal}>
+            <View style={[styles.warningIconCircleCircle, { backgroundColor: '#F59E0B' }]}>
+              <Feather name="alert-circle" size={32} color="#fff" />
             </View>
-            <Text style={styles.sileoTitle}>{sileoConfig.title}</Text>
-            <Text style={styles.sileoMessage}>{sileoConfig.message}</Text>
-            <TouchableOpacity style={styles.sileoButton} onPress={handleSileoClose}>
-              <Text style={styles.sileoButtonText}>{sileoConfig.buttonText}</Text>
-            </TouchableOpacity>
+            <Text style={styles.countdownTitle}>Account Citation Logged</Text>
+            <Text style={[styles.warningSubLabel, { color: '#D97706' }]}>Compliance Review</Text>
+            
+            <View style={[styles.penaltyBox, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }]}>
+              <Text style={[styles.penaltyBoxText, { color: '#92400E' }]}>{penaltyLabel}</Text>
+            </View>
+            
+            <View style={styles.timerBox}>
+              <Text style={[styles.timerText, { color: '#B45309' }]}>Proceeding in {forcedSeconds}s...</Text>
+            </View>
+            
+            <Text style={styles.countdownMessage}>
+              An administrator has verified a violation report filed against your store profile. Continued marketplace infractions will lead to structural business listing suspensions or permanent termination.
+            </Text>
           </View>
         </View>
-      )}
+      </Modal>
 
-      {/* Countdown Restriction Modal */}
-      {countdownVisible && (
+      {/* 🚫 MODAL B: COUNTDOWN SUSPENSION LOCK (UNPASSABLE) */}
+      <Modal transparent animationType="fade" visible={countdownVisible} onRequestClose={() => setCountdownVisible(false)}>
         <View style={styles.sileoOverlay}>
           <View style={styles.countdownModal}>
             <View style={styles.countdownIconCircle}>
@@ -339,7 +427,7 @@ const VendorLoginScreen = ({ navigation }) => {
             
             {penaltyLabel && (
               <View style={styles.penaltyBox}>
-                <Text style={styles.penaltyLabel}>{penaltyLabel}</Text>
+                <Text style={styles.penaltyBoxText}>{penaltyLabel}</Text>
                 {strikeCount > 0 && (
                   <Text style={styles.strikeText}>Strike {strikeCount}</Text>
                 )}
@@ -351,7 +439,7 @@ const VendorLoginScreen = ({ navigation }) => {
             </View>
             
             <Text style={styles.countdownMessage}>
-              Your account is under temporary restriction due to policy violations. Please try logging in again after the countdown expires.
+              Your storefront access is under structural suspension due to system integrity rules. Standard vendor operations will unlock automatically upon expiry.
             </Text>
             
             <TouchableOpacity 
@@ -362,9 +450,9 @@ const VendorLoginScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
         </View>
-      )}
+      </Modal>
 
-      {/* Modern Dialog (Sileo) */}
+      {/* Modern Dialog (Sileo Engine Alerts) */}
       {sileoVisible && (
         <View style={styles.sileoOverlay}>
           <View style={styles.sileoModal}>
@@ -399,243 +487,345 @@ const VendorLoginScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  scrollContainer: { paddingHorizontal: 24, paddingBottom: 40, paddingTop: 60, backgroundColor: '#F8FAFC' },
+  scrollContainer: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+    backgroundColor: '#FFFFFF',
+  },
   switchButton: {
-    position: 'absolute',
-    top: 40,
-    right: 0,
-    zIndex: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    alignSelf: 'flex-end',
+    backgroundColor: '#F1F5F9',
     paddingVertical: 8,
     paddingHorizontal: 14,
-    borderTopLeftRadius: 30,
-    borderBottomLeftRadius: 30,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
+    borderRadius: 20,
+    marginTop: 70,
+    marginBottom: 40,
+    marginRight: 24,
   },
-  switchText: { fontSize: 14, fontWeight: '700', color: '#0F172A', marginLeft: 8 },
+  switchText: {
+    marginLeft: 6,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
   headerContainer: {
     alignItems: 'center',
-    marginTop: 60,
-    marginBottom: 40,
+    marginBottom: 24,
   },
   brandCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: '#EEF2FF',
-    borderWidth: 1,
-    borderColor: '#5B9DFF',
-    alignItems: 'center',
+    width: 70,
+    height: 70,
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
+    borderWidth: 1.5,
     justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 16,
-    shadowColor: '#6366f1',
-    shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 18,
-    elevation: 5,
+    borderRadius: 10,
+    padding: 10,
   },
   brandImage: {
-    width: 30,
-    height: 30,
-  },
-  title: { fontSize: 28, fontWeight: '800', color: '#0F172A', letterSpacing: -0.5 },
-  subtitle: { fontSize: 15, color: '#64748B', marginTop: 4, fontWeight: '400', lineHeight: 21, textAlign: 'center' },
-  
-  formCard: {
-    backgroundColor: '#fff',
-    borderRadius: 24,
     width: '100%',
-    padding: 22,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#E5EAF2',
+    height: '100%',
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#0F172A',
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  formCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
     shadowColor: '#0F172A',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 16 },
-    shadowRadius: 28,
-    elevation: 12,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    position: 'relative',
+    overflow: 'hidden',
   },
   cardWatermarkWrap: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: 'absolute',
+    right: -20,
+    bottom: -20,
+    opacity: 0.03,
   },
   cardWatermark: {
-    width: 220,
-    height: 220,
-    opacity: 0.06,
-    transform: [{ rotate: '-6deg' }],
+    width: 150,
+    height: 150,
   },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#475569',
-    marginBottom: 8,
-    marginLeft: 4,
+    color: '#334155',
+    marginBottom: 6,
+    marginLeft: 2,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    borderRadius: 16,
+    borderRadius: 14,
     paddingHorizontal: 16,
-    marginBottom: 20,
-    height: 56,
+    height: 54,
+    marginBottom: 18,
   },
   inputFocused: {
     borderColor: '#6366f1',
     backgroundColor: '#FFFFFF',
-    shadowColor: '#6366f1',
-    shadowOpacity: 0.14,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 14,
-    elevation: 4,
   },
-  input: { flex: 1, paddingHorizontal: 12, fontSize: 16, color: '#1E293B', fontWeight: '500' },
-  forgotBtn: { alignSelf: 'flex-end', marginBottom: 28 },
-  forgotBtnText: { color: '#4F46E5', fontWeight: '600', fontSize: 14 },
-  
-  primaryButton: {
-    backgroundColor: '#5B9DFF',
-    height: 58,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-    shadowColor: '#4338CA',
-    shadowOpacity: 0.32,
-    shadowOffset: { width: 0, height: 10 },
-    shadowRadius: 14,
-    elevation: 6,
-  },
-  primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
-  
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 30 },
-  footerText: { color: '#64748B', fontSize: 14 },
-  footerLink: { color: '#0F172A', fontWeight: '700', fontSize: 14 },
-
-  // Sileo Modal
-  sileoOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
-  sileoModal: { width: width * 0.85, backgroundColor: '#fff', borderRadius: 28, padding: 30, alignItems: 'center' },
-  sileoIconCircle: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  bgSuccess: { backgroundColor: '#10B981' },
-  bgWarning: { backgroundColor: '#F59E0B' },
-  bgInfo: { backgroundColor: '#6366f1' },
-  sileoTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 10 },
-  sileoMessage: { fontSize: 15, color: '#64748B', textAlign: 'center', lineHeight: 22, marginBottom: 25 },
-  sileoButton: { backgroundColor: '#0F172A', paddingVertical: 14, paddingHorizontal: 32, borderRadius: 14 },
-  sileoButtonText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-
-  // Success Animation
-  successOverlay: { flex: 1, backgroundColor: 'rgba(255,255,255,0.95)', justifyContent: 'center', alignItems: 'center' },
-  successContent: { alignItems: 'center' },
-  successImage: { width: 120, height: 120, marginBottom: 20 },
-  successTitle: { fontSize: 24, fontWeight: '800', color: '#0F172A' },
-  successSub: { fontSize: 16, color: '#64748B', marginTop: 5 },
-
-  // Countdown Modal
-  countdownModal: { 
-    width: width * 0.85, 
-    backgroundColor: '#fff', 
-    borderRadius: 28, 
-    padding: 30, 
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#F59E0B',
-  },
-  countdownIconCircle: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: '#F59E0B',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  countdownTitle: {
-    fontSize: 22,
-    fontWeight: '800',
+  input: {
+    flex: 1,
     color: '#0F172A',
-    marginBottom: 8,
-    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '500',
+    height: '100%',
+    marginLeft: 10,
   },
-  countdownLabel: {
-    fontSize: 14,
+  forgotBtn: {
+    alignSelf: 'flex-end',
+    marginBottom: 24,
+  },
+  forgotBtnText: {
+    fontSize: 13,
+    color: '#6366f1',
     fontWeight: '600',
-    color: '#F59E0B',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 18,
   },
-  timerBox: {
-    backgroundColor: '#FEF3C7',
-    borderRadius: 16,
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    marginBottom: 18,
+  primaryButton: {
+    backgroundColor: '#0F172A',
+    height: 54,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  footerText: {
+    fontSize: 14,
+    color: '#64748B',
+  },
+  footerLink: {
+    fontSize: 14,
+    color: '#6366f1',
+    fontWeight: '600',
+  },
+  sileoOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
+    padding: 24,
+  },
+  sileoModal: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 28,
+    alignItems: 'center',
     width: '100%',
-    borderWidth: 2,
-    borderColor: '#F59E0B',
+    maxWidth: 340,
   },
-  timerText: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#92400E',
-    textAlign: 'center',
-    letterSpacing: 0.5,
+  sileoIconCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  countdownMessage: {
+  bgSuccess: { backgroundColor: '#10B981' },
+  bgWarning: { backgroundColor: '#EF4444' },
+  bgInfo: { backgroundColor: '#3B82F6' },
+  sileoTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 8,
+  },
+  sileoMessage: {
     fontSize: 14,
     color: '#64748B',
     textAlign: 'center',
-    lineHeight: 21,
-    marginBottom: 24,
+    lineHeight: 20,
+    marginBottom: 20,
   },
-  countdownButton: {
-    backgroundColor: '#F59E0B',
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 14,
+  sileoButton: {
+    backgroundColor: '#0F172A',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
     width: '100%',
     alignItems: 'center',
   },
-  countdownButtonText: {
-    color: '#fff',
+  sileoButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  countdownModal: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 28,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 340,
+  },
+  countdownIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  warningIconCircleCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  countdownTitle: {
+    fontSize: 20,
     fontWeight: '700',
-    fontSize: 15,
+    color: '#1E293B',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  countdownLabel: {
+    fontSize: 14,
+    color: '#EF4444',
+    fontWeight: '600',
+    marginBottom: 16,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  warningSubLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 16,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   penaltyBox: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 16,
+    alignItems: 'center',
     marginBottom: 16,
     width: '100%',
-    borderWidth: 2,
-    borderColor: '#F59E0B',
   },
-  penaltyLabel: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#92400E',
+  penaltyBoxText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#991B1B',
     textAlign: 'center',
   },
   strikeText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    color: '#B45309',
+    color: '#DC2626',
+    marginTop: 2,
+  },
+  timerBox: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    width: '100%',
+    alignItems: 'center',
+  },
+  timerText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  countdownMessage: {
+    fontSize: 13,
+    color: '#64748B',
     textAlign: 'center',
+    lineHeight: 18,
+  },
+  countdownButton: {
+    backgroundColor: '#0F172A',
+    paddingVertical: 14,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 18,
+  },
+  countdownButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  successOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  successContent: {
+    backgroundColor: '#FFFFFF',
+    padding: 32,
+    borderRadius: 28,
+    alignItems: 'center',
+    width: '80%',
+    maxWidth: 320,
+  },
+  successImage: {
+    width: 100,
+    height: 100,
+    marginBottom: 16,
+    resizeMode: 'contain',
+  },
+  successTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#0F172A',
+    textAlign: 'center',
+  },
+  successSub: {
+    fontSize: 14,
+    color: '#64748B',
     marginTop: 4,
+    textAlign: 'center',
   },
 });
 

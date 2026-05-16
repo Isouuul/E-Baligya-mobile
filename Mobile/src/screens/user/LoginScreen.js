@@ -18,9 +18,9 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { auth, db } from '../../firebase'; 
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { collection, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import { collection, getDocs, query, updateDoc, where, increment } from 'firebase/firestore';
 
-// Login success image
+// Asset Graphics
 import LoginSuccess from '../../../assets/Login.png';
 import MeImage from '../../../assets/Me.png';
 import EbaligyaLogo from '../../images/ebaligya.png';
@@ -28,22 +28,33 @@ import EbaligyaLogo from '../../images/ebaligya.png';
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [message, setMessage] = useState(null); // message text
-  const [messageType, setMessageType] = useState(null); // 'success' | 'error'
+  const [rememberMe, setRememberMe] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [messageType, setMessageType] = useState(null); 
   const [loading, setLoading] = useState(false); 
-  const [modalVisible, setModalVisible] = useState(false); // modal state
   const [showPassword, setShowPassword] = useState(false);
   const [focusedInput, setFocusedInput] = useState(null);
+  
+  // Modals Engine
+  const [modalVisible, setModalVisible] = useState(false); 
   const [countdownVisible, setCountdownVisible] = useState(false);
+  const [warningVisible, setWarningVisible] = useState(false);
+  
+  // Restriction Metrics Context
   const [countdownTime, setCountdownTime] = useState('');
   const [countdownLabel, setCountdownLabel] = useState('');
   const [penaltyLabel, setPenaltyLabel] = useState('');
   const [strikeCount, setStrikeCount] = useState(0);
+  const [forcedSeconds, setForcedSeconds] = useState(10);
 
   const emailInputRef = useRef(null);
   const passwordInputRef = useRef(null);
   const loginButtonScale = useRef(new Animated.Value(1)).current;
-  const loginTimeoutRef = useRef(null);
+  const checkboxScale = useRef(new Animated.Value(1)).current;
+  
+  // Timing References
+  const forcedTimerRef = useRef(null);
+  const transitionTimeoutRef = useRef(null);
 
   const animateLoginButton = (toValue) => {
     Animated.spring(loginButtonScale, {
@@ -54,9 +65,19 @@ const LoginScreen = ({ navigation }) => {
     }).start();
   };
 
+  const toggleRememberMe = () => {
+    setRememberMe(!rememberMe);
+    Animated.sequence([
+      Animated.timing(checkboxScale, { toValue: 0.85, duration: 60, useNativeDriver: true }),
+      Animated.spring(checkboxScale, { toValue: 1, bounciness: 12, useNativeDriver: true }),
+    ]).start();
+  };
+
   const formatCountdownTime = (restrictedUntilDate) => {
     const now = new Date();
     const diffMs = restrictedUntilDate - now;
+    if (diffMs <= 0) return { time: '0 minutes', label: 'Restriction Expired' };
+
     const diffMins = Math.floor(diffMs / (1000 * 60));
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -75,112 +96,133 @@ const LoginScreen = ({ navigation }) => {
     if (Platform.OS === 'android') StatusBar.setBackgroundColor('transparent');
 
     return () => {
-      if (loginTimeoutRef.current) clearTimeout(loginTimeoutRef.current);
+      if (forcedTimerRef.current) clearInterval(forcedTimerRef.current);
+      if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
     };
   }, []);
 
-  const handleLogin = async () => {
-  if (!email || !password) {
-    setMessageType('error');
-    setMessage('⚠️ Please enter both email and password.');
-    return;
-  }
+  const processAccountRestrictions = async (userDoc, onSuccessCallback) => {
+    let userData = userDoc.data();
+    let currentStatus = userData.accountStatus || userData.status || 'active';
+    const verifiedCount = Number(userData.verifiedReports || 0);
+    const loginWarningCount = Number(userData.loginWarningCount || 0);
+    const now = new Date();
 
-  setLoading(true);
+    if (currentStatus === 'banned') {
+      setMessageType('error');
+      setMessage('🚫 Your account has been permanently banned.');
+      await auth.signOut();
+      setLoading(false);
+      return true;
+    }
 
-  try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    const uid = userCredential.user.uid;
-
-    const userQuery = query(collection(db, 'Users'), where('uid', '==', uid));
-    const userSnapshot = await getDocs(userQuery);
-
-    if (!userSnapshot.empty) {
-      const userDoc = userSnapshot.docs[0];
-      const userData = userDoc.data();
-
-      // ⭐ CHECK ACCOUNT STATUS
-      const now = new Date();
-      if (userData.status === 'banned') {
-        setMessageType('error');
-        setMessage('🚫 Your account has been permanently banned.');
+    if (currentStatus === 'restricted') {
+      if (userData.restrictedUntil && userData.restrictedUntil.toDate() > now) {
+        // Time has NOT passed -> Block access and present the countdown modal
+        const { time, label } = formatCountdownTime(userData.restrictedUntil.toDate());
+        setCountdownTime(time);
+        setCountdownLabel(label);
+        setPenaltyLabel(userData.lastPenaltyLabel || '⚡ Account Restricted');
+        setStrikeCount(userData.reportStrikeCount || 0);
+        setCountdownVisible(true);
         await auth.signOut();
         setLoading(false);
-        return;
+        return true;
+      } else {
+        // 💡 TIME HAS SERVED -> Silently restore active state fields
+        await updateDoc(userDoc.ref, { 
+          accountStatus: 'active', 
+          restrictedUntil: null 
+        });
+        // Mutate memory object references locally so the lower warning evaluations check current standings
+        currentStatus = 'active';
       }
-
-      if (userData.status === 'restricted') {
-        if (userData.restrictedUntil && userData.restrictedUntil.toDate() > now) {
-          const { time, label } = formatCountdownTime(userData.restrictedUntil.toDate());
-          setCountdownTime(time);
-          setCountdownLabel(label);
-          setPenaltyLabel(userData.lastPenaltyLabel || '⚡ Account Restricted');
-          setStrikeCount(userData.reportStrikeCount || 0);
-          setCountdownVisible(true);
-          await auth.signOut();
-          setLoading(false);
-          return;
-        } else {
-          // restriction expired, allow login and reset status
-          await updateDoc(userDoc.ref, { status: 'active', restrictedUntil: null });
-        }
-      }
-
-      // ✅ Login successful
-      setModalVisible(true);
-      loginTimeoutRef.current = setTimeout(() => {
-        setModalVisible(false);
-        navigation.replace('ConsumerTabs');
-      }, 1500);
-    } else {
-      await auth.signOut();
-      setMessageType('error');
-      setMessage('🚫 Access Denied: This account is not registered as a user.');
     }
-} catch (error) {
-  console.error(error);
 
-  let customMessage = '❌ Something went wrong. Please try again.';
+    // Handle warning citations logic gracefully for warning layers
+    if ((verifiedCount === 1 || verifiedCount === 2) && loginWarningCount < 5) {
+      await updateDoc(userDoc.ref, {
+        loginWarningCount: increment(1)
+      });
 
-  switch (error.code) {
-    case 'auth/invalid-email':
-      customMessage = '⚠️ Please enter a valid email address.';
-      break;
+      setPenaltyLabel(userData.lastPenaltyLabel || '⚠️ Account Warning');
+      setStrikeCount(userData.reportStrikeCount || 0);
+      setForcedSeconds(10);
+      setWarningVisible(true);
+      setLoading(false);
 
-    case 'auth/user-not-found':
-      customMessage = '🚫 No account found with this email.';
-      break;
+      if (forcedTimerRef.current) clearInterval(forcedTimerRef.current);
 
-    case 'auth/wrong-password':
-      customMessage = '🔑 Incorrect password. Please try again.';
-      break;
+      forcedTimerRef.current = setInterval(() => {
+        setForcedSeconds((prev) => {
+          if (prev <= 1) {
+            clearInterval(forcedTimerRef.current);
+            setWarningVisible(false);
+            onSuccessCallback();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
 
-    case 'auth/invalid-credential':
-      customMessage = 'Incorrect email or password.';
-      break;
+      return true;
+    }
 
-    case 'auth/too-many-requests':
-      customMessage =
-        '⏳ Too many failed login attempts. Please try again later.';
-      break;
+    return false;
+  };
 
-    case 'auth/network-request-failed':
-      customMessage =
-        '📶 Network error. Please check your internet connection.';
-      break;
+  const handleLogin = async () => {
+    if (!email || !password) {
+      setMessageType('error');
+      setMessage('⚠️ Please enter both email and password.');
+      return;
+    }
 
-    default:
-      customMessage = '❌ Login failed. Please try again.';
-      break;
-  }
+    setLoading(true);
 
-  setMessageType('error');
-  setMessage(customMessage);
-} finally {
-    setLoading(false);
-  }
-};
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const uid = userCredential.user.uid;
 
+      const userQuery = query(collection(db, 'Users'), where('uid', '==', uid));
+      const userSnapshot = await getDocs(userQuery);
+
+      if (!userSnapshot.empty) {
+        const userDoc = userSnapshot.docs[0];
+        const isIntercepted = await processAccountRestrictions(userDoc, executeSuccessTransition);
+        
+        if (!isIntercepted) {
+          executeSuccessTransition();
+        }
+      } else {
+        await auth.signOut();
+        setMessageType('error');
+        setMessage('🚫 Access Denied: This account is not registered as a user.');
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error(error);
+      let customMessage = '❌ Something went wrong. Please try again.';
+      if (error.code === 'auth/invalid-credential') customMessage = 'Incorrect email or password.';
+      else if (error.code === 'auth/too-many-requests') customMessage = '⏳ Too many failed login attempts.';
+      
+      setMessageType('error');
+      setMessage(customMessage);
+      Loading(false);
+    }
+  };
+
+  const handleVendorSwitch = () => {
+    navigation.navigate('VendorLoginScreen');
+  };
+
+  const executeSuccessTransition = () => {
+    setModalVisible(true);
+    transitionTimeoutRef.current = setTimeout(() => {
+      setModalVisible(false);
+      navigation.replace('ConsumerTabs');
+    }, 1500);
+  };
 
   return (
     <KeyboardAvoidingView
@@ -193,16 +235,14 @@ const LoginScreen = ({ navigation }) => {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        {/* Vendor Switch Button */}
         <TouchableOpacity
           style={styles.vendorIconContainer}
-          onPress={() => navigation.navigate('VendorLoginScreen')}
+          onPress={handleVendorSwitch}
         >
           <Feather name="repeat" size={16} color="#0F172A" />
           <Text style={styles.vendorText}>Switch to Vendor</Text>
         </TouchableOpacity>
 
-        {/* Header */}
         <View style={styles.headerContainer}>
           <View style={styles.brandCircle}>
             <Image source={MeImage} style={styles.brandImage} resizeMode="contain" />
@@ -211,39 +251,23 @@ const LoginScreen = ({ navigation }) => {
           <Text style={styles.subtitle}>Sign in to continue your shopping journey</Text>
         </View>
 
-        {/* Error / Success Alert */}
         {message && (
-          <View
-            style={[
-              styles.alertBox,
-              messageType === 'success' ? styles.successBox : styles.errorBox,
-            ]}
-          >
+          <View style={[styles.alertBox, messageType === 'success' ? styles.successBox : styles.errorBox]}>
             <Feather
               name={messageType === 'success' ? 'check-circle' : 'alert-triangle'}
               size={18}
               color={messageType === 'success' ? '#166534' : '#b91c1c'}
               style={{ marginRight: 8 }}
             />
-            <Text
-              style={[
-                styles.alertText,
-                { color: messageType === 'success' ? '#166534' : '#b91c1c' },
-              ]}
-            >
+            <Text style={[styles.alertText, { color: messageType === 'success' ? '#166534' : '#b91c1c' }]}>
               {message}
             </Text>
           </View>
         )}
 
-        {/* Card */}
         <View style={styles.card}>
           <View style={styles.cardWatermarkWrap} pointerEvents="none">
-            <Image
-              source={EbaligyaLogo}
-              style={styles.cardWatermark}
-              resizeMode="contain"
-            />
+            <Image source={EbaligyaLogo} style={styles.cardWatermark} resizeMode="contain" />
           </View>
 
           <Text style={styles.label}>Email Address</Text>
@@ -251,12 +275,7 @@ const LoginScreen = ({ navigation }) => {
             style={[styles.inputGroup, focusedInput === 'email' && styles.inputFocused]}
             onPress={() => emailInputRef.current?.focus()}
           >
-            <Feather
-              name="mail"
-              size={18}
-              color={focusedInput === 'email' ? '#6366f1' : '#94A3B8'}
-              style={styles.icon}
-            />
+            <Feather name="mail" size={18} color={focusedInput === 'email' ? '#6366f1' : '#94A3B8'} style={styles.icon} />
             <TextInput
               ref={emailInputRef}
               style={styles.input}
@@ -267,13 +286,10 @@ const LoginScreen = ({ navigation }) => {
               placeholderTextColor="#888"
               autoCapitalize="none"
               autoCorrect={false}
-              autoComplete="email"
-              textContentType="emailAddress"
               editable={!loading}
               onFocus={() => setFocusedInput('email')}
               onBlur={() => setFocusedInput(null)}
               returnKeyType="next"
-              blurOnSubmit={false}
               onSubmitEditing={() => passwordInputRef.current?.focus()}
             />
           </Pressable>
@@ -283,12 +299,7 @@ const LoginScreen = ({ navigation }) => {
             style={[styles.inputGroup, focusedInput === 'password' && styles.inputFocused]}
             onPress={() => passwordInputRef.current?.focus()}
           >
-            <Feather
-              name="lock"
-              size={18}
-              color={focusedInput === 'password' ? '#6366f1' : '#94A3B8'}
-              style={styles.icon}
-            />
+            <Feather name="lock" size={18} color={focusedInput === 'password' ? '#6366f1' : '#94A3B8'} style={styles.icon} />
             <TextInput
               ref={passwordInputRef}
               style={styles.input}
@@ -299,8 +310,6 @@ const LoginScreen = ({ navigation }) => {
               placeholderTextColor="#888"
               autoCapitalize="none"
               autoCorrect={false}
-              autoComplete="password"
-              textContentType="password"
               editable={!loading}
               onFocus={() => setFocusedInput('password')}
               onBlur={() => setFocusedInput(null)}
@@ -312,9 +321,28 @@ const LoginScreen = ({ navigation }) => {
             </TouchableOpacity>
           </Pressable>
 
-          <TouchableOpacity style={styles.forgotLink}>
-            <Text style={styles.forgotText}>Forgot Password?</Text>
-          </TouchableOpacity>
+          <View style={styles.optionsRow}>
+            <TouchableOpacity 
+              style={styles.rememberMeContainer} 
+              onPress={toggleRememberMe}
+              activeOpacity={0.8}
+            >
+              <Animated.View 
+                style={[
+                  styles.checkbox, 
+                  rememberMe && styles.checkboxChecked,
+                  { transform: [{ scale: checkboxScale }] }
+                ]}
+              >
+                {rememberMe && <Feather name="check" size={12} color="#FFFFFF" />}
+              </Animated.View>
+              <Text style={styles.rememberMeText}>Remember Me</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.forgotLink}>
+              <Text style={styles.forgotText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          </View>
 
           <Animated.View style={{ transform: [{ scale: loginButtonScale }] }}>
             <TouchableOpacity
@@ -324,11 +352,7 @@ const LoginScreen = ({ navigation }) => {
               onPressOut={() => animateLoginButton(1)}
               disabled={loading}
             >
-              {loading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.loginText}>Login</Text>
-              )}
+              {loading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.loginText}>Login</Text>}
             </TouchableOpacity>
           </Animated.View>
 
@@ -340,339 +364,391 @@ const LoginScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Success Modal */}
-        <Modal
-          transparent
-          animationType="fade"
-          visible={modalVisible}
-          onRequestClose={() => setModalVisible(false)}
-        >
+        {/* Modal warning layers */}
+        <Modal transparent animationType="fade" visible={warningVisible} onRequestClose={() => {}}>
+          <View style={styles.countdownOverlay}>
+            <View style={styles.countdownModal}>
+              <View style={[styles.countdownIconCircle, { backgroundColor: '#F59E0B' }]}>
+                <Feather name="alert-circle" size={32} color="#fff" />
+              </View>
+              <Text style={styles.countdownTitle}>Account Citation Logged</Text>
+              <Text style={[styles.modalCountdownLabel, { color: '#D97706' }]}>Compliance Review</Text>
+              <View style={[styles.penaltyBox, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }]}>
+                <Text style={[styles.penaltyTextDisplay, { color: '#92400E' }]}>{penaltyLabel}</Text>
+              </View>
+              <View style={styles.timerBox}>
+                <Text style={[styles.timerText, { color: '#B45309' }]}>Proceeding in {forcedSeconds}s...</Text>
+              </View>
+              <Text style={styles.countdownMessage}>
+                An administrator has verified a violation report filed against your profile activities. Continued marketplace infractions will lead to structural hourly/daily suspensions or permanent termination.
+              </Text>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal transparent animationType="fade" visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
           <View style={styles.modalBackground}>
             <View style={styles.modalContent}>
-              <Image
-                source={LoginSuccess}
-                style={styles.modalImage}
-                resizeMode="contain"
-              />
+              <Image source={LoginSuccess} style={styles.modalImage} resizeMode="contain" />
               <Text style={styles.modalText}>Logged in successfully!</Text>
             </View>
           </View>
         </Modal>
 
-        {/* Countdown Restriction Modal */}
-        <Modal
-          transparent
-          animationType="fade"
-          visible={countdownVisible}
-          onRequestClose={() => setCountdownVisible(false)}
-        >
+        <Modal transparent animationType="fade" visible={countdownVisible} onRequestClose={() => setCountdownVisible(false)}>
           <View style={styles.countdownOverlay}>
             <View style={styles.countdownModal}>
               <View style={styles.countdownIconCircle}>
                 <Feather name="lock" size={32} color="#fff" />
               </View>
               <Text style={styles.countdownTitle}>Access Temporarily Blocked</Text>
-              <Text style={styles.countdownLabel}>{countdownLabel}</Text>
-              
+              <Text style={styles.modalCountdownLabel}>{countdownLabel}</Text>
               {penaltyLabel && (
                 <View style={styles.penaltyBox}>
-                  <Text style={styles.penaltyLabel}>{penaltyLabel}</Text>
-                  {strikeCount > 0 && (
-                    <Text style={styles.strikeText}>Strike {strikeCount}</Text>
-                  )}
+                  <Text style={styles.penaltyTextDisplay}>{penaltyLabel}</Text>
+                  {strikeCount > 0 && <Text style={styles.strikeText}>Strike {strikeCount}</Text>}
                 </View>
               )}
-              
               <View style={styles.timerBox}>
                 <Text style={styles.timerText}>{countdownTime}</Text>
               </View>
-              
               <Text style={styles.countdownMessage}>
-                Your account is under temporary restriction due to policy violations. Please try logging in again after the countdown expires.
+                Your account is under structural suspension due to system integrity rules. Standard operations will unlock automatically upon expiry.
               </Text>
-              
-              <TouchableOpacity 
-                style={styles.countdownButton}
-                onPress={() => setCountdownVisible(false)}
-              >
+              <TouchableOpacity style={styles.countdownButton} onPress={() => setCountdownVisible(false)}>
                 <Text style={styles.countdownButtonText}>Understood</Text>
               </TouchableOpacity>
             </View>
           </View>
         </Modal>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
 };
 
-export default LoginScreen;
-
 const styles = StyleSheet.create({
   container: {
+    flexGrow: 1,
     paddingHorizontal: 24,
     paddingBottom: 40,
-    paddingTop: 60,
-    flexGrow: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#FFFFFF',
+  },
+  vendorIconContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    backgroundColor: '#F1F5F9',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    marginTop: 70,
+    marginBottom: 70, 
+  },
+  vendorText: {
+    marginLeft: 6,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
   },
   headerContainer: {
     alignItems: 'center',
-    marginTop: 56,
-    marginBottom: 30,
+    marginTop: 24,
+    marginBottom: 24,
   },
   brandCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: '#EEF2FF',
-    borderWidth: 1,
-    borderColor: '#5B9DFF',
-    alignItems: 'center',
+    width: 70,
+    height: 70,
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
+    borderWidth: 1.5,
     justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 16,
-    shadowColor: '#6366f1',
-    shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 18,
-    elevation: 5,
+    padding: 10,
+    borderRadius: 10,
   },
   brandImage: {
-    width: 30,
-    height: 30,
+    width: '100%',
+    height: '100%',
   },
   title: {
     fontSize: 28,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#0F172A',
-    textAlign: 'center',
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 14,
     color: '#64748B',
     marginTop: 4,
-    fontWeight: '400',
-    lineHeight: 21,
     textAlign: 'center',
   },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    width: '100%',
-    padding: 22,
-    overflow: 'hidden',
+  alertBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  errorBox: {
+    backgroundColor: '#FEF2F2',
     borderWidth: 1,
-    borderColor: '#E5EAF2',
+    borderColor: '#FCA5A5',
+  },
+  successBox: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+  },
+  alertText: {
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
     shadowColor: '#0F172A',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 16 },
-    shadowRadius: 28,
-    elevation: 12,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    position: 'relative',
+    overflow: 'hidden',
   },
   cardWatermarkWrap: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: 'absolute',
+    right: -20,
+    bottom: -20,
+    opacity: 0.03,
   },
   cardWatermark: {
-    width: 220,
-    height: 220,
-    opacity: 0.06,
-    transform: [{ rotate: '-6deg' }],
+    width: 150,
+    height: 150,
   },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#475569',
-    marginBottom: 8,
-    marginLeft: 4,
+    color: '#334155',
+    marginBottom: 6,
+    marginLeft: 2,
   },
   inputGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
     borderWidth: 1.5,
-    borderRadius: 16,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
     paddingHorizontal: 16,
-    marginBottom: 20,
-    backgroundColor: '#FFFFFF',
-    height: 56,
+    height: 54,
+    marginBottom: 18,
   },
   inputFocused: {
     borderColor: '#6366f1',
     backgroundColor: '#FFFFFF',
-    shadowColor: '#6366f1',
-    shadowOpacity: 0.14,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 14,
-    elevation: 4,
   },
-  icon: { marginRight: 10 },
-  input: { flex: 1, fontSize: 16, color: '#1E293B', fontWeight: '500' },
-  forgotLink: { alignSelf: 'flex-end', marginBottom: 28 },
-  forgotText: { color: '#4F46E5', fontWeight: '600', fontSize: 14 },
-  loginButton: {
-    backgroundColor: '#5B9DFF',
-    height: 58,
-    borderRadius: 18,
+  icon: {
+    marginRight: 12,
+  },
+  input: {
+    flex: 1,
+    color: '#0F172A',
+    fontSize: 15,
+    fontWeight: '500',
+    height: '100%',
+  },
+  optionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-    marginTop: 4,
-    shadowColor: '#4338CA',
-    shadowOpacity: 0.32,
-    shadowOffset: { width: 0, height: 10 },
-    shadowRadius: 14,
-    elevation: 6,
+    marginBottom: 24,
+    paddingHorizontal: 2,
   },
-  loginText: { color: '#fff', fontSize: 16, fontWeight: '700', letterSpacing: 0.2 },
-  vendorIconContainer: {
-    position: 'absolute',
-    top: 40,
-    right: 0,
-    zIndex: 20,
+  rememberMeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderTopLeftRadius: 30,
-    borderBottomLeftRadius: 30,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
   },
-  vendorText: { fontSize: 14, fontWeight: '700', color: '#0F172A', marginLeft: 8 },
-  signupPrompt: { flexDirection: 'row', justifyContent: 'center', marginTop: 18 },
-  promptText: { fontSize: 14, color: '#64748B' },
-  signupText: { fontSize: 14, color: '#0F172A', fontWeight: '700' },
-  alertBox: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 12, marginBottom: 16, borderWidth: 1 },
-  successBox: { backgroundColor: '#dcfce7', borderColor: '#86efac' },
-  errorBox: { backgroundColor: '#fee2e2', borderColor: '#fca5a5' },
-  alertText: { flex: 1, fontSize: 14, fontWeight: '500' },
-
-  // Modal styles
-  modalBackground: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: {
-    width: 210,
-    height: 210,
-    backgroundColor: '#fff',
-    borderRadius: 22,
+  checkbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FAFC',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5EAF2',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.12,
-    shadowOffset: { width: 0, height: 12 },
-    shadowRadius: 20,
-    elevation: 8,
+    marginRight: 8,
   },
-  modalImage: { width: 80, height: 80, marginBottom: 15 },
-  modalText: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
-
-  // Countdown Modal
-  countdownOverlay: {
+  checkboxChecked: {
+    backgroundColor: '#6366f1',
+    borderColor: '#6366f1',
+  },
+  rememberMeText: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  forgotLink: {
+    alignSelf: 'center',
+  },
+  forgotText: {
+    fontSize: 13,
+    color: '#6366f1',
+    fontWeight: '600',
+  },
+  loginButton: {
+    backgroundColor: '#0F172A',
+    height: 54,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loginText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  signupPrompt: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  promptText: {
+    fontSize: 14,
+    color: '#64748B',
+  },
+  signupText: {
+    fontSize: 14,
+    color: '#6366f1',
+    fontWeight: '600',
+  },
+  modalBackground: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  countdownModal: {
-    width: '85%',
-    backgroundColor: '#fff',
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    padding: 32,
     borderRadius: 28,
-    padding: 30,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#F59E0B',
+    width: '80%',
   },
-  countdownIconCircle: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: '#F59E0B',
+  modalImage: {
+    width: 100,
+    height: 100,
+    marginBottom: 16,
+  },
+  modalText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0F172A',
+    textAlign: 'center',
+  },
+  countdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    padding: 24,
+  },
+  countdownModal: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 28,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 340,
+  },
+  countdownIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   countdownTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 8,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1E293B',
     textAlign: 'center',
+    marginBottom: 4,
   },
-  countdownLabel: {
+  modalCountdownLabel: {
     fontSize: 14,
+    color: '#EF4444',
     fontWeight: '600',
-    color: '#F59E0B',
+    marginBottom: 16,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 18,
-  },
-  timerBox: {
-    backgroundColor: '#FEF3C7',
-    borderRadius: 16,
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    marginBottom: 18,
-    width: '100%',
-    borderWidth: 2,
-    borderColor: '#F59E0B',
-  },
-  timerText: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#92400E',
-    textAlign: 'center',
-    letterSpacing: 0.5,
-  },
-  countdownMessage: {
-    fontSize: 14,
-    color: '#64748B',
-    textAlign: 'center',
-    lineHeight: 21,
-    marginBottom: 24,
-  },
-  countdownButton: {
-    backgroundColor: '#F59E0B',
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 14,
-    width: '100%',
-    alignItems: 'center',
-  },
-  countdownButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 15,
   },
   penaltyBox: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#FFF5F5',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
     borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 16,
+    alignItems: 'center',
     marginBottom: 16,
     width: '100%',
-    borderWidth: 2,
-    borderColor: '#F59E0B',
   },
-  penaltyLabel: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#92400E',
+  penaltyTextDisplay: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#991B1B',
     textAlign: 'center',
   },
   strikeText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    color: '#B45309',
+    color: '#DC2626',
+    marginTop: 2,
+  },
+  timerBox: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    width: '100%',
+    alignItems: 'center',
+  },
+  timerText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  countdownMessage: {
+    fontSize: 13,
+    color: '#64748B',
     textAlign: 'center',
-    marginTop: 4,
+    lineHeight: 18,
+  },
+  countdownButton: {
+    backgroundColor: '#0F172A',
+    paddingVertical: 14,
+    borderRadius: 12,
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 18,
+  },
+  countdownButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
+
+export default LoginScreen;

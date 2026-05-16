@@ -9,6 +9,7 @@ import {
   updateDoc,
   serverTimestamp,
   Timestamp,
+  writeBatch, // Integrated for handling bulk product updates safely
 } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -72,7 +73,7 @@ export default function ReviewReports({ onLogout }) {
 
   const getStatusClass = (status) => {
     const normalized = (status || "").toLowerCase();
-    if (normalized === "pending") return "premium-status-pending";
+    if (normalized === "pending" || normalized === "pendingreview") return "premium-status-pending";
     if (normalized === "resolved") return "premium-status-resolved";
     if (normalized === "rejected") return "premium-status-rejected";
     return "premium-status-default";
@@ -113,36 +114,30 @@ export default function ReviewReports({ onLogout }) {
       case "Reports_Bidding_Products": return "Bidding Product";
       case "Reports_Vendor": return "Vendor";
       case "Report_User": return "User";
+      case "VendorToUserReports": return "Bogus Buyer";
       default: return "Unknown";
     }
   };
 
   const getPenaltyByVerifiedCount = (verifiedCount) => {
-    // Warning system: 1st report = Warning, 2nd = Last Warning, 3rd+ = Strikes with penalties
     if (verifiedCount === 1) {
       return { accountStatus: "active", durationMs: null, label: "⚠️ Warning", strikeCount: 0, isWarning: true };
     }
     if (verifiedCount === 2) {
       return { accountStatus: "active", durationMs: null, label: "🔴 Last Warning", strikeCount: 0, isWarning: true };
     }
-    
-    // Strike penalties (starting from 3rd report)
-    const strikes = verifiedCount - 2;
-    
-    if (strikes === 1) {
+    if (verifiedCount === 3) {
       return { accountStatus: "restricted", durationMs: 12 * 60 * 60 * 1000, label: "⚡ Strike 1 - 12-hour restriction", strikeCount: 1 };
     }
-    if (strikes === 2) {
+    if (verifiedCount === 4) {
       return { accountStatus: "restricted", durationMs: 2 * 24 * 60 * 60 * 1000, label: "⚡ Strike 2 - 2-day suspension", strikeCount: 2 };
     }
-    if (strikes === 3) {
+    if (verifiedCount === 5) {
       return { accountStatus: "restricted", durationMs: 5 * 24 * 60 * 60 * 1000, label: "⚡ Strike 3 - 5-day suspension", strikeCount: 3 };
     }
-    if (strikes === 4) {
+    if (verifiedCount === 6) {
       return { accountStatus: "restricted", durationMs: 7 * 24 * 60 * 60 * 1000, label: "⚡ Strike 4 - 7-day suspension", strikeCount: 4 };
     }
-    
-    // Permanent ban after 5+ strikes (7+ total reports)
     return { accountStatus: "banned", durationMs: null, label: "🚫 Permanent Ban", strikeCount: 5 };
   };
 
@@ -153,31 +148,91 @@ export default function ReviewReports({ onLogout }) {
     }
   };
 
-  const resolveTargetVendor = async (report) => {
-    const vendorUid = report?.vendorId || null;
-    if (!vendorUid) return null;
-    const approvedQuery = query(collection(db, "ApprovedVendors"), where("userId", "==", vendorUid));
-    const approvedSnapshot = await getDocs(approvedQuery);
-    if (approvedSnapshot.empty) return null;
-    const vendorDoc = approvedSnapshot.docs[0];
-    return { ref: vendorDoc.ref, data: vendorDoc.data(), vendorUid };
+  const resolveTargetEntity = async (report) => {
+    if (report.collection === "VendorToUserReports") {
+      const customerUid = report?.customerUid || null;
+      if (!customerUid) return null;
+      const userDocRef = doc(db, "Users", customerUid);
+      const userSnap = await getDoc(userDocRef);
+      if (!userSnap.exists()) return null;
+      return { ref: userDocRef, data: userSnap.data(), targetUid: customerUid, isVendor: false };
+    } else {
+      const vendorUid = report?.vendorId || null;
+      if (!vendorUid) return null;
+      const approvedQuery = query(collection(db, "ApprovedVendors"), where("userId", "==", vendorUid));
+      const approvedSnapshot = await getDocs(approvedQuery);
+      if (approvedSnapshot.empty) return null;
+      const vendorDoc = approvedSnapshot.docs[0];
+      return { ref: vendorDoc.ref, data: vendorDoc.data(), targetUid: vendorUid, isVendor: true };
+    }
+  };
+
+  // Automated Batch Mutation Script cascading restrictions across active listings
+  const restrictAllTargetProducts = async (targetUid) => {
+    try {
+      const batch = writeBatch(db);
+      let totalUpdated = 0;
+
+      // 1. Evaluate "Products" schema structure matching your listing script
+      const standardProductsRef = collection(db, "Products");
+      const standardQuery = query(
+        standardProductsRef,
+        where("uploadedBy.uid", "==", targetUid)
+      );
+      const standardSnapshot = await getDocs(standardQuery);
+      standardSnapshot.forEach((productDoc) => {
+        batch.update(productDoc.ref, {
+          status: "restricted",
+          restrictedAt: serverTimestamp(),
+          restrictionReason: "Compliance enforcement applied to profile account"
+        });
+        totalUpdated++;
+      });
+
+      // 2. Evaluate "Bidding_Products" schema filtering out explicit 'active' structures
+      const biddingProductsRef = collection(db, "Bidding_Products");
+      const biddingQuery = query(
+        biddingProductsRef,
+        where("uploadedBy.uid", "==", targetUid),
+        where("status", "==", "active")
+      );
+      const biddingSnapshot = await getDocs(biddingQuery);
+      biddingSnapshot.forEach((bidDoc) => {
+        batch.update(bidDoc.ref, {
+          status: "restricted",
+          restrictedAt: serverTimestamp(),
+          restrictionReason: "Compliance enforcement applied to profile account"
+        });
+        totalUpdated++;
+      });
+
+      // 3. Complete database write updates
+      if (totalUpdated > 0) {
+        await batch.commit();
+        console.log(`Cascade action finished. Restricted ${totalUpdated} assets linked to user.`);
+      }
+    } catch (error) {
+      console.error("Critical error executing dynamic cascade mutation script:", error);
+    }
   };
 
   const verifyReportAndApplyPenalty = async (report) => {
     if (!report?.id || !report?.collection) return;
     try {
-      const vendorTarget = await resolveTargetVendor(report);
-      if (!vendorTarget) {
+      const targetEntity = await resolveTargetEntity(report);
+      if (!targetEntity) {
         showSileo({ type: "warning", title: "Target Not Found", message: "Cannot verify: Target account missing." });
         return;
       }
-      const previousVerifiedReports = Number(vendorTarget.data?.verifiedReports ?? vendorTarget.data?.reportStrikeCount ?? 0);
+      
+      const previousVerifiedReports = Number(targetEntity.data?.verifiedReports ?? targetEntity.data?.reportStrikeCount ?? 0);
       const updatedVerifiedReports = previousVerifiedReports + 1;
       const penalty = getPenaltyByVerifiedCount(updatedVerifiedReports);
       const now = new Date();
       const restrictedUntilDate = penalty.durationMs != null ? new Date(now.getTime() + penalty.durationMs) : null;
 
-      await updateDoc(vendorTarget.ref, {
+      // Execute main profile modifications
+      await updateDoc(targetEntity.ref, {
         verifiedReports: updatedVerifiedReports,
         reportStrikeCount: penalty.strikeCount || 0,
         accountStatus: penalty.accountStatus,
@@ -187,22 +242,32 @@ export default function ReviewReports({ onLogout }) {
         penaltyStatus: penalty.isWarning ? "warning" : "strike",
       });
 
+      // Execute modification to current reporting index log
       await updateDoc(doc(db, report.collection, report.id), {
         status: "resolved",
         reviewAction: "verified",
         reviewedAt: serverTimestamp(),
         penaltyApplied: penalty.label,
-        penaltyTargetUserId: vendorTarget.vendorUid,
+        penaltyTargetUserId: targetEntity.targetUid,
         verifiedReportCount: updatedVerifiedReports,
         strikeCount: penalty.strikeCount || 0,
         penaltyStatus: penalty.isWarning ? "warning" : "strike",
       });
 
+      // Execute marketplace product sweeps if account status changes to restricted/banned
+      if (penalty.accountStatus === "restricted" || penalty.accountStatus === "banned") {
+        await restrictAllTargetProducts(targetEntity.targetUid);
+      }
+
       removeReportFromList(report);
-      showSileo({ type: "success", title: "Action Verified", message: `Penalty Applied: ${penalty.label}` });
+      showSileo({ 
+        type: "success", 
+        title: "Action Verified", 
+        message: `Penalty Applied: ${penalty.label}. Linked marketplace listings have been restricted successfully.` 
+      });
     } catch (error) {
       console.error(error);
-      showSileo({ type: "warning", title: "Process Error", message: "Failed to apply penalty." });
+      showSileo({ type: "warning", title: "Process Error", message: "Failed to apply penalty successfully." });
     }
   };
 
@@ -225,14 +290,33 @@ export default function ReviewReports({ onLogout }) {
     if (!userLoaded) return;
     const fetchAllReports = async () => {
       try {
-        const collections = ["Reports_Products", "Reports_Bidding_Products", "Reports_Vendor", "Report_User"];
+        const collections = ["Reports_Products", "Reports_Bidding_Products", "Reports_Vendor", "Report_User", "VendorToUserReports"];
         let allReports = [];
+        
         for (const colName of collections) {
           const colRef = collection(db, colName);
-          const q = query(colRef, where("status", "==", "pending"));
+          const statusValue = colName === "VendorToUserReports" ? "PendingReview" : "pending";
+          const q = query(colRef, where("status", "==", statusValue));
           const snapshot = await getDocs(q);
+          
           const reportsWithUser = await Promise.all(snapshot.docs.map(async (docSnap) => {
             const data = docSnap.data();
+            
+            if (colName === "VendorToUserReports") {
+              return {
+                id: docSnap.id,
+                collection: colName,
+                category: getCategoryName(colName),
+                userName: data.reportedCustomerName || "Unknown Customer", 
+                reason: data.reasonCategory || "Bogus Buyer",
+                details: data.reasonDetails || "No data",
+                vendorName: `User UID: ${data.customerUid?.slice(0, 8) || "N/A"}`,
+                vendorEmail: data.reportedCustomerPhone || "-",
+                createdAt: data.reportedAt || null, 
+                ...data
+              };
+            }
+
             let reporterName = await getUserName(data.userId);
             if (colName === "Reports_Bidding_Products") {
               reporterName = data.reportedBy?.name || reporterName;
@@ -243,7 +327,13 @@ export default function ReviewReports({ onLogout }) {
           }));
           allReports = [...allReports, ...reportsWithUser];
         }
-        allReports.sort((a, b) => (b.createdAt?.toDate?.() || 0) - (a.createdAt?.toDate?.() || 0));
+        
+        allReports.sort((a, b) => {
+          const timeA = a.createdAt?.toDate?.() || a.reportedAt?.toDate?.() || 0;
+          const timeB = b.createdAt?.toDate?.() || b.reportedAt?.toDate?.() || 0;
+          return timeB - timeA;
+        });
+        
         setReports(allReports);
       } catch (err) { console.error(err); } finally { setLoading(false); }
     };
@@ -277,7 +367,6 @@ export default function ReviewReports({ onLogout }) {
           <p className="premium-subtitle">Manage reported activities and maintain marketplace integrity.</p>
         </div>
         
-        
         <div className="premium-stats-pill">
           <div className="pill-pulse"></div>
           <span className="pill-label">Reports:</span>
@@ -285,39 +374,39 @@ export default function ReviewReports({ onLogout }) {
         </div>
       </header>
       
-   <div class="penalty-guide">
-  <h5>Penalty Progression</h5>
-  <div class="penalty-steps">
-    <div class="step">
-      <span class="badge warning">1st</span>
-      <span class="step-label">Initial Warning</span>
-    </div>
-    <div class="step">
-      <span class="badge warning">2nd</span>
-      <span class="step-label">Last Warning</span>
-    </div>
-    <div class="step">
-      <span class="badge strike">3rd</span>
-      <span class="step-label">Strike 1 (12h)</span>
-    </div>
-    <div class="step">
-      <span class="badge strike">4th</span>
-      <span class="step-label">Strike 2 (2d)</span>
-    </div>
-    <div class="step">
-      <span class="badge strike">5th</span>
-      <span class="step-label">Strike 3 (5d)</span>
-    </div>
-    <div class="step">
-      <span class="badge strike">6th</span>
-      <span class="step-label">Strike 4 (7d)</span>
-    </div>
-    <div class="step">
-      <span class="badge banned">7th</span>
-      <span class="step-label">Permanent Ban</span>
-    </div>
-  </div>
-</div>
+      <div className="penalty-guide">
+        <h5>Penalty Progression</h5>
+        <div className="penalty-steps">
+          <div className="step">
+            <span className="badge warning">1st</span>
+            <span className="step-label">Initial Warning</span>
+          </div>
+          <div className="step">
+            <span className="badge warning">2nd</span>
+            <span className="step-label">Last Warning</span>
+          </div>
+          <div className="step">
+            <span className="badge strike">3rd</span>
+            <span className="step-label">Strike 1 (12h)</span>
+          </div>
+          <div className="step">
+            <span className="badge strike">4th</span>
+            <span className="step-label">Strike 2 (2d)</span>
+          </div>
+          <div className="step">
+            <span className="badge strike">5th</span>
+            <span className="step-label">Strike 3 (5d)</span>
+          </div>
+          <div className="step">
+            <span className="badge strike">6th</span>
+            <span className="step-label">Strike 4 (7d)</span>
+          </div>
+          <div className="step">
+            <span className="badge banned">7th</span>
+            <span className="step-label">Permanent Ban</span>
+          </div>
+        </div>
+      </div>
 
       <div className="premium-controls-bar">
         <div className="search-glass-container">
@@ -326,7 +415,7 @@ export default function ReviewReports({ onLogout }) {
           </svg>
           <input
             type="text"
-            placeholder="Search reporters, vendors, or violations..."
+            placeholder="Search reporters, targets, or violations..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -337,13 +426,13 @@ export default function ReviewReports({ onLogout }) {
           <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
             <option value="all">Global Review</option>
             <option value="Products">Products</option>
-            <option value="Bidding Product">Bidding</option>
+            <option value="Bidding">Bidding</option>
             <option value="Vendor">Vendors</option>
             <option value="User">Users</option>
+            <option value="Bogus Buyer">Bogus Buyers</option>
           </select>
         </div>
       </div>
-
 
       {loading ? (
         <div className="premium-inner-loading">
@@ -360,9 +449,9 @@ export default function ReviewReports({ onLogout }) {
                   <th>Actions</th>
                   <th>Status</th>
                   <th>Category</th>
-                  <th>Reporter</th>
-                  <th>Reason</th>
-                  <th>Vendor Target</th>
+                  <th>Target Entity</th>
+                  <th>Reason Given</th>
+                  <th>Meta Details</th>
                   <th>Timestamp</th>
                 </tr>
               </thead>
@@ -376,16 +465,29 @@ export default function ReviewReports({ onLogout }) {
                         <button className="p-btn view" onClick={() => setSelectedReport(report)} title="Inspect">
                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                         </button>
-                        <button className="p-btn verify" onClick={() => showSileo({
-                          type: "warning",
-                          title: "Confirm Enforcement",
-                          message: "Verify this report and apply penalty:\n\n⚠️ 1st Report: Warning\n🔴 2nd Report: Last Warning\n⚡ 3rd+: Strikes with suspensions\n🚫 7th+: Permanent ban",
-                          confirmText: "Verify & Apply",
-                          showCancel: true,
-                          onConfirm: () => verifyReportAndApplyPenalty(report),
-                        })} title="Verify">
+                        
+                        <button className="p-btn verify" onClick={async () => {
+                          const targetEntity = await resolveTargetEntity(report);
+                          const currentCount = Number(targetEntity?.data?.verifiedReports ?? targetEntity?.data?.reportStrikeCount ?? 0);
+                          const incomingCount = currentCount + 1;
+                          const incomingPenalty = getPenaltyByVerifiedCount(incomingCount);
+                          
+                          showSileo({
+                            type: "warning",
+                            title: "Confirm Enforcement",
+                            message: `You are verifying a report against this entity.\n\n` +
+                                     `• Current Standing: ${currentCount} Verified Violation(s)\n` +
+                                     `• Upcoming Enforcement Level: Report #${incomingCount}\n\n` +
+                                     `💥 ACTION TO APPLY:\n${incomingPenalty.label}\n\n` +
+                                     `Are you sure you want to proceed?`,
+                            confirmText: "Verify & Apply",
+                            showCancel: true,
+                            onConfirm: () => verifyReportAndApplyPenalty(report),
+                          });
+                        }} title="Verify">
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                         </button>
+
                         <button className="p-btn reject" onClick={() => showSileo({
                           type: "warning",
                           title: "Dismiss Report",
@@ -399,7 +501,7 @@ export default function ReviewReports({ onLogout }) {
                       </td>
                       <td>
                         <span className={`premium-badge ${getStatusClass(report.status)}`}>
-                          {report.status?.toUpperCase() || "Pe"}
+                          {(report.status === "PendingReview" ? "PENDING" : report.status)?.toUpperCase() || "PENDING"}
                         </span>
                       </td>
                       <td className="cat-cell"><span>{report.category}</span></td>
@@ -407,11 +509,17 @@ export default function ReviewReports({ onLogout }) {
                       <td className="reason-cell"><strong>{report.reason}</strong></td>
                       <td>
                         <div className="vendor-stack">
-                          <span className="v-name">{report.vendorName || report.businessName || "N/A"}</span>
+                          <span className="v-name">{report.vendorName || "N/A"}</span>
                           <span className="v-mail">{report.vendorEmail || "-"}</span>
                         </div>
                       </td>
-                      <td className="date-cell">{report.createdAt?.toDate ? report.createdAt.toDate().toLocaleDateString() : "--"}</td>
+                      <td className="date-cell">
+                        {report.createdAt?.toDate 
+                          ? report.createdAt.toDate().toLocaleDateString() 
+                          : report.reportedAt?.toDate 
+                            ? report.reportedAt.toDate().toLocaleDateString() 
+                            : "--"}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -438,7 +546,11 @@ export default function ReviewReports({ onLogout }) {
               <h4 style={{marginTop: '20px', marginBottom: 0, fontWeight: 700}}>Evidence Investigation</h4>
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px'}}>
                 <div className="modal-timestamp" style={{fontSize: '0.97em', color: '#888', marginLeft: '2px', textAlign: 'left'}}>
-                  {selectedReport?.createdAt?.toDate ? selectedReport.createdAt.toDate().toLocaleString() : ''}
+                  {selectedReport?.createdAt?.toDate 
+                    ? selectedReport.createdAt.toDate().toLocaleString() 
+                    : selectedReport?.reportedAt?.toDate 
+                      ? selectedReport.reportedAt.toDate().toLocaleString() 
+                      : ''}
                 </div>
                 <button className="modal-close" style={{marginLeft: '16px', fontSize: '1.7em', lineHeight: '1'}} onClick={() => setSelectedReport(null)}>&times;</button>
               </div>
@@ -448,14 +560,25 @@ export default function ReviewReports({ onLogout }) {
                 <div className="evidence-info two-row-info">
                   <div className="info-row">
                     <div className="info-group"><label>Report ID</label><p className="info-highlight">#{selectedReport.id.slice(0,8)}</p></div>
-                    <div className="info-group"><label>Vendor</label><p className="info-highlight">{selectedReport.vendorName || selectedReport.businessName || "N/A"}</p></div>
+                    <div className="info-group">
+                      <label>{selectedReport.collection === "VendorToUserReports" ? "Reported Target" : "Vendor Name"}</label>
+                      <p className="info-highlight">{selectedReport.userName}</p>
+                    </div>
                   </div>
                   <div className="info-row">
-                    <div className="info-group"><label>Reasoning</label><p className="info-highlight">{selectedReport.reason}</p></div>
+                    <div className="info-group"><label>Reasoning Category</label><p className="info-highlight">{selectedReport.reason}</p></div>
                   </div>
                   <div className="info-row">
-                    <div className="info-group"><label>Description</label><p className="desc-box">{selectedReport.details || "No additional context provided."}</p></div>
-                </div>
+                    <div className="info-group">
+                      <label>Description & Statement Log</label>
+                      <p className="desc-box">{selectedReport.details || selectedReport.reasonDetails || "No additional context provided."}</p>
+                    </div>
+                  </div>
+                  {selectedReport.orderNumber && (
+                    <div className="info-row">
+                      <div className="info-group"><label>Associated Order ID</label><p className="info-highlight">#{selectedReport.orderNumber}</p></div>
+                    </div>
+                  )}
                 </div>
                 <div className="evidence-visual">
                   <label>Attached Evidence</label>

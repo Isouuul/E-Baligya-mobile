@@ -1,13 +1,13 @@
 export default {
   expo: {
-    owner: "shezzowicked15",
+    owner: "carlbryan123099",
     name: "E-BALIGYA",
     slug: "e-baligya",
     version: "18.0.0",
     newArchEnabled: false,
-    
+
     icon: "./assets/ebaligya-logo.png",
-    
+
     android: {
       icon: "./assets/ebaligya-logo.png",
       adaptiveIcon: {
@@ -16,16 +16,16 @@ export default {
       },
       package: "com.ebaligya.app"
     },
-    
+
     ios: {
       icon: "./assets/ebaligya-logo.png",
       bundleIdentifier: "com.ebaligya.app"
     },
 
-    extra: {
-      eas: {
-        projectId: "a2aa7eb2-5620-401d-9ad1-61376d5fed56"
-      }
-    }
+extra: {
+  eas: {
+    projectId: "b64fbaee-91f1-4c7c-8597-94224977d13b"
+  }
+}
   }
 };

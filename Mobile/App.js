@@ -71,6 +71,7 @@ import VendorSignupBusPermit from './src/screens/vendor/VendorSignupBusPermit';
 import AllReviews from './src/screens/user/AllReview';
 import BuyNowModal from './src/screens/user/BuyNow';
 import BuyNowModalCheckedout from './src/screens/user/BuyNowModalCheckedout';
+import ReportUserModal from './src/screens/vendor/components/ReportUserModal';
 const Stack = createNativeStackNavigator();
 Text.defaultProps = Text.defaultProps || {};
 Text.defaultProps.style = {
@@ -130,6 +131,7 @@ export default function App() {
         <Stack.Screen name='ReportShop' component={ReportShop} />
         <Stack.Screen name='InboxScreenUser' component={InboxScreenUser} />
         <Stack.Screen name="ChatScreenVendor" component={ChatScreenVendor} options={{ headerTitle: 'Chat' }} />
+        <Stack.Screen name='ReportUserModal' component={ReportUserModal} />
         {/* User Tabs */}
         <Stack.Screen name='ConsumerTabs' component={ConsumerTabs} />
         <Stack.Screen name="ProductScreen" component={ProductScreen} />
