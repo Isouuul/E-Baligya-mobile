@@ -501,8 +501,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 20,
+    borderRadius: 20,
     marginTop: 70,
-    marginBottom: 40,
+    marginBottom: 70, 
     marginRight: 24,
   },
   switchText: {
