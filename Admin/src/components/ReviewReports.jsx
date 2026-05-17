@@ -9,7 +9,7 @@ import {
   updateDoc,
   serverTimestamp,
   Timestamp,
-  writeBatch, // Integrated for handling bulk product updates safely
+  writeBatch,
 } from "firebase/firestore";
 import { db, auth } from "../firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -115,6 +115,7 @@ export default function ReviewReports({ onLogout }) {
       case "Reports_Vendor": return "Vendor";
       case "Report_User": return "User";
       case "VendorToUserReports": return "Bogus Buyer";
+      case "Reports_Chats": return "Chat Room";
       default: return "Unknown";
     }
   };
@@ -156,6 +157,25 @@ export default function ReviewReports({ onLogout }) {
       const userSnap = await getDoc(userDocRef);
       if (!userSnap.exists()) return null;
       return { ref: userDocRef, data: userSnap.data(), targetUid: customerUid, isVendor: false };
+    } else if (report.collection === "Reports_Chats") {
+      // Direct assignment fallback checking for variations of target offender variables
+      const offUserId = report?.reportedUserId || report?.offenderId || report?.userId || null;
+      if (!offUserId) return null;
+
+      // Scan dynamic schemas checking user tables first, then vendor profile fallbacks
+      const userDocRef = doc(db, "Users", offUserId);
+      const userSnap = await getDoc(userDocRef);
+      if (userSnap.exists()) {
+        return { ref: userDocRef, data: userSnap.data(), targetUid: offUserId, isVendor: false };
+      }
+      
+      const approvedQuery = query(collection(db, "ApprovedVendors"), where("userId", "==", offUserId));
+      const approvedSnapshot = await getDocs(approvedQuery);
+      if (!approvedSnapshot.empty) {
+        const vendorDoc = approvedSnapshot.docs[0];
+        return { ref: vendorDoc.ref, data: vendorDoc.data(), targetUid: offUserId, isVendor: true };
+      }
+      return null;
     } else {
       const vendorUid = report?.vendorId || null;
       if (!vendorUid) return null;
@@ -167,13 +187,11 @@ export default function ReviewReports({ onLogout }) {
     }
   };
 
-  // Automated Batch Mutation Script cascading restrictions across active listings
   const restrictAllTargetProducts = async (targetUid) => {
     try {
       const batch = writeBatch(db);
       let totalUpdated = 0;
 
-      // 1. Evaluate "Products" schema structure matching your listing script
       const standardProductsRef = collection(db, "Products");
       const standardQuery = query(
         standardProductsRef,
@@ -189,7 +207,6 @@ export default function ReviewReports({ onLogout }) {
         totalUpdated++;
       });
 
-      // 2. Evaluate "Bidding_Products" schema filtering out explicit 'active' structures
       const biddingProductsRef = collection(db, "Bidding_Products");
       const biddingQuery = query(
         biddingProductsRef,
@@ -206,7 +223,6 @@ export default function ReviewReports({ onLogout }) {
         totalUpdated++;
       });
 
-      // 3. Complete database write updates
       if (totalUpdated > 0) {
         await batch.commit();
         console.log(`Cascade action finished. Restricted ${totalUpdated} assets linked to user.`);
@@ -231,7 +247,6 @@ export default function ReviewReports({ onLogout }) {
       const now = new Date();
       const restrictedUntilDate = penalty.durationMs != null ? new Date(now.getTime() + penalty.durationMs) : null;
 
-      // Execute main profile modifications
       await updateDoc(targetEntity.ref, {
         verifiedReports: updatedVerifiedReports,
         reportStrikeCount: penalty.strikeCount || 0,
@@ -242,7 +257,6 @@ export default function ReviewReports({ onLogout }) {
         penaltyStatus: penalty.isWarning ? "warning" : "strike",
       });
 
-      // Execute modification to current reporting index log
       await updateDoc(doc(db, report.collection, report.id), {
         status: "resolved",
         reviewAction: "verified",
@@ -254,7 +268,6 @@ export default function ReviewReports({ onLogout }) {
         penaltyStatus: penalty.isWarning ? "warning" : "strike",
       });
 
-      // Execute marketplace product sweeps if account status changes to restricted/banned
       if (penalty.accountStatus === "restricted" || penalty.accountStatus === "banned") {
         await restrictAllTargetProducts(targetEntity.targetUid);
       }
@@ -290,7 +303,8 @@ export default function ReviewReports({ onLogout }) {
     if (!userLoaded) return;
     const fetchAllReports = async () => {
       try {
-        const collections = ["Reports_Products", "Reports_Bidding_Products", "Reports_Vendor", "Report_User", "VendorToUserReports"];
+        // Appended "Reports_Chats" to indices scope list
+        const collections = ["Reports_Products", "Reports_Bidding_Products", "Reports_Vendor", "Report_User", "VendorToUserReports", "Reports_Chats"];
         let allReports = [];
         
         for (const colName of collections) {
@@ -317,6 +331,21 @@ export default function ReviewReports({ onLogout }) {
               };
             }
 
+            if (colName === "Reports_Chats") {
+              return {
+                id: docSnap.id,
+                collection: colName,
+                category: getCategoryName(colName),
+                userName: data.reportedName || data.reporterName || "User Chat Report",
+                reason: data.reason || "Chat Violation",
+                details: data.messageText || data.details || "Inappropriate message behavior reported",
+                vendorName: `Room ID: ${data.chatRoomId?.slice(0, 12) || "Chat Context"}`,
+                vendorEmail: `Offender ID: ${data.reportedUserId?.slice(0, 8) || "N/A"}`,
+                createdAt: data.timestamp || data.createdAt || null,
+                ...data
+              };
+            }
+
             let reporterName = await getUserName(data.userId);
             if (colName === "Reports_Bidding_Products") {
               reporterName = data.reportedBy?.name || reporterName;
@@ -329,8 +358,8 @@ export default function ReviewReports({ onLogout }) {
         }
         
         allReports.sort((a, b) => {
-          const timeA = a.createdAt?.toDate?.() || a.reportedAt?.toDate?.() || 0;
-          const timeB = b.createdAt?.toDate?.() || b.reportedAt?.toDate?.() || 0;
+          const timeA = a.createdAt?.toDate?.() || a.reportedAt?.toDate?.() || a.timestamp?.toDate?.() || 0;
+          const timeB = b.createdAt?.toDate?.() || b.reportedAt?.toDate?.() || b.timestamp?.toDate?.() || 0;
           return timeB - timeA;
         });
         
@@ -426,10 +455,11 @@ export default function ReviewReports({ onLogout }) {
           <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
             <option value="all">Global Review</option>
             <option value="Products">Products</option>
-            <option value="Bidding">Bidding</option>
+            <option value="Bidding Product">Bidding</option>
             <option value="Vendor">Vendors</option>
             <option value="User">Users</option>
             <option value="Bogus Buyer">Bogus Buyers</option>
+            <option value="Chat Room">Chat Rooms</option>
           </select>
         </div>
       </div>
@@ -518,7 +548,9 @@ export default function ReviewReports({ onLogout }) {
                           ? report.createdAt.toDate().toLocaleDateString() 
                           : report.reportedAt?.toDate 
                             ? report.reportedAt.toDate().toLocaleDateString() 
-                            : "--"}
+                            : report.timestamp?.toDate
+                              ? report.timestamp.toDate().toLocaleDateString()
+                              : "--"}
                       </td>
                     </tr>
                   ))
@@ -550,7 +582,9 @@ export default function ReviewReports({ onLogout }) {
                     ? selectedReport.createdAt.toDate().toLocaleString() 
                     : selectedReport?.reportedAt?.toDate 
                       ? selectedReport.reportedAt.toDate().toLocaleString() 
-                      : ''}
+                      : selectedReport?.timestamp?.toDate
+                        ? selectedReport.timestamp.toDate().toLocaleString()
+                        : ''}
                 </div>
                 <button className="modal-close" style={{marginLeft: '16px', fontSize: '1.7em', lineHeight: '1'}} onClick={() => setSelectedReport(null)}>&times;</button>
               </div>
@@ -561,7 +595,13 @@ export default function ReviewReports({ onLogout }) {
                   <div className="info-row">
                     <div className="info-group"><label>Report ID</label><p className="info-highlight">#{selectedReport.id.slice(0,8)}</p></div>
                     <div className="info-group">
-                      <label>{selectedReport.collection === "VendorToUserReports" ? "Reported Target" : "Vendor Name"}</label>
+                      <label>
+                        {selectedReport.collection === "VendorToUserReports" 
+                          ? "Reported Target" 
+                          : selectedReport.collection === "Reports_Chats" 
+                            ? "Reported User/Sender" 
+                            : "Vendor Name"}
+                      </label>
                       <p className="info-highlight">{selectedReport.userName}</p>
                     </div>
                   </div>
@@ -570,10 +610,15 @@ export default function ReviewReports({ onLogout }) {
                   </div>
                   <div className="info-row">
                     <div className="info-group">
-                      <label>Description & Statement Log</label>
+                      <label>{selectedReport.collection === "Reports_Chats" ? "Flagged Message Log" : "Description & Statement Log"}</label>
                       <p className="desc-box">{selectedReport.details || selectedReport.reasonDetails || "No additional context provided."}</p>
                     </div>
                   </div>
+                  {selectedReport.chatRoomId && (
+                    <div className="info-row">
+                      <div className="info-group"><label>Active Chat Room Reference</label><p className="info-highlight">{selectedReport.chatRoomId}</p></div>
+                    </div>
+                  )}
                   {selectedReport.orderNumber && (
                     <div className="info-row">
                       <div className="info-group"><label>Associated Order ID</label><p className="info-highlight">#{selectedReport.orderNumber}</p></div>

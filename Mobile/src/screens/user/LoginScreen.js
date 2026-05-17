@@ -352,7 +352,7 @@ const LoginScreen = ({ navigation }) => {
               onPressOut={() => animateLoginButton(1)}
               disabled={loading}
             >
-              {loading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.loginText}>Login</Text>}
+              {loading ? <ActivityIndicator size="small" color="#3b82f6" /> : <Text style={styles.loginText}>SIGN IN</Text>}
             </TouchableOpacity>
           </Animated.View>
 
@@ -602,14 +602,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   loginButton: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
+    borderWidth: 0.5,
     height: 54,
-    borderRadius: 14,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
   loginText: {
-    color: '#FFFFFF',
+    color: '#3b82f6',
     fontSize: 16,
     fontWeight: '600',
   },

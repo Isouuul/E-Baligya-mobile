@@ -65,13 +65,14 @@ import BiddingUploadsScreen from './src/screens/vendor/components/BiddingUploads
 import EditProductFormModal from './src/screens/vendor/components/EditProductForm';
 import SubscriptionsScreen from './src/screens/vendor/components/SubscriptionsScreen';
 import VendorInbox from './src/screens/vendor/components/VendorInbox';
-import VendorNotifications from './src/screens/vendor/components/VendorNotifications';
 import ViewOrderDetailsVendor from './src/screens/vendor/components/ViewOrderDetailsVendor';
 import VendorSignupBusPermit from './src/screens/vendor/VendorSignupBusPermit';
 import AllReviews from './src/screens/user/AllReview';
 import BuyNowModal from './src/screens/user/BuyNow';
 import BuyNowModalCheckedout from './src/screens/user/BuyNowModalCheckedout';
 import ReportUserModal from './src/screens/vendor/components/ReportUserModal';
+import VendorNotificationModal from './src/screens/vendor/components/VendorNotificationModal';
+import ReportChat from './src/screens/user/ReportChat';
 const Stack = createNativeStackNavigator();
 Text.defaultProps = Text.defaultProps || {};
 Text.defaultProps.style = {
@@ -126,12 +127,12 @@ export default function App() {
         <Stack.Screen name='EditProductFormModal' component={EditProductFormModal} />
         <Stack.Screen name='SubscriptionsScreen' component={SubscriptionsScreen} />
         <Stack.Screen name='VendorInbox' component={VendorInbox}/>
-        <Stack.Screen name='VendorNotifications' component={VendorNotifications} />
         <Stack.Screen name='ViewOrderDetailsVendor' component={ViewOrderDetailsVendor} />
         <Stack.Screen name='ReportShop' component={ReportShop} />
         <Stack.Screen name='InboxScreenUser' component={InboxScreenUser} />
         <Stack.Screen name="ChatScreenVendor" component={ChatScreenVendor} options={{ headerTitle: 'Chat' }} />
         <Stack.Screen name='ReportUserModal' component={ReportUserModal} />
+        <Stack.Screen name='VendorNotificationModal' component={VendorNotificationModal} />
         {/* User Tabs */}
         <Stack.Screen name='ConsumerTabs' component={ConsumerTabs} />
         <Stack.Screen name="ProductScreen" component={ProductScreen} />
@@ -149,6 +150,8 @@ export default function App() {
         <Stack.Screen name='ReportModal'  component={ReportModal}/>
         <Stack.Screen name="ChatScreen" component={ChatScreen} options={{ headerTitle: 'Chat' }} />    
         <Stack.Screen name='AllReviews' component={AllReviews} />
+        <Stack.Screen name='ReportChat' component={ReportChat} />
+      
 
         {/* For Product */}
         <Stack.Screen name='ViewProduct' component={ViewProduct} />

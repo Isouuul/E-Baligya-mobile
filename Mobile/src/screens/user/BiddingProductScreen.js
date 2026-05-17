@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../../firebase';
-import { collection, query, orderBy, onSnapshot, getDocs, doc, updateDoc, Timestamp, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, getDocs, doc, updateDoc, Timestamp, setDoc, deleteDoc, where } from 'firebase/firestore';
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 
 // Asset Imports
@@ -37,7 +37,31 @@ function AnimatedBiddingCard({ item, index, navigation }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [timeLeft, setTimeLeft] = useState('00:00:00');
   const [isExpired, setIsExpired] = useState(false);
-  const [isDisabled, setIsDisabled] = useState(item.isDisabled || false);
+  
+  // A listing is explicitly disabled if marked disabled, or if it is restricted by an admin strike
+  const isDisabled = item.isDisabled || item.status === 'restricted';
+
+useEffect(() => {
+  let filtered = biddingProducts.filter(p => {
+    // Hide restricted products
+    if (p.status === 'restricted') return false;
+
+    // Hide products with 0kg or less
+    if ((p.remainingQuantity || 0) <= 0) return false;
+
+    const matchesCat =
+      category === "All" || p.category === category;
+
+    const matchesSearch =
+      p.productName
+        ?.toLowerCase()
+        .includes(searchText.toLowerCase());
+
+    return matchesCat && matchesSearch;
+  });
+
+  setFilteredBidding(filtered);
+}, [category, searchText, biddingProducts]);
 
   useEffect(() => {
     Animated.parallel([
@@ -104,7 +128,9 @@ function AnimatedBiddingCard({ item, index, navigation }) {
           {isDisabled ? (
             <View style={styles.disabledOverlay}>
               <Ionicons name="lock-closed-outline" size={32} color="#fff" />
-              <Text style={styles.disabledText}>Bidding Closed</Text>
+              <Text style={styles.disabledText}>
+                {item.status === 'restricted' ? 'Unavailable' : 'Bidding Closed'}
+              </Text>
             </View>
           ) : (
             <View style={[styles.timerBadge, isExpired && styles.timerExpired]}>
@@ -147,7 +173,9 @@ function AnimatedBiddingCard({ item, index, navigation }) {
               </Text>
             </View>
             <View style={[styles.bidButton, isDisabled && styles.bidButtonDisabled]}>
-              <Text style={[styles.bidButtonText, isDisabled && styles.bidButtonTextDisabled]}>{isDisabled ? 'Closed' : 'View Deal'}</Text>
+              <Text style={[styles.bidButtonText, isDisabled && styles.bidButtonTextDisabled]}>
+                {item.status === 'restricted' ? 'Banned' : isDisabled ? 'Closed' : 'View Deal'}
+              </Text>
             </View>
           </View>
         </View>
@@ -184,6 +212,7 @@ export default function BiddingProductScreen() {
   useFocusEffect(useCallback(() => { fetchCartItems(); }, []));
 
   useEffect(() => {
+    // Realtime query pulls documents, ordering them by descending creation times
     const q = query(collection(db, 'Bidding_Products'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const items = snapshot.docs.map(doc => ({
@@ -198,9 +227,12 @@ export default function BiddingProductScreen() {
 
   useEffect(() => {
     let filtered = biddingProducts.filter(p => {
+      // Security Check: Completely exclude items blocked by compliance enforcement scripts
+      if (p.status === 'restricted') return false;
+
       const matchesCat = category === "All" || p.category === category;
       const matchesSearch = p.productName?.toLowerCase().includes(searchText.toLowerCase());
-      // Show all products, including disabled ones (they'll appear grayed out)
+      
       return matchesCat && matchesSearch;
     });
     setFilteredBidding(filtered);
@@ -241,7 +273,7 @@ export default function BiddingProductScreen() {
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => navigation.navigate("InboxScreen")} style={[styles.iconCircle, { marginLeft: 12 }]}>
+            <TouchableOpacity onPress={() => navigation.navigate("InboxScreenUser")} style={[styles.iconCircle, { marginLeft: 12 }]}>
               <Image source={MessageIcon} style={styles.customHeaderIcon} />
             </TouchableOpacity>
           </View>
@@ -280,32 +312,16 @@ export default function BiddingProductScreen() {
   );
 }
 
+// Keeping original placeholder references for stylesheet stability
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
-  headerSafe: { backgroundColor: '#fff', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10 },
-  headerTop: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 15, marginTop: 35 },
-  searchWrapper: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 14,
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    height: 46,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  searchIcon: {
-    marginRight: 6,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: '#0f172a',
-    fontWeight: '500',
-    paddingVertical: 0,
-  },
-  headerIcons: { flexDirection: 'row', alignItems: 'center', marginLeft: 12 },
+  container: { flex: 1, backgroundColor: '#f8fafc', marginTop: 35},
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  headerSafe: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  headerTop: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },
+  searchWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', borderRadius: 12, paddingHorizontal: 12, height: 44 },
+  searchIcon: { marginRight: 8 },
+  searchInput: { flex: 1, color: '#1e293b', fontSize: 15 },
+  headerIcons: { flexDirection: 'row', alignItems: 'center', marginLeft: 16 },
   iconCircle: {
     width: 44,
     height: 44,
@@ -322,57 +338,69 @@ const styles = StyleSheet.create({
     height: 22,
     resizeMode: 'contain',
   },
-  badge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#ef4444', borderRadius: 10, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#fff' },
-  badgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
-  catList: { paddingHorizontal: 16, paddingBottom: 14, alignItems: 'center' },
-  catItem: { alignItems: 'center', marginRight: 20, paddingBottom: 2 },
-  catIconWrapper: { width: 45, height: 45, borderRadius: 10, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#f1f5f9', marginBottom: 6, marginLeft: 5 },
-  catIconWrapperActive: { backgroundColor: '#eff6ff', borderColor: '#3b82f6' },
+  badge: { position: 'absolute', top: -2, right: -2, backgroundColor: '#ef4444', borderRadius: 10, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4, borderWidth: 1.5, borderColor: '#fff' },
+  badgeText: { color: '#fff', fontSize: 9, fontWeight: '700' },
+  catList: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 },
+  catItem: { alignItems: 'center', marginRight: 20 },
+  catIconWrapper: {
+    width: 45,
+    height: 45,
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#f1f5f9',
+    marginBottom: 6,
+    marginLeft: 5,
 
-  catIcon: { width: 25, height: 25, resizeMode: 'contain' },
-  catText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
-  catTextActive: { color: '#1e3a8a', fontWeight: '700' },
-  flatListContent: { padding: 16 },
-  cardContainer: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 16, overflow: 'hidden', elevation: 3, shadowOpacity: 0.1 },
-  imageWrapper: { height: 180, width: '100%' },
+  },   catIconWrapperActive: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
+  },
+  catIcon: { width: 28, height: 28, resizeMode: 'contain' },
+  catText: { fontSize: 12, color: '#64748b', fontWeight: '500' },
+  catTextActive: { color: '#0284c7', fontWeight: '600' },
+  flatListContent: { padding: 16, paddingBottom: 30 },
+  cardContainer: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#e2e8f0' },
+  cardContainerDisabled: { borderColor: '#cbd5e1', opacity: 0.85 },
+  imageWrapper: { height: 180, position: 'relative', width: '100%' },
+  imageWrapperDisabled: { backgroundColor: '#f1f5f9' },
   cardImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  cardImageDisabled: { opacity: 0.4 },
   noImagePlaceholder: { backgroundColor: '#f1f5f9', justifyContent: 'center', alignItems: 'center' },
-  categoryBadge: { position: 'absolute', top: 12, left: 12, backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  categoryText: { fontSize: 11, fontWeight: 'bold', color: '#1e3a8a' },
-  timerBadge: { position: 'absolute', bottom: 12, right: 12, backgroundColor: 'rgba(255,255,255,0.95)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  timerText: { color: '#1e3a8a', fontSize: 12, fontWeight: '900', marginLeft: 4 },
-  timerExpired: { backgroundColor: 'rgba(239, 68, 68, 0.1)' },
-  imageWrapperDisabled: { opacity: 0.5 },
-  cardImageDisabled: { opacity: 0.6 },
-  cardContainerDisabled: { opacity: 0.7 },
-  disabledOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' },
-  disabledText: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginTop: 8 },
+  categoryBadge: { position: 'absolute', top: 12, left: 12, backgroundColor: 'rgba(15, 23, 42, 0.65)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  categoryText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  timerBadge: { position: 'absolute', bottom: 12, right: 12, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
+  timerExpired: { backgroundColor: '#fef2f2' },
+  timerText: { fontSize: 12, fontWeight: '700', color: '#1e293b', marginLeft: 4 },
+  disabledOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15, 23, 42, 0.4)', justifyContent: 'center', alignItems: 'center' },
+  disabledText: { color: '#fff', fontSize: 16, fontWeight: '700', marginTop: 6, letterSpacing: 0.5 },
   detailsWrapper: { padding: 16 },
-  detailsWrapperDisabled: { opacity: 0.6 },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  productTitle: { fontSize: 18, fontWeight: 'bold', color: '#1e293b', flex: 1 },
+  detailsWrapperDisabled: { backgroundColor: '#fafafa' },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  productTitle: { fontSize: 17, fontWeight: '700', color: '#1e293b', flex: 1, marginRight: 8 },
   productTitleDisabled: { color: '#94a3b8' },
-  stockBadge: { backgroundColor: '#f0fdf4', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  stockBadge: { backgroundColor: '#f0fdf4', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   stockBadgeDisabled: { backgroundColor: '#f1f5f9' },
-  stockText: { fontSize: 12, color: '#16a34a', fontWeight: '600' },
+  stockText: { color: '#16a34a', fontSize: 12, fontWeight: '600' },
   stockTextDisabled: { color: '#94a3b8' },
-  pricingSection: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16, backgroundColor: '#f8fafc', padding: 10, borderRadius: 12 },
-  label: { fontSize: 11, color: '#64748b' },
-  mainPrice: { fontSize: 18, fontWeight: 'bold', color: '#1e293b' },
-  unitText: { fontSize: 12, color: '#94a3b8' },
+  pricingSection: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', paddingBottom: 14, marginBottom: 14, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  label: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', tracking: 0.5, marginBottom: 2 },
+  mainPrice: { fontSize: 20, fontWeight: '800', color: '#0f172a' },
+  unitText: { fontSize: 13, fontWeight: '500', color: '#64748b' },
   highestBidContainer: { alignItems: 'flex-end' },
-  labelHighest: { fontSize: 10, color: '#ef4444', fontWeight: '700', textTransform: 'uppercase' },
-  highestPriceText: { fontSize: 18, fontWeight: 'bold', color: '#ef4444' },
-  footerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 12 },
-  vendorInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  vendorAvatar: { width: 24, height: 24, borderRadius: 12, marginRight: 8 },
-  vendorName: { fontSize: 13, color: '#64748b', fontWeight: '500' },
+  labelHighest: { fontSize: 11, color: '#0284c7', textTransform: 'uppercase', fontWeight: '600', marginBottom: 2 },
+  highestPriceText: { fontSize: 18, fontWeight: '800', color: '#0284c7' },
+  footerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  vendorInfo: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 12 },
+  vendorAvatar: { width: 22, height: 22, borderRadius: 11, marginRight: 6 },
+  vendorName: { fontSize: 13, color: '#475569', fontWeight: '500', flex: 1 },
   bidButton: { backgroundColor: '#1e3a8a', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 },
-  bidButtonDisabled: { backgroundColor: '#cbd5e1' },
-  bidButtonText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
+  bidButtonDisabled: { backgroundColor: '#e2e8f0' },
+  bidButtonText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   bidButtonTextDisabled: { color: '#94a3b8' },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyContainer: { alignItems: 'center', marginTop: 100 },
-  noDataImage: { width: 150, height: 150, marginBottom: 20 },
-  emptyText: { color: '#94a3b8', fontSize: 16 },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', marginTop: 80 },
+  noDataImage: { width: 140, height: 140, resizeMode: 'contain', marginBottom: 16 },
+  emptyText: { fontSize: 15, color: '#64748b', fontWeight: '500' }
 });

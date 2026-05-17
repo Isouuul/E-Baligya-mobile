@@ -373,10 +373,11 @@ const VendorLoginScreen = ({ navigation }) => {
               onPressOut={() => animateLoginButton(1)}
               disabled={loading}
             >
+
               {loading ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color="#3b82f6" />
               ) : (
-                <Text style={styles.primaryButtonText}>Sign In</Text>
+                <Text style={styles.primaryButtonText}>SIGN IN</Text>
               )}
             </TouchableOpacity>
           </Animated.View>
@@ -608,14 +609,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   primaryButton: {
-    backgroundColor: '#0F172A',
-    height: 54,
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
+    borderWidth: 0.5,
+      height: 54,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
   primaryButtonText: {
-    color: '#FFFFFF',
+    color: '#3b82f6',
     fontSize: 16,
     fontWeight: '600',
   },

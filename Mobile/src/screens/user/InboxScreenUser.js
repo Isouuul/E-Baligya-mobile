@@ -215,7 +215,7 @@ export default function InboxScreenUser({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8FAFC" },
+  container: { flex: 1, backgroundColor: "#F8FAFC",},
   header: {
     backgroundColor: "#fff",
     paddingHorizontal: 16,

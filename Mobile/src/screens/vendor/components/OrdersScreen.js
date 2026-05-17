@@ -1,3 +1,4 @@
+// VendorOrdersScreen.js
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -83,39 +84,64 @@ export default function VendorOrdersScreen() {
   };
 
   useEffect(() => {
+    if (!vendorId) return;
     const ref = collection(db, 'To_Deliver_Orders');
     const q = query(ref, orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, snapshot => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setToDeliverOrders(data);
+      const allOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const vendorOrders = allOrders
+        .map(order => {
+          const itemsArray = Array.isArray(order.items) ? order.items : [];
+          const vendorItems = itemsArray.filter(item => item.uploadedBy?.uid === vendorId);
+          if (vendorItems.length > 0) return { ...order, items: vendorItems };
+          return null;
+        })
+        .filter(Boolean);
+      setToDeliverOrders(vendorOrders);
     });
     return () => unsubscribe();
-  }, []);
+  }, [vendorId]);
 
   useEffect(() => {
+    if (!vendorId) return;
     const ref = collection(db, 'To_Pickup_Orders');
     const q = query(ref, orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, snapshot => {
-      const data = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setToPickupOrders(data);
+      const allOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const vendorOrders = allOrders
+        .map(order => {
+          const itemsArray = Array.isArray(order.items) ? order.items : [];
+          const vendorItems = itemsArray.filter(item => item.uploadedBy?.uid === vendorId);
+          if (vendorItems.length > 0) return { ...order, items: vendorItems };
+          return null;
+        })
+        .filter(Boolean);
+      setToPickupOrders(vendorOrders);
     });
     return () => unsubscribe();
-  }, []);
+  }, [vendorId]);
 
   useEffect(() => {
+    if (!vendorId) return;
     const ref = collection(db, 'Completed_Orders');
     const q = query(ref, orderBy('completedAt', 'desc'));
     const unsubscribe = onSnapshot(q, snapshot => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setCompletedOrders(data);
+      const allOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const vendorOrders = allOrders
+        .map(order => {
+          const itemsArray = Array.isArray(order.items) ? order.items : [];
+          const vendorItems = itemsArray.filter(item => item.uploadedBy?.uid === vendorId);
+          if (vendorItems.length > 0) return { ...order, items: vendorItems };
+          return null;
+        })
+        .filter(Boolean);
+      setCompletedOrders(vendorOrders);
     });
     return () => unsubscribe();
-  }, []);
+  }, [vendorId]);
 
   useEffect(() => {
+    if (!vendorId) return;
     const ordersRef = collection(db, 'Orders');
     const q = query(ordersRef, orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, snapshot => {
@@ -144,11 +170,25 @@ export default function VendorOrdersScreen() {
     try {
       const orderRef = doc(db, 'Orders', order.id);
       const cancelledRef = doc(db, 'Cancelled_Orders', order.id);
+      const vendorNotifRef = doc(collection(db, 'Vendor_Notifications'));
+
       await runTransaction(db, async (transaction) => {
         const orderSnap = await transaction.get(orderRef);
         if (!orderSnap.exists()) throw new Error('Order not found');
         transaction.set(cancelledRef, { ...order, status: 'Cancelled', cancelledAt: new Date() });
         transaction.delete(orderRef);
+
+        // ✅ VENDOR NOTIFICATION: Cancelled
+        transaction.set(vendorNotifRef, {
+          vendorId: vendorId,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          title: 'Order Cancelled/Declined',
+          message: `You declined and cancelled Order #${order.orderNumber}.`,
+          type: 'VENDOR_ORDER_CANCELLED',
+          read: false,
+          createdAt: new Date(),
+        });
       });
       showSileo({
         title: 'Order Declined',
@@ -173,21 +213,56 @@ export default function VendorOrdersScreen() {
     });
   };
 
-  const handleAcceptOrder = async (order) => {
+const handleAcceptOrder = async (order) => {
     if (processing === order.id) return;
     setProcessing(order.id);
     try {
       const orderRef = doc(db, 'Orders', order.id);
       const notifRef = doc(collection(db, 'User_Notifications_Product'));
+      const vendorNotifRef = doc(collection(db, 'Vendor_Notifications'));
       
-      // Extract properties from the first item
       const sampleProductImage = order.items?.[0]?.productImage || null;
       const sampleProductName = order.items?.[0]?.productName || null;
 
       await runTransaction(db, async (transaction) => {
+        // 1. Gather all product data configurations securely within the transaction
+        const productSnapshots = [];
+        for (const item of order.items) {
+          const isBiddingItem = item.source === 'notification' || item.productType === 'bidding';
+          const targetCollection = isBiddingItem ? 'Bidding_Products' : 'Products';
+          
+          const productRef = doc(db, targetCollection, item.productId);
+          const productSnap = await transaction.get(productRef);
+          
+          if (productSnap.exists()) {
+            productSnapshots.push({ ref: productRef, snap: productSnap, item, isBiddingItem });
+          }
+        }
+
+        // 2. Perform accurate inventory decreases right now on order acceptance
+        for (const { ref, snap, item, isBiddingItem } of productSnapshots) {
+          const orderQty = item.quantity || 0;
+
+          if (isBiddingItem) {
+            const currentQty = snap.data().remainingQuantity || 0;
+            const newQty = currentQty - orderQty;
+            if (newQty < 0) {
+              throw new Error(`Insufficient auction units remaining for ${item.productName}`);
+            }
+            transaction.update(ref, { remainingQuantity: newQty });
+          } else {
+            const currentQty = snap.data().quantityKg || 0;
+            const newQty = currentQty - orderQty;
+            if (newQty < 0) {
+              throw new Error(`Insufficient stock for ${item.productName}`);
+            }
+            transaction.update(ref, { quantityKg: newQty });
+          }
+        }
+
+        // 3. Complete normal acceptance status modifications
         transaction.update(orderRef, { status: 'Preparing' });
         
-        // Add notification for customer
         transaction.set(notifRef, {
           userId: order.userId,
           orderId: order.id,
@@ -199,20 +274,31 @@ export default function VendorOrdersScreen() {
           read: false,
           createdAt: new Date(),
         });
+
+        transaction.set(vendorNotifRef, {
+          vendorId: vendorId,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          title: 'Order Accepted',
+          message: `You accepted Order #${order.orderNumber}. It is now in processing.`,
+          type: 'VENDOR_ORDER_ACCEPTED',
+          read: false,
+          createdAt: new Date(),
+        });
       });
 
       showSileo({
         title: 'Order Accepted',
-        message: `Order ${order.orderNumber} is now being prepared. The customer has been notified.`,
+        message: `Order ${order.orderNumber} is now being prepared. Stock levels updated!`,
         type: 'success',
       });
     } catch (error) {
-      showSileo({ title: 'Error', message: 'Failed to accept order.', type: 'error' });
+      showSileo({ title: 'Error', message: error.message || 'Failed to accept order.', type: 'error' });
     }
     setProcessing(null);
   };
 
-  const handleDeliverOrder = async (order) => {
+const handleDeliverOrder = async (order) => {
     if (processing === order.id) return;
     setProcessing(order.id);
 
@@ -220,35 +306,17 @@ export default function VendorOrdersScreen() {
       const ordersRef = doc(db, 'Orders', order.id);
       const deliverRef = doc(db, 'To_Deliver_Orders', order.id);
       const pickupRef = doc(db, 'To_Pickup_Orders', order.id);
+      const vendorNotifRef = doc(collection(db, 'Vendor_Notifications'));
       
-      // Extract properties from the first item
       const sampleProductImage = order.items?.[0]?.productImage || null;
       const sampleProductName = order.items?.[0]?.productName || null;
 
       await runTransaction(db, async (transaction) => {
-        const productSnapshots = [];
-        for (const item of order.items) {
-          const productRef = doc(db, 'Products', item.productId);
-          const productSnap = await transaction.get(productRef);
-          if (productSnap.exists()) {
-            productSnapshots.push({ ref: productRef, snap: productSnap, item });
-          }
-        }
-
-        for (const { ref, snap, item } of productSnapshots) {
-          const currentQty = snap.data().quantityKg || 0;
-          const orderQty = item.quantity || 0;
-          const newQty = currentQty - orderQty;
-          if (newQty < 0) {
-            throw new Error(`Insufficient stock for ${item.productName}`);
-          }
-          transaction.update(ref, { quantityKg: newQty });
-        }
+        // Stock loop removed from here to prevent duplicate calculations!
 
         if (order.deliveryMethod === 'Delivery') {
           transaction.set(deliverRef, { ...order, status: 'To Deliver' });
           
-          // Shipping notification with image and name
           const notifRef = doc(collection(db, 'User_Notifications_Product'));
           transaction.set(notifRef, {
             userId: order.userId,
@@ -261,12 +329,22 @@ export default function VendorOrdersScreen() {
             read: false,
             createdAt: new Date(),
           });
+
+          transaction.set(vendorNotifRef, {
+            vendorId: vendorId,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            title: 'Order Shipped Out',
+            message: `Order #${order.orderNumber} dispatched for courier distribution.`,
+            type: 'VENDOR_ORDER_SHIPPED',
+            read: false,
+            createdAt: new Date(),
+          });
         }
 
         if (order.deliveryMethod === 'Pickup') {
           transaction.set(pickupRef, { ...order, status: 'To Pickup' });
           
-          // Pickup Notification with image and name
           const notifRef = doc(collection(db, 'User_Notifications_Product'));
           transaction.set(notifRef, {
             userId: order.userId,
@@ -277,6 +355,17 @@ export default function VendorOrdersScreen() {
             deliveryMethod: 'Pickup',
             imageUrl: sampleProductImage,
             productName: sampleProductName,
+            read: false,
+            createdAt: new Date(),
+          });
+
+          transaction.set(vendorNotifRef, {
+            vendorId: vendorId,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            title: 'Ready for Pickup',
+            message: `Order #${order.orderNumber} packaged and marked active for store pickup.`,
+            type: 'VENDOR_ORDER_READY_PICKUP',
             read: false,
             createdAt: new Date(),
           });
@@ -303,13 +392,28 @@ export default function VendorOrdersScreen() {
     try {
       const completeRef = doc(db, 'Completed_Orders', order.id);
       const deliverRef = doc(db, 'To_Deliver_Orders', order.id);
+      const vendorNotifRef = doc(collection(db, 'Vendor_Notifications'));
+
       await runTransaction(db, async (transaction) => {
         const completeSnap = await transaction.get(completeRef);
         if (completeSnap.exists()) throw new Error("Order already completed.");
         const deliverSnap = await transaction.get(deliverRef);
         if (!deliverSnap.exists()) throw new Error("Order not found in To Deliver.");
+        
         transaction.set(completeRef, { ...order, status: 'Complete', completedAt: new Date() });
         transaction.delete(deliverRef);
+
+        // ✅ VENDOR NOTIFICATION: Delivered & Completed
+        transaction.set(vendorNotifRef, {
+          vendorId: vendorId,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          title: 'Order Delivered',
+          message: `Order #${order.orderNumber} has been delivered and finalized.`,
+          type: 'VENDOR_ORDER_COMPLETED',
+          read: false,
+          createdAt: new Date(),
+        });
       });
       showSileo({
         title: 'Order Completed',
@@ -329,8 +433,8 @@ export default function VendorOrdersScreen() {
     try {
       const completeRef = doc(db, 'Completed_Orders', order.id);
       const pickupRef = doc(db, 'To_Pickup_Orders', order.id);
+      const vendorNotifRef = doc(collection(db, 'Vendor_Notifications'));
       
-      // Extract properties from the first item
       const sampleProductImage = order.items?.[0]?.productImage || null;
       const sampleProductName = order.items?.[0]?.productName || null;
 
@@ -350,6 +454,18 @@ export default function VendorOrdersScreen() {
           type: 'ORDER_COMPLETED',
           imageUrl: sampleProductImage,
           productName: sampleProductName,
+          read: false,
+          createdAt: new Date(),
+        });
+
+        // ✅ VENDOR NOTIFICATION: Handover Completed
+        transaction.set(vendorNotifRef, {
+          vendorId: vendorId,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          title: 'Handover Successful',
+          message: `Client collected pickup Order #${order.orderNumber}. Marked Complete.`,
+          type: 'VENDOR_PICKUP_COMPLETED',
           read: false,
           createdAt: new Date(),
         });
@@ -406,7 +522,7 @@ export default function VendorOrdersScreen() {
     : orders;
 
   const filteredOrders = sourceOrders.filter(o => {
-    const matchesStatus = (activeStatus === 'To Deliver' || activeStatus === 'Complete') ? true : o.status === activeStatus;
+    const matchesStatus = (activeStatus === 'To Deliver' || activeStatus === 'To Pickup' || activeStatus === 'Complete') ? true : o.status === activeStatus;
     const matchesSearch = searchQuery === '' || o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) || o.items.some(i => i.productName.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchesDate = checkDateMatch(o.createdAt?.seconds);
     return matchesStatus && matchesSearch && matchesDate;
@@ -420,6 +536,8 @@ export default function VendorOrdersScreen() {
       return sum + (base + variation + services) * (i.quantity || 1);
     }, 0);
 
+    const isBiddingOrder = (item.items || []).some(i => i.source === 'notification' || i.productType === 'bidding');
+
     return (
       <TouchableOpacity
         style={styles.orderCard}
@@ -429,8 +547,16 @@ export default function VendorOrdersScreen() {
       >
         <View style={styles.orderHeader}>
           <View>
-            <View style={styles.orderIdBadge}>
-              <Text style={styles.orderIDLabel}>ORDER REFERENCE</Text>
+            <View style={styles.headerLabelRow}>
+              <View style={styles.orderIdBadge}>
+                <Text style={styles.orderIDLabel}>ORDER REFERENCE</Text>
+              </View>
+              {isBiddingOrder && (
+                <View style={styles.biddingBadge}>
+                  <Ionicons name="gavel" size={10} color="#1E3A8A" style={{ marginRight: 2 }} />
+                  <Text style={styles.biddingBadgeText}>BIDDING</Text>
+                </View>
+              )}
             </View>
             <Text style={styles.orderNumber}>#{item.orderNumber}</Text>
           </View>
@@ -526,12 +652,6 @@ export default function VendorOrdersScreen() {
       </TouchableOpacity>
     );
   };
-
-  if (loading) return (
-    <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color="#1e3a8a" />
-    </View>
-  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -640,65 +760,67 @@ export default function VendorOrdersScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC', marginTop: 35 },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
-  headerSection: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, backgroundColor: '#1e3a8a' },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  screenTitle: { fontSize: 32, fontWeight: '900', color: '#fff', letterSpacing: -1 },
-  onlineStatus: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0FDF4', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  onlineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E', marginRight: 6 },
-  onlineText: { fontSize: 11, fontWeight: '700', color: '#166534', textTransform: 'uppercase' },
-  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 16, paddingHorizontal: 16, height: 50 },
-  searchInput: { flex: 1, fontSize: 15, color: '#1E293B', fontWeight: '500' },
-  tabsWrapper: { backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingVertical: 14 },
-  tabsContainer: { paddingHorizontal: 16 },
-  tab: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12, marginRight: 10, backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0' },
-  activeTab: { backgroundColor: '#eff6ff', borderColor: '#3b82f6' },
-  tabText: { color: '#64748B', fontWeight: '700', fontSize: 13 },
-  activeTabText: { color: '#000' },
-  countBadge: { marginLeft: 8, backgroundColor: '#E2E8F0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  activeCountBadge: { backgroundColor: 'rgba(29, 22, 22, 0.74)' },
-  countText: { fontSize: 10, color: '#000', fontWeight: 'bold' },
-  activeCountText: { color: '#fff' },
-  orderCard: { backgroundColor: '#fff', borderRadius: 24, padding: 20, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2, borderWidth: 1, borderColor: '#F1F5F9' },
-  orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
-  orderIdBadge: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start' },
-  orderIDLabel: { fontSize: 10, color: '#64748B', fontWeight: '800', letterSpacing: 0.5 },
-  orderNumber: { fontSize: 20, fontWeight: '900', color: '#0F172A', marginTop: 4 },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10, marginLeft: -25, marginTop: -10 },
+  container: { flex: 1, backgroundColor: '#FAFAFA', marginTop: 35},
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  headerSection: { paddingHorizontal: 16, paddingTop: 10 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  screenTitle: { fontSize: 24, fontWeight: '800', color: '#0F172A' },
+  onlineStatus: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  onlineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E', marginRight: 4 },
+  onlineText: { fontSize: 11, fontWeight: '700', color: '#15803D' },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
+  searchInput: { flex: 1, fontSize: 14, color: '#0F172A', padding: 0 },
+  tabsWrapper: { marginVertical: 10 },
+  tabsContainer: { paddingHorizontal: 16, gap: 8 },
+  tab: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F1F5F9' },
+  activeTab: { backgroundColor: '#1E3A8A' },
+  tabText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  activeTabText: { color: '#FFFFFF' },
+  countBadge: { backgroundColor: '#E2E8F0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, marginLeft: 6 },
+  activeCountBadge: { backgroundColor: '#3B82F6' },
+  countText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
+  activeCountText: { color: '#FFFFFF' },
+  orderCard: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.02, shadowRadius: 6, elevation: 1 },
+  orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: 12 },
+  headerLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  orderIdBadge: { backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  orderIDLabel: { fontSize: 9, fontWeight: '700', color: '#64748B', letterSpacing: 0.5 },
+  biddingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 0.5, borderColor: '#BFDBFE' },
+  biddingBadgeText: { fontSize: 9, fontWeight: '800', color: '#1E3A8A', letterSpacing: 0.5 },
+  orderNumber: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
   statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
-  statusBadgeText: { fontWeight: '900', fontSize: 10, textTransform: 'uppercase' },
-  cardContent: { paddingVertical: 10 },
-  itemRow: { flexDirection: 'row', marginBottom: 12, alignItems: 'center' },
-  itemImage: { width: 56, height: 56, borderRadius: 16, marginRight: 14 },
-  itemImagePlaceholder: { width: 56, height: 56, borderRadius: 16, marginRight: 14, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
-  itemName: { fontWeight: '800', fontSize: 16, color: '#1E293B' },
-  qtyContainer: { marginTop: 2 },
-  itemQty: { fontSize: 13, color: '#64748B' },
-  qtyHigh: { fontWeight: '800', color: '#1E293B' },
-  itemSub: { fontSize: 12, color: '#94A3B8', marginTop: 4 },
-  footerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 16, marginTop: 4 },
+  statusBadgeText: { fontSize: 12, fontWeight: '700' },
+  cardContent: { paddingVertical: 12 },
+  itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  itemImage: { width: 44, height: 44, borderRadius: 8, backgroundColor: '#F1F5F9' },
+  itemImagePlaceholder: { width: 44, height: 44, borderRadius: 8, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
+  itemName: { fontSize: 14, fontWeight: '600', color: '#1F2937', marginBottom: 2 },
+  qtyContainer: { flexDirection: 'row', alignItems: 'center' },
+  itemQty: { fontSize: 12, color: '#6B7280' },
+  qtyHigh: { fontWeight: '700', color: '#111827' },
+  itemSub: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  footerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 12 },
   revenueBox: { flex: 1 },
-  totalLabel: { fontSize: 9, color: '#94A3B8', fontWeight: '800', letterSpacing: 1 },
-  totalAmount: { fontSize: 22, fontWeight: '900', color: '#0F172A' },
+  totalLabel: { fontSize: 9, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.5 },
+  totalAmount: { fontSize: 16, fontWeight: '800', color: '#10B981', marginTop: 2 },
   actionContainer: { flexDirection: 'row', gap: 8 },
-  btnPrimary: { backgroundColor: '#1e3a8a', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 14, justifyContent: 'center' },
-  btnPrimaryText: { color: '#fff', fontWeight: '800', fontSize: 14 },
-  btnIconSecondary: { backgroundColor: '#FEF2F2', width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  emptyContainer: { alignItems: 'center', justifyContent: 'center', marginTop: 60 },
+  btnPrimary: { backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, justifyContent: 'center', alignItems: 'center', minWidth: 90 },
+  btnPrimaryText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  btnIconSecondary: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, borderColor: '#FEE2E2', backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center' },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
   emptyCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  emptyText: { textAlign: 'center', color: '#1E293B', fontSize: 18, fontWeight: '800' },
-  emptySubText: { textAlign: 'center', color: '#94A3B8', fontSize: 14, marginTop: 4 },
-  sileoOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.7)', justifyContent: 'center', alignItems: 'center' },
-  sileoModal: { width: '85%', backgroundColor: '#fff', borderRadius: 32, padding: 24, alignItems: 'center' },
-  sileoIconCircle: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  sileoSuccess: { backgroundColor: '#10B981' },
-  sileoWarning: { backgroundColor: '#F59E0B' },
-  sileoError: { backgroundColor: '#EF4444' },
-  sileoIconText: { color: '#fff', fontSize: 28, fontWeight: '900' },
-  sileoTitle: { fontSize: 22, fontWeight: '900', color: '#0F172A', textAlign: 'center' },
-  sileoMessage: { fontSize: 16, color: '#64748B', textAlign: 'center', marginTop: 10, lineHeight: 22, marginBottom: 24 },
-  sileoButton: {    backgroundColor: '#eff6ff',
-    borderColor: '#3b82f6', borderWidth: 0.5, width: '100%', paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
-  sileoButtonText: { color: '#3b82f6', fontWeight: '800', fontSize: 16 },
+  emptyText: { fontSize: 16, fontWeight: '700', color: '#475569', marginBottom: 4 },
+  emptySubText: { fontSize: 13, color: '#94A3B8' },
+  sileoOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.3)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  sileoModal: { width: width - 48, backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.1, shadowRadius: 24, elevation: 10 },
+  sileoIconCircle: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  sileoSuccess: { backgroundColor: '#DCFCE7' },
+  sileoWarning: { backgroundColor: '#FEF3C7' },
+  sileoError: { backgroundColor: '#FEE2E2' },
+  sileoIconText: { fontSize: 24, fontWeight: '700' },
+  sileoTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' },
+  sileoMessage: { fontSize: 14, color: '#475569', textAlign: 'center', marginBottom: 24, lineHeight: 20 },
+  sileoButton: { width: '100%', backgroundColor: '#3B82F6', paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
+  sileoButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });

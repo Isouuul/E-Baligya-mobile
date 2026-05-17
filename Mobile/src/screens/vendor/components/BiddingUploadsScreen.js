@@ -15,7 +15,8 @@ import {
   KeyboardAvoidingView,
   Dimensions
 } from "react-native";
-import { collection, onSnapshot } from "firebase/firestore";
+// 1. ADDED doc AND deleteDoc TO THE FIRESTORE IMPORTS
+import { collection, onSnapshot, doc, deleteDoc } from "firebase/firestore";
 import { db } from "../../../firebase";
 import EditProductBiddingFormModal from "./EditProductBiddingFormModal";
 import CreateProductBiddingForm from "./CreateProductBiddingForm";
@@ -38,7 +39,7 @@ const BiddingUploadsScreen = () => {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [dropdownOpen, setDropdownOpen] = useState(false); // Controlled state for custom dropdown
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [showCreateProductModal, setShowCreateProductModal] = useState(false);
 
@@ -49,16 +50,35 @@ const BiddingUploadsScreen = () => {
     setEditModalVisible(true);
   };
 
-  // Fetch products
+  // Fetch products & auto-delete 0kg entries
   useEffect(() => {
     const unsub = onSnapshot(collection(db, "Bidding_Products"), (snapshot) => {
-      setProducts(
-        snapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-          name: doc.data().name || doc.data().productName || "Unnamed Product",
-        }))
-      );
+      const fetchedProducts = [];
+
+      snapshot.docs.forEach((document) => {
+        const data = document.data();
+        
+        // Normalize checking for variations of 0 weight (e.g., 0, "0", "0kg", "0 kg")
+        const rawWeight = data.weight !== undefined ? String(data.weight).toLowerCase().trim() : "";
+        const isZeroWeight = rawWeight === "0" || rawWeight === "0kg" || rawWeight === "0 kg";
+
+        if (isZeroWeight) {
+          // 2. AUTOMATIC DELETION: If weight is 0, delete directly from Firestore
+          const docRef = doc(db, "Bidding_Products", document.id);
+          deleteDoc(docRef).catch((error) => {
+            console.error("Error auto-deleting 0kg product: ", error);
+          });
+        } else {
+          // If weight is normal, push it into the active listing array
+          fetchedProducts.push({
+            id: document.id,
+            ...data,
+            name: data.name || data.productName || "Unnamed Product",
+          });
+        }
+      });
+
+      setProducts(fetchedProducts);
     });
 
     return unsub;
@@ -126,7 +146,7 @@ const BiddingUploadsScreen = () => {
           />
         </View>
 
-        {/* UPDATED CUSTOM DROPDOWN */}
+        {/* CUSTOM DROPDOWN */}
         <View style={styles.datePickerWrapper}>
           <TouchableOpacity
             activeOpacity={0.7}
@@ -298,62 +318,13 @@ const styles = StyleSheet.create({
   searchBar: { flex: 1, flexDirection: "row", backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 14, alignItems: "center", height: 50, borderWidth: 1, borderColor: "#e2e8f0" },
   searchIcon: { fontSize: 16, marginRight: 8 },
   searchInput: { flex: 1, fontSize: 15, color: "#0f172a", fontWeight: "500" },
-  
-  // ADJUSTED CONTAINER FOR THE CUSTOM PICKER
-  datePickerWrapper: { 
-    width: 130, 
-    height: 50, 
-    position: 'relative' 
-  },
-  dropdownButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 12,
-    height: 50,
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    width: "100%"
-  },
-  dropdownText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#0f172a",
-  },
-  dropdownArrow: {
-    fontSize: 10,
-    color: "#94a3b8",
-  },
-  dropdownMenu: {
-    position: "absolute",
-    top: 55, 
-    left: 0,
-    right: 0,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    zIndex: 1000,
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    overflow: 'hidden'
-  },
-  dropdownItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-    backgroundColor: '#fff',
-  },
-  dropdownItemText: {
-    fontSize: 14,
-    color: "#475569",
-    fontWeight: "500",
-  },
-
+  datePickerWrapper: { width: 130, height: 50, position: 'relative' },
+  dropdownButton: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, height: 50, backgroundColor: "#fff", borderRadius: 14, borderWidth: 1, borderColor: "#e2e8f0", width: "100%" },
+  dropdownText: { fontSize: 13, fontWeight: "700", color: "#0f172a" },
+  dropdownArrow: { fontSize: 10, color: "#94a3b8" },
+  dropdownMenu: { position: "absolute", top: 55, left: 0, right: 0, backgroundColor: "#fff", borderRadius: 12, borderWidth: 1, borderColor: "#e2e8f0", zIndex: 1000, elevation: 5, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 4, overflow: 'hidden' },
+  dropdownItem: { paddingVertical: 12, paddingHorizontal: 15, backgroundColor: '#fff' },
+  dropdownItemText: { fontSize: 14, color: "#475569", fontWeight: "500" },
   categoryContainer: { marginVertical: 14},
   categoryListContent: { paddingHorizontal: 16, gap: 12, justifyContent: "space-between" },
   categoryItem: { flexDirection: "column", alignItems: "center", flex: 1 },
@@ -372,16 +343,5 @@ const styles = StyleSheet.create({
   fabText: { color: "#fff", fontSize: 24, fontWeight: "600" },
   actionMenu: { position: "absolute", bottom: 90, right: 24, backgroundColor: "#fff", borderRadius: 16, padding: 6, elevation: 10, shadowColor: "#000", shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.15, shadowRadius: 8, borderWidth: 1, borderColor: "#e2e8f0" },
   actionButton: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 10 },
-  actionText: { fontSize: 14, fontWeight: "700", color: "#0f172a" },
-  floatingModalOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.4)", justifyContent: "flex-end" },
-  modalDismissOverlay: { ...StyleSheet.absoluteFillObject },
-  floatingModalContent: { backgroundColor: "#fff", borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: SCREEN_HEIGHT * 0.85, paddingBottom: 20 },
-  modalGrabber: { width: 40, height: 5, backgroundColor: "#cbd5e1", borderRadius: 3, alignSelf: "center", marginTop: 12, marginBottom: 10 },
-  modalHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, paddingBottom: 14 },
-  modalTitle: { fontSize: 20, fontWeight: "800", color: "#0f172a" },
-  modalSubtitle: { fontSize: 13, color: "#64748b", marginTop: 2 },
-  closeModalButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#f1f5f9", alignItems: "center", justifyContent: "center" },
-  closeModalText: { fontSize: 14, color: "#64748b", fontWeight: "bold" },
-  modalDivider: { height: 1, backgroundColor: "#f1f5f9" },
-  modalScroll: { paddingHorizontal: 24, paddingTop: 16 }
+  actionText: { fontSize: 14, fontWeight: "700", color: "#0f172a" }
 });

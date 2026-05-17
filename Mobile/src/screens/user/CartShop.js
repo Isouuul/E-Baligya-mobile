@@ -362,11 +362,11 @@ export default function CartShop() {
                   ₱{cartSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </Text>
               </View>
-              
+
               <TouchableOpacity 
                 style={[
                   styles.checkoutBtn, 
-                  selectedItemIds.length === 0 && { backgroundColor: '#94A3B8' }
+                  selectedItemIds.length === 0 && { backgroundColor: '#eff6ff' }
                 ]} 
                 onPress={handleCheckoutAll}
                 disabled={selectedItemIds.length === 0}
@@ -648,7 +648,7 @@ const styles = StyleSheet.create({
   checkoutBtn: {
     flexDirection: 'row',
     backgroundColor: '#eff6ff',
-    borderColor: '#3b82f6',  
+    borderColor: '#3b82f6', 
     borderWidth: 0.5, paddingHorizontal: 20,
     paddingVertical: 14,
     borderRadius: 10,

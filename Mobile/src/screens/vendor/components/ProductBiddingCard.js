@@ -23,7 +23,8 @@ import EditIcon from "../../../../assets/Edit.png";
 
 const { width } = Dimensions.get("window");
 
-const ProductBiddingCard = ({ product, onEdit }) => {  const navigation = useNavigation();
+const ProductBiddingCard = ({ product, onEdit }) => {
+  const navigation = useNavigation();
   const [timeLeft, setTimeLeft] = useState("");
   const [archived, setArchived] = useState(false);
 
@@ -78,6 +79,16 @@ const ProductBiddingCard = ({ product, onEdit }) => {  const navigation = useNav
       console.error("Archive error:", error);
     }
   };
+
+  // -----------------------------
+  // 🔄 NEW: Monitor Stock Levels
+  // -----------------------------
+  useEffect(() => {
+    // If the data is safely loaded and the stock drops to 0 (or lower)
+    if (product && displayStock <= 0 && !archived) {
+      archiveProduct("sold_out");
+    }
+  }, [displayStock, product, archived]);
 
   // -----------------------------
   // ⏱ Countdown + Auto Archive
@@ -261,21 +272,21 @@ const ProductBiddingCard = ({ product, onEdit }) => {  const navigation = useNav
 
           {/* ACTIONS */}
           <View style={styles.actions}>
-<TouchableOpacity
-  onPress={(e) => {
-    e.stopPropagation();
-    onEdit?.(product); // send to parent screen
-  }}
-  style={[
-    styles.btn,
-    styles.editBtn,
-    isAuctionEnded && styles.disabled,
-  ]}
-  disabled={isAuctionEnded}
->
-  <Image source={EditIcon} style={styles.btnIcon} />
-  <Text style={styles.btnText}>Edit</Text>
-</TouchableOpacity>
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                onEdit?.(product);
+              }}
+              style={[
+                styles.btn,
+                styles.editBtn,
+                isAuctionEnded && styles.disabled,
+              ]}
+              disabled={isAuctionEnded}
+            >
+              <Image source={EditIcon} style={styles.btnIcon} />
+              <Text style={styles.btnText}>Edit</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               onPress={(e) => {
@@ -296,116 +307,40 @@ const ProductBiddingCard = ({ product, onEdit }) => {  const navigation = useNav
 
 export default ProductBiddingCard;
 
-// -----------------------------
-// 🎨 STYLES
-// -----------------------------
 const styles = StyleSheet.create({
   container: { marginBottom: 16, marginHorizontal: 16 },
-
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    flexDirection: "row",
-    padding: 12,
-    elevation: 5,
-  },
-
+  card: { backgroundColor: "#fff", borderRadius: 20, flexDirection: "row", padding: 12, elevation: 5 },
   leftSection: { width: 110, height: 155, position: "relative" },
-
   image: { width: "100%", height: "100%", borderRadius: 15 },
-
-  placeholder: {
-    backgroundColor: "#eee",
-    justifyContent: "center",
-    alignItems: "center",
-    height: "100%",
-    borderRadius: 15,
-  },
-
-  batchTag: {
-    position: "absolute",
-    top: 8,
-    left: 8,
-    backgroundColor: "#1e3a8a",
-    padding: 4,
-    borderRadius: 6,
-  },
-
+  placeholder: { backgroundColor: "#eee", justifyContent: "center", alignItems: "center", height: "100%", borderRadius: 15 },
+  batchTag: { position: "absolute", top: 8, left: 8, backgroundColor: "#1e3a8a", padding: 4, borderRadius: 6 },
   tagEnded: { backgroundColor: "#ef4444" },
-
   tagText: { color: "#fff", fontSize: 10 },
-
-  biddingTypeTag: {
-    position: "absolute",
-    bottom: 8,
-    left: 8,
-    padding: 4,
-    borderRadius: 6,
-  },
-
+  biddingTypeTag: { position: "absolute", bottom: 8, left: 8, padding: 4, borderRadius: 6 },
   bulkTag: { backgroundColor: "#22c55e" },
   fixedTag: { backgroundColor: "#3b82f6" },
-
   biddingTypeText: { color: "#fff", fontSize: 10 },
-
   infoContainer: { flex: 1, marginLeft: 10 },
-
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-
+  headerRow: { flexDirection: "row", justifyContent: "space-between" },
   productName: { fontWeight: "700", fontSize: 15 },
-
   pill: { padding: 4, borderRadius: 6 },
-
   freshPill: { backgroundColor: "#dcfce7" },
   rottenPill: { backgroundColor: "#fee2e2" },
   unknownPill: { backgroundColor: "#eee" },
-
   pillText: { fontSize: 10 },
-
-  statsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 6,
-  },
-
+  statsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 6 },
   statLabel: { fontSize: 10, color: "#666" },
   statValue: { fontWeight: "700" },
-
-  timerBox: {
-    marginTop: 10,
-    padding: 6,
-    backgroundColor: "#f1f5f9",
-    borderRadius: 8,
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-
+  timerBox: { marginTop: 10, padding: 6, backgroundColor: "#f1f5f9", borderRadius: 8, flexDirection: "row", justifyContent: "space-between" },
   timerBoxEnded: { backgroundColor: "#fee2e2" },
-
   timerLabel: { fontSize: 10 },
   timerValue: { fontWeight: "800" },
-
   timerValueEnded: { color: "#ef4444" },
-
   actions: { flexDirection: "row", marginTop: 10, gap: 6 },
-
-  btn: {
-    flex: 1,
-    flexDirection: "row",
-    justifyContent: "center",
-    padding: 8,
-    borderRadius: 8,
-  },
-
+  btn: { flex: 1, flexDirection: "row", justifyContent: "center", padding: 8, borderRadius: 8 },
   editBtn: { backgroundColor: "#e2e8f0" },
   deleteBtn: { backgroundColor: "#fee2e2" },
-
   btnIcon: { width: 14, height: 14, marginRight: 4 },
-
   btnText: { fontSize: 12 },
-
   disabled: { opacity: 0.5 },
 });

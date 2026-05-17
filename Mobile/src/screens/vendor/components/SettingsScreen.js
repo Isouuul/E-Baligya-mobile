@@ -173,9 +173,7 @@ const SettingsScreen = () => {
           <Text style={styles.headerTitle}>Vendor Settings</Text>
           <Text style={styles.headerSubtitle}>Manage your business presence</Text>
         </View>
-        <TouchableOpacity style={styles.headerIcon} onPress={handleLogout}>
-          <Ionicons name="power" size={22} color="#fff" />
-        </TouchableOpacity>
+
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContainer}>
@@ -248,28 +246,34 @@ const SettingsScreen = () => {
         </View>
 
         {/* Support Section */}
-        <Text style={styles.blockTitle}>Resource Center</Text>
-        <View style={styles.groupCard}>
-          {[
-            { icon: 'help-buoy-outline', label: 'Vendor Help Center', screen: 'HelpCenterScreen' },
-            { icon: 'shield-checkmark-outline', label: 'Legal & Privacy', screen: 'TermsPolicyScreen' },
-            { icon: 'chatbox-ellipses-outline', label: 'Contact Support', screen: 'ChatScreen' },
-          ].map((item, index) => (
-            <React.Fragment key={index}>
-              <TouchableOpacity
-                style={styles.featureRow}
-                onPress={() => navigation.navigate(item.screen)}
-              >
-                <View style={[styles.iconChip, {backgroundColor: '#f1f5f9'}]}>
-                  <Ionicons name={item.icon} size={20} color="#0f172a" />
-                </View>
-                <Text style={styles.supportText}>{item.label}</Text>
-                <Ionicons name="chevron-forward" size={16} color="#cbd5e1" />
-              </TouchableOpacity>
-              {index !== 2 && <View style={styles.rowDivider} />}
-            </React.Fragment>
-          ))}
+{/* Support Section */}
+<Text style={styles.blockTitle}>Resource Center</Text>
+<View style={styles.groupCard}>
+  {[
+    { icon: 'help-buoy-outline', label: 'Vendor Help Center', screen: 'HelpCenterScreen', disabled: false },
+    { icon: 'shield-checkmark-outline', label: 'Legal & Privacy', screen: 'TermsPolicyScreen', disabled: false },
+    { icon: 'chatbox-ellipses-outline', label: 'Contact Support', screen: 'ChatScreen', disabled: true }, // Changed to true
+  ].map((item, index) => (
+    <React.Fragment key={index}>
+      <TouchableOpacity
+        style={[styles.featureRow, item.disabled && styles.disabledFeature]}
+        disabled={item.disabled}
+        onPress={() => navigation.navigate(item.screen)}
+      >
+        <View style={[styles.iconChip, {backgroundColor: item.disabled ? '#f8fafc' : '#f1f5f9'}]}>
+          <Ionicons name={item.icon} size={20} color={item.disabled ? '#64748b' : '#0f172a'} />
         </View>
+        <Text style={[styles.supportText, item.disabled && { color: '#64748b' }]}>{item.label}</Text>
+        {item.disabled ? (
+          <View style={styles.badge}><Text style={styles.badgeText}>Soon</Text></View>
+        ) : (
+          <Ionicons name="chevron-forward" size={16} color="#cbd5e1" />
+        )}
+      </TouchableOpacity>
+      {index !== 2 && <View style={styles.rowDivider} />}
+    </React.Fragment>
+  ))}
+</View>
 
         {/* Logout */}
         <TouchableOpacity onPress={handleLogout} style={styles.logoutAction}>

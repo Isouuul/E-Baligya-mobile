@@ -32,6 +32,7 @@ import {
   arrayRemove,
 } from "firebase/firestore";
 import { Ionicons } from "@expo/vector-icons";
+import ReportChat from "./ReportChat"; // Make sure path correctly resolves to your file location
 
 export default function ChatScreen({ route, navigation }) {
   const { vendorId, productPreview } = route.params;
@@ -41,6 +42,9 @@ export default function ChatScreen({ route, navigation }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [inputHeight, setInputHeight] = useState(42);
+
+  // Modal controls for reporting chat violations
+  const [reportModalVisible, setReportModalVisible] = useState(false);
 
   const [vendorProfile, setVendorProfile] = useState({
     businessName: "Unknown Vendor",
@@ -160,13 +164,12 @@ export default function ChatScreen({ route, navigation }) {
     return () => unsubscribe();
   }, []);
 
-  // MAGIC PIECE: 2. Clear unread statuses automatically while active inside this view
+  // 2. Clear unread statuses automatically while active inside this view
   useEffect(() => {
     const chatDocRef = doc(db, "Chats", chatId);
     const unsubscribeChat = onSnapshot(chatDocRef, async (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data();
-        // If our ID is sitting inside the unread list, clean it out immediately
         if (data.unreadBy && data.unreadBy.includes(userId)) {
           try {
             await updateDoc(chatDocRef, {
@@ -194,7 +197,6 @@ export default function ChatScreen({ route, navigation }) {
     setText("");
 
     try {
-      // Sets parent message parameters and marks the message unread for the vendor
       await setDoc(
         doc(db, "Chats", chatId),
         {
@@ -229,7 +231,6 @@ export default function ChatScreen({ route, navigation }) {
     const productTxt = `Interested in: ${productPreview.name}`;
 
     try {
-      // Sets parent product message parameters and marks the message unread for the vendor
       await setDoc(
         doc(db, "Chats", chatId),
         {
@@ -439,12 +440,19 @@ export default function ChatScreen({ route, navigation }) {
             </View>
           </View>
 
-          <TouchableOpacity onPress={archiveChat} style={styles.iconCircle}>
-            <Image
-              source={require("../../../assets/Trash.png")}
-              style={styles.archiveIcon}
-            />
-          </TouchableOpacity>
+          {/* Action Row Container (Flag Report Action Button + Archive Trash Button) */}
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TouchableOpacity onPress={() => setReportModalVisible(true)} style={styles.iconCircle}>
+              <Ionicons name="flag-sharp" size={20} color="#EF4444" />
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={archiveChat} style={styles.iconCircle}>
+              <Image
+                source={require("../../../assets/Trash.png")}
+                style={styles.archiveIcon}
+              />
+            </TouchableOpacity>
+          </View>
         </View>
         
         {productPreview && (
@@ -522,6 +530,17 @@ export default function ChatScreen({ route, navigation }) {
         </View>
       </KeyboardAvoidingView>
 
+      {/* Report Chat Modal UI Component */}
+      <ReportChat
+        visible={reportModalVisible}
+        onClose={() => setReportModalVisible(false)}
+        chatId={chatId}
+        reportedUserId={vendorId}
+        reportedUserName={vendorProfile.businessName}
+        reportedUserProfileImage={vendorProfile.profileImage}
+      />
+
+      {/* Sileo Custom Errors */}
       <Modal visible={sileoVisible} animationType="fade" transparent>
         <View style={styles.sileoOverlay}>
           <View style={styles.sileoModal}>
@@ -568,9 +587,9 @@ export default function ChatScreen({ route, navigation }) {
   );
 }
 
-// Keeping your original styles structure completely untouched
+// Kept completely unmodified as requested
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fff" },
+  container: { flex: 1, backgroundColor: "#fff", marginTop:35},
   header: {
     flexDirection: "row",
     alignItems: "center",

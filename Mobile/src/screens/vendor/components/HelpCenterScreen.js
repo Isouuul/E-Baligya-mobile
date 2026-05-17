@@ -153,7 +153,7 @@ export default HelpCenterScreen;
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f8fafc',marginTop: 35
   },
   container: {
     paddingHorizontal: 18,

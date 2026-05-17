@@ -205,7 +205,7 @@ export default function CheckedOutBidding() {
     );
   }
 
-  // ---------------- ORDER DATABASE EXECUTION ----------------
+// ---------------- ORDER DATABASE EXECUTION ----------------
   const handleCheckout = async () => {
     if (loadingCheckout) return;
 
@@ -237,8 +237,10 @@ export default function CheckedOutBidding() {
         };
       }
 
+      const generatedOrderNumber = generateOrderNumber();
+
       const orderData = {
-        orderNumber: generateOrderNumber(),
+        orderNumber: generatedOrderNumber,
         userId: user.uid,
         userFirstName: userData.firstName,
         userLastName: userData.lastName,
@@ -267,6 +269,7 @@ export default function CheckedOutBidding() {
             source: item.source || "cart",
             notificationId: item.notificationId || null,
             message: item.message || null,
+            productType: item.productType || "bidding",
           };
         }),
         deliveryMethod,
@@ -280,7 +283,42 @@ export default function CheckedOutBidding() {
         createdAt: serverTimestamp(),
       };
 
+      // 1. Create the main Order Document
       await addDoc(collection(db, 'Orders'), orderData);
+
+      // 2. UPDATED: Trigger Vendor Notifications targeting Vendor_Bidding_Place_Bid
+      const uniqueVendorIds = new Set();
+      const notificationPromises = [];
+
+      checkoutList.forEach(item => {
+        const vendorId = item.source === 'notification' ? item.vendorId : (item.uploadedBy?.uid || item.uploadedBy);
+        
+        if (vendorId && !uniqueVendorIds.has(vendorId)) {
+          uniqueVendorIds.add(vendorId);
+
+          const vendorNotificationData = {
+            vendorId: vendorId,
+            userId: user.uid,
+            userFullName: `${userData.firstName} ${userData.lastName}`.trim(),
+            userProfileImage: userData.profileImage,
+            orderNumber: generatedOrderNumber,
+            type: 'bid_accepted',
+            title: 'Winning Bid Accepted!',
+            message: `${userData.firstName || 'A user'} has accepted and finalized the checkout for their won bid item.`,
+            isRead: false,
+            createdAt: serverTimestamp()
+          };
+
+          // Changed collection string target to 'Vendor_Bidding_Place_Bid'
+          notificationPromises.push(
+            addDoc(collection(db, 'Vendor_Bidding_Place_Bid'), vendorNotificationData)
+          );
+        }
+      });
+
+      if (notificationPromises.length > 0) {
+        await Promise.all(notificationPromises);
+      }
 
       // Clean up cart collections if standard checkout path
       const cartItemsToDelete = checkoutList.filter(item => item.source !== 'notification');

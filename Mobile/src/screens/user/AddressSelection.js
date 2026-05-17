@@ -262,20 +262,6 @@ export default function AddressSelection() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <TouchableOpacity
-          style={styles.pinLocationBtn}
-          onPress={handlePinLocation}
-          disabled={locationLoading}
-        >
-          {locationLoading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <>
-              <MaterialCommunityIcons name="map-marker-radius" size={22} color="#fff" />
-              <Text style={styles.pinBtnText}>Pin Current Location</Text>
-            </>
-          )}
-        </TouchableOpacity>
 
         {addresses.length === 0 ? (
           <View style={styles.emptyContainer}>
@@ -476,7 +462,7 @@ export default function AddressSelection() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  container: { flex: 1, backgroundColor: '#F8FAFC', marginTop: 35},
   customHeader: {
     flexDirection: 'row',
     alignItems: 'center',

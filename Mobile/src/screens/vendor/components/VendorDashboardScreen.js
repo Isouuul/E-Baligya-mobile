@@ -12,13 +12,14 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { getFirestore, collection, query, onSnapshot, orderBy } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import VendorNotificationModal from "./VendorNotificationModal"; // 1. IMPORT MODAL
 
 const { width } = Dimensions.get("window");
 
 export default function VendorDashboardScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("Today"); // Filter State: Today, Yesterday, 30D, All
-
+const [notifVisible, setNotifVisible] = useState(false); // 2. STATE VARIABLE
   // Stats States
   const [totalPendingOrders, setTotalPendingOrders] = useState(0);
   const [totalPreparingOrders, setTotalPreparingOrders] = useState(0);
@@ -141,7 +142,7 @@ export default function VendorDashboardScreen({ navigation }) {
           <Text style={styles.headerDate}>{new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</Text>
           <Text style={styles.headerTitle}>Dashboard</Text>
         </View>
-        <TouchableOpacity style={styles.notifBtn}>
+<TouchableOpacity style={styles.notifBtn} onPress={() => setNotifVisible(true)}>
           <Ionicons name="notifications" size={22} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -232,6 +233,11 @@ export default function VendorDashboardScreen({ navigation }) {
             })
           )}
         </View>
+
+        <VendorNotificationModal 
+        visible={notifVisible} 
+        onClose={() => setNotifVisible(false)} 
+      />
       </ScrollView>
     </View>
   );

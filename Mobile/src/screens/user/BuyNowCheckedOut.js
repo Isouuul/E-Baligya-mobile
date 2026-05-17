@@ -10,13 +10,13 @@ import {
   ActivityIndicator,
   TextInput,
   SafeAreaView,
-  StatusBar
+  StatusBar,
+  Modal
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { auth, db } from '../../firebase';
 import * as FileSystem from 'expo-file-system';
-import Toast from 'react-native-toast-message';
 import {
   collection,
   doc,
@@ -75,8 +75,34 @@ export default function BuyNowCheckedOut() {
   const [loadingAddress, setLoadingAddress] = useState(true);
   const [loadingCheckout, setLoadingCheckout] = useState(false);
 
+  // Sileo Modal State Configuration
+  const [modalConfig, setModalConfig] = useState({
+    visible: false,
+    type: 'success', // 'success' | 'error'
+    title: '',
+    message: '',
+    onClose: null
+  });
+
   const SHIPPING_FEE = 50;
   const generateOrderNumber = () => `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  // Function to summon Sileo Modal
+  const showAlertModal = (type, title, message, onClose = null, autoCloseDuration = 0) => {
+    setModalConfig({ visible: true, type, title, message, onClose });
+    
+    if (autoCloseDuration > 0) {
+      setTimeout(() => {
+        setModalConfig(prev => {
+          if (prev.visible) {
+            if (onClose) onClose();
+            return { ...prev, visible: false };
+          }
+          return prev;
+        });
+      }, autoCloseDuration);
+    }
+  };
 
   // Real-time listener for active address
   useEffect(() => {
@@ -146,19 +172,18 @@ export default function BuyNowCheckedOut() {
     );
   }
 
-  const handleCheckout = async () => {
+const handleCheckout = async () => {
     if (loadingCheckout) return;
 
     const user = auth.currentUser;
     if (!user) return;
 
     if (deliveryMethod === 'Delivery' && !address) {
-      Toast.show({
-        type: 'error',
-        text1: 'Address Required',
-        text2: 'Please select a delivery address to proceed.',
-        visibilityTime: 5000,
-      });
+      showAlertModal(
+        'error',
+        'Address Required',
+        'Please select a delivery address to proceed.'
+      );
       return;
     }
 
@@ -176,8 +201,10 @@ export default function BuyNowCheckedOut() {
         };
       }
 
+      const generatedOrderNumber = generateOrderNumber();
+
       const orderData = {
-        orderNumber: generateOrderNumber(),
+        orderNumber: generatedOrderNumber,
         userId: user.uid,
         userFirstName: userData.firstName,
         userLastName: userData.lastName,
@@ -203,25 +230,45 @@ export default function BuyNowCheckedOut() {
         createdAt: serverTimestamp(),
       };
 
+      // 1. Create main Order
       await addDoc(collection(db, 'Orders'), orderData);
-      Toast.show({
-        type: 'success',
-        text1: 'Order Placed Successfully',
-        text2: 'Your request has been sent to the vendor!',
-        visibilityTime: 5000,
-      });
 
-      setTimeout(() => {
-        navigation.navigate('ConsumerTabs', { screen: 'Product' });
-      }, 1200);
+      // 2. NEW: Trigger Vendor Notification for Product Purchase
+      const vendorId = product.uploadedBy?.uid || product.uploadedBy; 
+      if (vendorId) {
+        const vendorNotificationData = {
+          vendorId: vendorId,
+          userId: user.uid,
+          userFullName: `${userData.firstName} ${userData.lastName}`.trim(),
+          userProfileImage: userData.profileImage,
+          orderNumber: generatedOrderNumber,
+          type: 'product_purchased',
+          title: 'New Order Received!',
+          message: `${userData.firstName || 'A user'} has purchased your product: "${product.productName || 'Item'}".`,
+          isRead: false,
+          createdAt: serverTimestamp()
+        };
+
+        await addDoc(collection(db, 'Vendor_Notifications_Product'), vendorNotificationData);
+      }
+      
+      showAlertModal(
+        'success',
+        'Order Placed Successfully',
+        'Your request has been successfully sent to the vendor!',
+        () => {
+          navigation.navigate('ConsumerTabs', { screen: 'Product' });
+        },
+        2500
+      );
+
     } catch (error) {
       console.error("CHECKOUT ERROR: ", error);
-      Toast.show({
-        type: 'error',
-        text1: 'Checkout Failed',
-        text2: 'Something went wrong. Please try again.',
-        visibilityTime: 5000,
-      });
+      showAlertModal(
+        'error',
+        'Checkout Failed',
+        'Something went wrong on our end. Please try again.'
+      );
     } finally {
       setLoadingCheckout(false);
     }
@@ -414,7 +461,7 @@ export default function BuyNowCheckedOut() {
           activeOpacity={0.9}
         >
           {loadingCheckout ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color="#3b82f6" />
           ) : (
             <>
               <Text style={styles.checkoutTextPremium}>Place Order</Text>
@@ -423,6 +470,54 @@ export default function BuyNowCheckedOut() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Custom Sileo Premium Modal */}
+      <Modal
+        visible={modalConfig.visible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          if (modalConfig.onClose) modalConfig.onClose();
+          setModalConfig(prev => ({ ...prev, visible: false }));
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.sileoModalContainer}>
+            <View style={[
+              styles.modalIconWrapper, 
+              modalConfig.type === 'success' ? styles.modalIconSuccess : styles.modalIconError
+            ]}>
+              <Feather 
+                name={modalConfig.type === 'success' ? "check" : "alert-circle"} 
+                size={28} 
+                color={modalConfig.type === 'success' ? "#10B981" : "#EF4444"} 
+              />
+            </View>
+            
+            <Text style={styles.modalTitle}>{modalConfig.title}</Text>
+            <Text style={styles.modalMessage}>{modalConfig.message}</Text>
+            
+            <TouchableOpacity 
+              style={[
+                styles.modalActionButton,
+                modalConfig.type === 'success' ? styles.modalActionSuccess : styles.modalActionError
+              ]}
+              activeOpacity={0.8}
+              onPress={() => {
+                if (modalConfig.onClose) modalConfig.onClose();
+                setModalConfig(prev => ({ ...prev, visible: false }));
+              }}
+            >
+              <Text style={[
+                styles.modalActionText,
+                modalConfig.type === 'success' ? styles.modalActionTextSuccess : styles.modalActionTextError
+              ]}>
+                Dismiss
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -474,9 +569,7 @@ const styles = StyleSheet.create({
   sectionHeaderPremium: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   titleIconRow: { flexDirection: 'row', alignItems: 'center' },
   sectionTitlePremium: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginLeft: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  editButton: { backgroundColor: '#eff6ff',
-    borderColor: '#3b82f6',
-    borderWidth: 1,  paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99 },
+  editButton: { backgroundColor: '#eff6ff', borderColor: '#3b82f6', borderWidth: 1,  paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99 },
   editButtonText: { color: '#3b82f6', fontSize: 11, fontWeight: '700' },
   addressBox: { backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#F1F5F9' },
   addressName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
@@ -518,24 +611,10 @@ const styles = StyleSheet.create({
   // Pill & Toggle Styles
   optionGrid: { flexDirection: 'row', gap: 10, marginTop: 12 },
   optionPill: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 14, backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: '#E2E8F0' },
-  optionPillActive: {   backgroundColor: '#eff6ff',
-    borderColor: '#3b82f6',
-    borderWidth: 1.5},
+  optionPillActive: { backgroundColor: '#eff6ff', borderColor: '#3b82f6', borderWidth: 1.5},
   optionPillText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
   optionPillTextActive: { color: '#3b82f6', fontWeight: '700' },
   dividerPremium: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 16 },
-  paymentMethodSelector: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'space-between', 
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-  },
-  iconCircleSlate: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#E2E8F0', justifyContent: 'center', alignItems: 'center' },
-  paymentMainText: { fontSize: 13, fontWeight: '700', color: '#0F172A', marginLeft: 12 },
   premiumInput: { backgroundColor: '#F8FAFC', borderRadius: 14, padding: 14, marginTop: 12, height: 80, fontSize: 13, color: '#0F172A', borderWidth: 1, borderColor: '#F1F5F9', textAlignVertical: 'top' },
 
   // Summary Card
@@ -570,8 +649,8 @@ const styles = StyleSheet.create({
   footerTotalLabel: { fontSize: 11, color: '#94A3B8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   footerTotalValue: { fontSize: 22, fontWeight: '900', color: '#0F172A', letterSpacing: -0.5 },
   checkoutButtonPremium: {
-       backgroundColor: '#eff6ff',
-    borderColor: '#3b82f6', paddingHorizontal: 22, paddingVertical: 14, borderRadius: 99, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6', borderWidth: 1.5, paddingHorizontal: 22, paddingVertical: 14, borderRadius: 99, flexDirection: 'row', alignItems: 'center',
     shadowColor: '#0F172A', shadowOpacity: 0.15, shadowOffset: { width: 0, height: 4 }, shadowRadius: 10, elevation: 4
   },
   checkoutTextPremium: { color: '#3b82f6', fontSize: 14, fontWeight: '800', marginRight: 6 },
@@ -580,9 +659,87 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 16, fontWeight: '800', color: '#64748B', marginTop: 12 },
   browseButtonPremium: { backgroundColor: '#3b82f6', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 99, marginTop: 24 },
   browseTextPremium: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
-    iconCircleGreen: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center' },
+  iconCircleGreen: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center' },
   paymentMainText: { fontSize: 14, fontWeight: '600', color: '#14532D' },
   paymentSubText: { fontSize: 11, color: '#166534' },
-    paymentMethodSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#F0FDF4', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#DCFCE7' },
+  paymentMethodSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#F0FDF4', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#DCFCE7' },
 
+  // Sileo-Styled Premium Modal Sheet Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  sileoModalContainer: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 24,
+    elevation: 10,
+  },
+  modalIconWrapper: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalIconSuccess: {
+    backgroundColor: '#E6F4EA',
+  },
+  modalIconError: {
+    backgroundColor: '#FCE8E6',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: -0.2
+  },
+  modalMessage: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  modalActionButton: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 99,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+  modalActionSuccess: {
+    backgroundColor: '#E6F4EA',
+    borderColor: '#10B981',
+  },
+  modalActionError: {
+    backgroundColor: '#FCE8E6',
+    borderColor: '#EF4444',
+  },
+  modalActionText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  modalActionTextSuccess: {
+    color: '#10B981',
+  },
+  modalActionTextError: {
+    color: '#EF4444',
+  }
 });

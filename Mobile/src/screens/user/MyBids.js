@@ -25,43 +25,50 @@ const MyBids = ({ navigation }) => {
   const [bids, setBids] = useState([]);
   const [loading, setLoading] = useState(true);
 
-useEffect(() => {
-  if (!auth.currentUser) return;
+  useEffect(() => {
+    if (!auth.currentUser) return;
 
-  const bidsQuery = query(
-    collectionGroup(db, 'Bids'),
-    where('userId', '==', auth.currentUser.uid),
-    orderBy('createdAt', 'desc') // Get newest bids first
-  );
+    const bidsQuery = query(
+      collectionGroup(db, 'Bids'),
+      where('userId', '==', auth.currentUser.uid),
+      orderBy('createdAt', 'desc') // Get newest bids first
+    );
 
-  const unsubscribe = onSnapshot(bidsQuery, (snapshot) => {
-    const rawBids = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    const unsubscribe = onSnapshot(bidsQuery, (snapshot) => {
+      const rawBids = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
 
-    // --- DEDUPLICATION LOGIC ---
-    // We use a Map to keep only the FIRST (newest) bid found for each productId
-    const uniqueBidsMap = new Map();
+      // --- DEDUPLICATION & AVAILABILITY FILTER ---
+      const uniqueBidsMap = new Map();
 
-    rawBids.forEach(bid => {
-      if (!uniqueBidsMap.has(bid.productId)) {
-        uniqueBidsMap.set(bid.productId, bid);
-      }
+      rawBids.forEach(bid => {
+        const snapshotData = bid.productSnapshot;
+
+        // 1. Availability Check: Drop if snapshot is missing or status is explicitly restricted
+        if (!snapshotData || snapshotData.status === 'restricted') {
+          return; // Skip this item entirely
+        }
+
+        // 2. Deduplication Check: Keep only the FIRST (newest) bid found per product
+        if (!uniqueBidsMap.has(bid.productId)) {
+          uniqueBidsMap.set(bid.productId, bid);
+        }
+      });
+
+      // Convert our filtered Map back into an array for the FlatList
+      const deduplicatedBids = Array.from(uniqueBidsMap.values());
+      
+      setBids(deduplicatedBids);
+      setLoading(false);
+    }, (error) => {
+      console.error("Firestore Index/Fetch Error: ", error);
+      setLoading(false);
     });
 
-    // Convert the Map back into an array for the FlatList
-    const deduplicatedBids = Array.from(uniqueBidsMap.values());
-    
-    setBids(deduplicatedBids);
-    setLoading(false);
-  }, (error) => {
-    console.error("Firestore Index Error: ", error);
-    setLoading(false);
-  });
-
-  return () => unsubscribe();
-}, []);
+    return () => unsubscribe();
+  }, []);
 
   const renderBidItem = ({ item }) => {
     // Check if the user's bid is still the leader based on the latest product snapshot
@@ -73,10 +80,16 @@ useEffect(() => {
         onPress={() => navigation.navigate('ViewBiddingProduct', { productId: item.productId })}
         activeOpacity={0.7}
       >
-        <Image 
-          source={{ uri: item.productSnapshot?.imageBase64 }} 
-          style={styles.productImage} 
-        />
+        {item.productSnapshot?.imageBase64 ? (
+          <Image 
+            source={{ uri: item.productSnapshot.imageBase64 }} 
+            style={styles.productImage} 
+          />
+        ) : (
+          <View style={[styles.productImage, styles.centered]}>
+            <Ionicons name="image-outline" size={24} color="#94a3b8" />
+          </View>
+        )}
         
         <View style={styles.infoContainer}>
           <View style={styles.headerRow}>
@@ -95,18 +108,18 @@ useEffect(() => {
           <View style={styles.detailsRow}>
             <View style={styles.detailBlock}>
               <Text style={styles.label}>YOUR BID</Text>
-              <Text style={styles.value}>₱{item.bidAmount}/kg</Text>
+              <Text style={styles.value}>₱{Number(item.bidAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}/kg</Text>
             </View>
             <View style={styles.dividerV} />
             <View style={styles.detailBlock}>
               <Text style={styles.label}>QTY</Text>
-              <Text style={styles.value}>{item.quantity}kg</Text>
+              <Text style={styles.value}>{item.quantity || 0}kg</Text>
             </View>
             <View style={styles.dividerV} />
             <View style={styles.detailBlock}>
               <Text style={styles.label}>TOTAL</Text>
               <Text style={[styles.value, { color: '#0284c7' }]}>
-                ₱{item.totalAmount?.toLocaleString()}
+                ₱{Number(item.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </Text>
             </View>
           </View>
@@ -126,9 +139,9 @@ useEffect(() => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
-      {/* Header with Back Button */}
+      {/* Header Section */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
           <TouchableOpacity 
@@ -144,12 +157,13 @@ useEffect(() => {
         </View>
       </View>
 
+      {/* Main List / Empty State View */}
       {bids.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIconCircle}>
             <Ionicons name="gavel" size={40} color="#94a3b8" />
           </View>
-          <Text style={styles.emptyTitle}>No Bids Yet</Text>
+          <Text style={styles.emptyTitle}>No Active Bids</Text>
           <Text style={styles.emptyDesc}>
             Items you bid on will appear here. Start exploring the marketplace!
           </Text>

@@ -22,7 +22,6 @@ import {
   addDoc,
   doc,
   serverTimestamp,
-  updateDoc,
 } from "firebase/firestore";
 import { Ionicons } from "@expo/vector-icons";
 import { db } from "../../../firebase";
@@ -153,57 +152,38 @@ const ViewClickBid = ({ route, navigation }) => {
   }, [bidding.id]);
 
   // 4. CHOOSE WINNER & PUSH NOTIFICATION PAYLOAD
+// 4. CHOOSE WINNER & PUSH NOTIFICATION PAYLOAD
   const handleConfirmNotification = async () => {
     if (!selectedBidder || processingConfirm) return;
     setProcessingConfirm(true);
     try {
-const payload = {
-  read: false,
-  createdAt: serverTimestamp(),
+      const payload = {
+        read: false,
+        createdAt: serverTimestamp(),
+        type: "BID_WINNER",
+        userId: selectedBidder.userId,
+        userName: selectedBidder.userName,
+        productId: bidding.id,
+        productName: bidding.productName,
+        category: bidding.category,
+        imageBase64: bidding.imageBase64,
+        basePrice: bidding.basePrice,
+        bidType: bidding.bidType,
+        remainingQuantity: bidding.remainingQuantity,
+        minQtyPerBid: bidding.minQtyPerBid || 1,
+        overallAuctionEndsAt: bidding.overallAuctionEndsAt,
+        premiumServices: bidding.premiumServices || [],
+        bidAmount: selectedBidder.bidAmount,
+        quantity: selectedBidder.quantity,
+        totalAmount: selectedBidder.totalAmount,
+        vendorId: bidding.uploadedBy?.uid || "",
+        vendorBusinessName: bidding.uploadedBy?.businessName || "",
+        vendorEmail: bidding.uploadedBy?.email || "",
+        vendorProfileImage: bidding.uploadedBy?.vendorProfileImage || "",
+        message: `🎉 You won the bid for ${bidding.productName}! Total: ₱${selectedBidder.totalAmount}`
+      };
 
-  type: "BID_WINNER",
-
-  // USER (bidder)
-  userId: selectedBidder.userId,
-  userName: selectedBidder.userName,
-
-  // PRODUCT SNAPSHOT (IMPORTANT)
-  productId: bidding.id,
-  productName: bidding.productName,
-  category: bidding.category,
-  imageBase64: bidding.imageBase64,
-
-  basePrice: bidding.basePrice,
-  bidType: bidding.bidType,
-
-  remainingQuantity: bidding.remainingQuantity,
-  minQtyPerBid: bidding.minQtyPerBid || 1,
-
-  overallAuctionEndsAt: bidding.overallAuctionEndsAt,
-
-  premiumServices: bidding.premiumServices || [],
-
-  // BID DATA
-  bidAmount: selectedBidder.bidAmount,
-  quantity: selectedBidder.quantity,
-  totalAmount: selectedBidder.totalAmount,
-
-  // VENDOR SNAPSHOT
-  vendorId: bidding.uploadedBy?.uid || "",
-  vendorBusinessName: bidding.uploadedBy?.businessName || "",
-  vendorEmail: bidding.uploadedBy?.email || "",
-  vendorProfileImage: bidding.uploadedBy?.vendorProfileImage || "",
-
-  message: `🎉 You won the bid for ${bidding.productName}! Total: ₱${selectedBidder.totalAmount}`
-};
-
-      // Push document to notifications collection
       await addDoc(collection(db, "User_Notifications_Bidding"), payload);
-
-      // // Decrement the physical stock on the original active post
-      // const productRef = doc(db, "Bidding_Products", bidding.id);
-      // const newQty = Math.max(0, bidding.remainingQuantity - selectedBidder.quantity);
-      // await updateDoc(productRef, { remainingQuantity: newQty });
 
       setSuccessMessage(`Deal locked! ${selectedBidder.userName} has been notified.`);
       setShowSuccessModal(true);
@@ -211,10 +191,11 @@ const payload = {
     } catch (err) {
       console.error("Acceptance processing error: ", err);
       setConfirmModalVisible(false);
-      // Native Alert replaced with modern clean inline banner execution
       triggerNotification("Could not lock deal. Please verify connection and parameters.", "error");
     } finally {
+      // FIX: Reset both the modal loader AND the item list spinner loader here
       setProcessingConfirm(false);
+      setProcessingBidderId(null); 
     }
   };
 
@@ -228,15 +209,16 @@ const payload = {
               <Text style={styles.bidderNameText}>{item.userName}</Text>
               {isTopBid && (
                 <View style={styles.bestBadge}>
-                  <Text style={styles.bestText}>👑 LEADER</Text>
+                  <Ionicons name="trophy" size={10} color="#fff" style={{ marginRight: 3 }} />
+                  <Text style={styles.bestText}>LEADER</Text>
                 </View>
               )}
             </View>
             <Text style={styles.bidMetaText}>
-              {item.quantity}kg • {formatPeso(item.bidAmount)}/kg
+              {item.quantity}kg <Text style={styles.dotDivider}>•</Text> {formatPeso(item.bidAmount)}/kg
             </Text>
             <Text style={styles.totalPriceText}>
-              Payout: {formatPeso(item.totalAmount)}
+              Payout: <Text style={styles.payoutAmount}>{formatPeso(item.totalAmount)}</Text>
             </Text>
           </View>
           <TouchableOpacity
@@ -252,22 +234,26 @@ const payload = {
             disabled={processingBidderId !== null}
           >
             {processingBidderId === item.id ? (
-              <ActivityIndicator color={isTopBid ? "#fff" : "#1e3a8a"} size="small" />
+              <ActivityIndicator color={isTopBid ? "#fff" : "#4f46e5"} size="small" />
             ) : (
-              <Text style={[styles.acceptBtnLabel, !isTopBid && { color: "#1e3a8a" }]}>
+              <Text style={[styles.acceptBtnLabel, !isTopBid && { color: "#4f46e5" }]}>
                 Accept
               </Text>
             )}
           </TouchableOpacity>
         </View>
-        <Text style={styles.bidTimeText}>{formatBidTime(item.createdAt)}</Text>
+        <View style={styles.cardFooter}>
+          <Text style={styles.bidTimeText}>
+            <Ionicons name="time-outline" size={11} color="#94a3b8" /> {formatBidTime(item.createdAt)}
+          </Text>
+        </View>
       </View>
     );
   };
 
   return (
     <View style={styles.master}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" transparent={false} />
 
       {/* PREMIUM TOP SLIDING NOTIFICATION TOAST BANNER */}
       <Animated.View style={[
@@ -277,8 +263,8 @@ const payload = {
       ]}>
         <Ionicons 
           name={notification.type === "success" ? "checkmark-circle" : "alert-circle"} 
-          size={18} 
-          color={notification.type === "success" ? "#16a34a" : "#dc2626"} 
+          size={20} 
+          color={notification.type === "success" ? "#10b981" : "#ef4444"} 
         />
         <Text style={styles.notificationText} numberOfLines={2}>{notification.message}</Text>
       </Animated.View>
@@ -286,14 +272,14 @@ const payload = {
       {/* Elegant Nav Header */}
       <View style={styles.navBar}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.navBtn}>
-          <Ionicons name="chevron-back" size={24} color="#0f172a" />
+          <Ionicons name="arrow-back" size={24} color="#0f172a" />
         </TouchableOpacity>
         <View style={styles.navTitleContainer}>
           <Text style={styles.navTitle}>Bidding Dashboard</Text>
-          <View style={styles.totalTimerRow}>
-            <Ionicons name="time-outline" size={13} color="#ef4444" style={{ marginRight: 3 }} />
-            <Text style={styles.totalTimerSub}>
-              {isAuctionOver ? "Auction Ended" : `Time Remaining: ${timeLeft}`}
+          <View style={[styles.totalTimerRow, isAuctionOver ? styles.timerEndedBg : styles.timerActiveBg]}>
+            <Ionicons name="hourglass-outline" size={12} color={isAuctionOver ? "#ef4444" : "#f59e0b"} style={{ marginRight: 4 }} />
+            <Text style={[styles.totalTimerSub, isAuctionOver ? styles.timerTextEnded : styles.timerTextActive]}>
+              {isAuctionOver ? "Auction Ended" : timeLeft}
             </Text>
           </View>
         </View>
@@ -304,12 +290,13 @@ const payload = {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View>
-            {/* Visual Glassmorphic Image Header */}
+            {/* Visual Image Header */}
             <View style={styles.imageBox}>
               <Image source={{ uri: bidding.imageBase64 }} style={styles.heroImg} />
               <View style={styles.overlayPills}>
                 <View style={[styles.timerPill, isAuctionOver && styles.urgentPill]}>
-                  <Text style={[styles.timerLabel, isAuctionOver && { color: "#fff" }]}>
+                  <View style={[styles.pulseDot, isAuctionOver ? { backgroundColor: "#ef4444" } : { backgroundColor: "#10b981" }]} />
+                  <Text style={[styles.timerLabel, isAuctionOver && { color: "#ef4444" }]}>
                     {isAuctionOver ? "EXPIRED" : "LIVE AUCTION"}
                   </Text>
                 </View>
@@ -324,11 +311,16 @@ const payload = {
               <Text style={styles.pNameText}>{bidding.productName}</Text>
               <View style={styles.revenueBox}>
                 <Text style={styles.revenueLabel}>Active Competitive Offers</Text>
-                <Text style={styles.revenueValue}>{bidders.length} Bids Tracked</Text>
+                <View style={styles.badgeCount}>
+                  <Text style={styles.revenueValue}>{bidders.length} Bids Tracked</Text>
+                </View>
               </View>
             </View>
             
-            <Text style={styles.leaderboardTitle}>Bidders Ranking</Text>
+            <View style={styles.leaderboardHeader}>
+              <Ionicons name="trending-up" size={16} color="#64748b" style={{ marginRight: 6 }} />
+              <Text style={styles.leaderboardTitle}>Bidders Ranking</Text>
+            </View>
           </View>
         }
         data={bidders}
@@ -337,25 +329,30 @@ const payload = {
         contentContainerStyle={{ paddingBottom: 120 }}
         ListEmptyComponent={
           loading ? (
-            <ActivityIndicator size="large" color="#1e3a8a" style={{ marginTop: 40 }} />
+            <ActivityIndicator size="large" color="#4f46e5" style={{ marginTop: 40 }} />
           ) : (
             <View style={styles.emptyState}>
-              <Ionicons name="stats-chart-outline" size={48} color="#cbd5e1" />
+              <View style={styles.emptyIconCircle}>
+                <Ionicons name="file-tray-outline" size={40} color="#94a3b8" />
+              </View>
               <Text style={styles.emptyMsg}>No competitive bids uploaded yet.</Text>
             </View>
           )
         }
       />
 
-      {/* Premium Obsidian Confirmation Dialog Overlay */}
-      <Modal visible={confirmModalVisible} transparent animationType="slide">
+      {/* Premium Detached Confirmation Dialog Overlay */}
+      <Modal visible={confirmModalVisible} transparent animationType="fade">
         <View style={styles.sheetOverlay}>
           <View style={styles.sheetContent}>
             <View style={styles.handle} />
+            <View style={styles.alertIconHeader}>
+              <Ionicons name="checkbox-outline" size={32} color="#4f46e5" />
+            </View>
             <Text style={styles.sheetTitle}>Lock in Deal?</Text>
             <Text style={styles.sheetMessage}>
-              Are you sure you want to sell to <Text style={{ fontWeight: "bold", color: "#0f172a" }}>{selectedBidder?.userName}</Text>? 
-              This will deduct <Text style={{ fontWeight: "bold" }}>{selectedBidder?.quantity}kg</Text> from your available auction inventory.
+              Are you sure you want to sell to <Text style={{ fontWeight: "700", color: "#0f172a" }}>{selectedBidder?.userName}</Text>? 
+              This will deduct <Text style={{ fontWeight: "700", color: "#4f46e5" }}>{selectedBidder?.quantity}kg</Text> from your available auction inventory.
             </Text>
             <View style={styles.sheetActions}>
               <TouchableOpacity style={styles.btnCancel} onPress={() => setConfirmModalVisible(false)} disabled={processingConfirm}>
@@ -385,7 +382,7 @@ const payload = {
         <View style={styles.successOverlay}>
           <View style={styles.successCard}>
             <View style={styles.successIconCircle}>
-               <Ionicons name="checkmark-sharp" size={42} color="#fff" />
+               <Ionicons name="checkmark-circle" size={46} color="#fff" />
             </View>
             <Text style={styles.successHeadline}>Bid Confirmed</Text>
             <Text style={styles.successSubline}>{successMessage}</Text>
@@ -402,41 +399,41 @@ const payload = {
 export default ViewClickBid;
 
 const styles = StyleSheet.create({
-  master: { flex: 1, backgroundColor: "#f8fafc" },
+  master: { flex: 1, backgroundColor: "#f8fafc", marginTop: 35 },
   
   // --- CUSTOM INLINE TOAST ARCHITECTURE STYLES ---
   notificationBanner: {
     position: "absolute",
-    top: Platform.OS === "ios" ? 50 : 20,
+    top: Platform.OS === "ios" ? 60 : 30,
     left: 16,
     right: 16,
     zIndex: 9999,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 16,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#ffffff",
     borderWidth: 1,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowRadius: 20,
+    elevation: 10,
   },
   notificationSuccess: {
-    borderColor: "#bbf7d0",
-    backgroundColor: "#f0fdf4",
+    borderColor: "#a7f3d0",
+    backgroundColor: "#ecfdf5",
   },
   notificationError: {
     borderColor: "#fecaca",
     backgroundColor: "#fef2f2",
   },
   notificationText: {
-    color: "#1e293b",
-    fontSize: 13,
+    color: "#334155",
+    fontSize: 14,
     fontWeight: "600",
-    marginLeft: 10,
+    marginLeft: 12,
     flex: 1,
   },
 
@@ -444,67 +441,101 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 15,
-    backgroundColor: "#fff",
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === "ios" ? 60 : 20,
+    paddingBottom: 16,
+    backgroundColor: "#ffffff",
     borderBottomWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: "#f1f5f9",
   },
-  navTitleContainer: { alignItems: "center" },
-  navTitle: { fontSize: 16, fontWeight: "800", color: "#0f172a" },
-  totalTimerRow: { flexDirection: "row", alignItems: "center", marginTop: 2 },
-  totalTimerSub: { fontSize: 11, color: "#ef4444", fontWeight: "700" },
-  navBtn: { padding: 4 },
-  imageBox: { width: width, height: 240, position: "relative" },
-  heroImg: { width: "100%", height: "100%" },
-  overlayPills: { position: "absolute", bottom: 15, left: 15, right: 15, flexDirection: "row", justifyContent: "space-between" },
-  timerPill: { backgroundColor: "#fff", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, elevation: 4 },
-  urgentPill: { backgroundColor: "#ef4444" },
-  timerLabel: { fontWeight: "900", color: "#1e3a8a", fontSize: 11, letterSpacing: 0.5 },
-  stockPill: { backgroundColor: "#1e3a8a", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  stockLabel: { color: "#fff", fontWeight: "800", fontSize: 11 },
-  detailsBox: { padding: 20, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#f1f5f9" },
-  pNameText: { fontSize: 24, fontWeight: "900", color: "#0f172a" },
-  revenueBox: { marginTop: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  revenueLabel: { color: "#64748b", fontSize: 13, fontWeight: "500" },
-  revenueValue: { fontWeight: "800", color: "#1e3a8a" },
-  leaderboardTitle: { fontSize: 13, fontWeight: "800", color: "#94a3b8", textTransform: "uppercase", letterSpacing: 1.5, marginLeft: 20, marginTop: 20, marginBottom: 5 },
+  navTitleContainer: { alignItems: "center", flex: 1 },
+  navTitle: { fontSize: 17, fontWeight: "700", color: "#0f172a", letterSpacing: -0.3 },
+  totalTimerRow: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    marginTop: 6, 
+    paddingHorizontal: 10, 
+    paddingVertical: 3, 
+    borderRadius: 20 
+  },
+  timerActiveBg: { backgroundColor: "#fef3c7" },
+  timerEndedBg: { backgroundColor: "#fee2e2" },
+  totalTimerSub: { fontSize: 12, fontWeight: "600" },
+  timerTextActive: { color: "#d97706" },
+  timerTextEnded: { color: "#ef4444" },
+  navBtn: { padding: 4, marginLeft: -4 },
   
-  bidCard: { marginHorizontal: 15, marginTop: 12, backgroundColor: "#fff", borderRadius: 16, padding: 15, borderWidth: 1, borderColor: "#e2e8f0" },
-  topBidHighlight: { borderColor: "#1e3a8a", borderWidth: 2, backgroundColor: "#eff6ff" },
+  imageBox: { width: width, height: 260, position: "relative" },
+  heroImg: { width: "100%", height: "100%", contentTransform: "cover" },
+  overlayPills: { position: "absolute", bottom: 16, left: 16, right: 16, flexDirection: "row", justifyContent: "space-between" },
+  timerPill: { 
+    backgroundColor: "#ffffff", 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 20, 
+    flexDirection: "row", 
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3
+  },
+  pulseDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
+  urgentPill: { backgroundColor: "#fee2e2" },
+  timerLabel: { fontWeight: "700", color: "#10b981", fontSize: 11, letterSpacing: 0.3 },
+  stockPill: { backgroundColor: "#0f172a", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  stockLabel: { color: "#ffffff", fontWeight: "600", fontSize: 11 },
+  
+  detailsBox: { padding: 24, backgroundColor: "#ffffff", borderBottomWidth: 1, borderBottomColor: "#f1f5f9" },
+  pNameText: { fontSize: 24, fontWeight: "800", color: "#0f172a", letterSpacing: -0.5 },
+  revenueBox: { marginTop: 14, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  revenueLabel: { color: "#64748b", fontSize: 14, fontWeight: "500" },
+  badgeCount: { backgroundColor: "#f1f5f9", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  revenueValue: { fontWeight: "600", color: "#334155", fontSize: 13 },
+  
+  leaderboardHeader: { flexDirection: "row", alignItems: "center", marginLeft: 20, marginTop: 24, marginBottom: 8 },
+  leaderboardTitle: { fontSize: 12, fontWeight: "700", color: "#64748b", textTransform: "uppercase", letterSpacing: 1 },
+  
+  bidCard: { marginHorizontal: 16, marginTop: 12, backgroundColor: "#ffffff", borderRadius: 16, padding: 16, borderWidth: 1, borderColor: "#e2e8f0" },
+  topBidHighlight: { borderColor: "#c7d2fe", backgroundColor: "#f5f3ff", shadowColor: "#4f46e5", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 10 },
   bidMain: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  nameContainer: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
-  bidderNameText: { fontSize: 15, fontWeight: "800", color: "#0f172a" },
-  bestBadge: { backgroundColor: "#1e3a8a", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginLeft: 8 },
-  bestText: { color: "#fff", fontSize: 9, fontWeight: "900" },
-  bidMetaText: { fontSize: 13, color: "#64748b" },
-  totalPriceText: { fontSize: 14, fontWeight: "800", color: "#1e3a8a", marginTop: 4 },
-  acceptBtn: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
-  acceptBtnPrimary: { backgroundColor: "#1e3a8a" },
+  nameContainer: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
+  bidderNameText: { fontSize: 16, fontWeight: "700", color: "#0f172a" },
+  bestBadge: { backgroundColor: "#4f46e5", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginLeft: 8, flexDirection: "row", alignItems: "center" },
+  bestText: { color: "#ffffff", fontSize: 9, fontWeight: "700", letterSpacing: 0.3 },
+  bidMetaText: { fontSize: 14, color: "#64748b", fontWeight: "400" },
+  dotDivider: { color: "#cbd5e1", marginHorizontal: 2 },
+  totalPriceText: { fontSize: 14, fontWeight: "500", color: "#475569", marginTop: 6 },
+  payoutAmount: { color: "#4f46e5", fontWeight: "700" },
+  acceptBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12, justifyContent: "center", alignItems: "center" },
+  acceptBtnPrimary: { backgroundColor: "#4f46e5" },
   acceptBtnSecondary: { backgroundColor: "#f1f5f9" },
-  acceptBtnLabel: { fontSize: 13, fontWeight: "800", color: "#fff" },
-  bidTimeText: { fontSize: 10, color: "#94a3b8", marginTop: 10, textAlign: "right" },
+  acceptBtnLabel: { fontSize: 14, fontWeight: "600", color: "#ffffff" },
+  cardFooter: { borderTopWidth: 1, borderTopColor: "#f1f5f9", marginTop: 12, paddingTop: 8 },
+  bidTimeText: { fontSize: 11, color: "#94a3b8", fontWeight: "500", textAlign: "right" },
   
-  emptyState: { alignItems: "center", marginTop: 80 },
-  emptyMsg: { color: "#94a3b8", marginTop: 10, fontSize: 14, fontWeight: "600" },
+  emptyState: { alignItems: "center", marginTop: 60, paddingHorizontal: 40 },
+  emptyIconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: "#f1f5f9", justifyContent: "center", alignItems: "center", marginBottom: 16 },
+  emptyMsg: { color: "#64748b", fontSize: 15, fontWeight: "500", textAlign: "center" },
   
-  sheetOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.4)", justifyContent: "flex-end" },
-  sheetContent: { backgroundColor: "#fff", borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 25, paddingVertical: 30 },
-  handle: { width: 40, height: 4, backgroundColor: "#e2e8f0", alignSelf: "center", borderRadius: 2, marginBottom: 20 },
-  sheetTitle: { fontSize: 20, fontWeight: "900", color: "#0f172a", marginBottom: 10 },
-  sheetMessage: { color: "#64748b", fontSize: 14, lineHeight: 22, marginBottom: 25 },
-  sheetActions: { flexDirection: "row", justifyContent: "space-between" },
-  btnCancel: { flex: 1, paddingVertical: 15, alignItems: "center" },
-  btnCancelLabel: { color: "#94a3b8", fontWeight: "700", fontSize: 15 },
-  btnConfirm: { flex: 2, backgroundColor: "#1e3a8a", paddingVertical: 15, borderRadius: 15, alignItems: "center" },
-  btnConfirmLabel: { color: "#fff", fontWeight: "800", fontSize: 15 },
+  sheetOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.3)", justifyContent: "flex-end" },
+  sheetContent: { backgroundColor: "#ffffff", borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: 24, paddingBottom: 40, paddingTop: 16 },
+  handle: { width: 36, height: 5, backgroundColor: "#e2e8f0", alignSelf: "center", borderRadius: 3, marginBottom: 24 },
+  alertIconHeader: { width: 56, height: 56, borderRadius: 28, backgroundColor: "#e0e7ff", justifyContent: "center", alignItems: "center", marginBottom: 16 },
+  sheetTitle: { fontSize: 22, fontWeight: "800", color: "#0f172a", marginBottom: 10, letterSpacing: -0.5 },
+  sheetMessage: { color: "#475569", fontSize: 15, lineHeight: 22, marginBottom: 28 },
+  sheetActions: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
+  btnCancel: { flex: 1, paddingVertical: 14, alignItems: "center", justifyContent: "center", borderRadius: 14, backgroundColor: "#f1f5f9" },
+  btnCancelLabel: { color: "#64748b", fontWeight: "600", fontSize: 15 },
+  btnConfirm: { flex: 2, backgroundColor: "#4f46e5", paddingVertical: 14, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  btnConfirmLabel: { color: "#ffffff", fontWeight: "600", fontSize: 15 },
   
-  successOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.75)", justifyContent: "center", alignItems: "center" },
-  successCard: { width: "85%", backgroundColor: "#fff", borderRadius: 24, padding: 30, alignItems: "center" },
-  successIconCircle: { width: 70, height: 70, borderRadius: 35, backgroundColor: "#1e3a8a", justifyContent: "center", alignItems: "center", marginBottom: 15 },
-  successHeadline: { fontSize: 22, fontWeight: "900", color: "#0f172a", marginTop: 10 },
-  successSubline: { textAlign: "center", color: "#64748b", marginTop: 8, lineHeight: 20, fontSize: 14 },
-  successCloseBtn: { marginTop: 25, backgroundColor: "#0f172a", width: "100%", paddingVertical: 15, borderRadius: 14, alignItems: "center" },
-  successCloseLabel: { color: "#fff", fontWeight: "800" },
+  successOverlay: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.5)", justifyContent: "center", alignItems: "center" },
+  successCard: { width: "85%", backgroundColor: "#ffffff", borderRadius: 28, padding: 32, alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.15, shadowRadius: 30, elevation: 10 },
+  successIconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: "#10b981", justifyContent: "center", alignItems: "center", marginBottom: 20 },
+  successHeadline: { fontSize: 24, fontWeight: "800", color: "#0f172a", letterSpacing: -0.5 },
+  successSubline: { textAlign: "center", color: "#475569", marginTop: 10, lineHeight: 22, fontSize: 15 },
+  successCloseBtn: { marginTop: 28, backgroundColor: "#0f172a", width: "100%", paddingVertical: 15, borderRadius: 14, alignItems: "center" },
+  successCloseLabel: { color: "#ffffff", fontWeight: "600", fontSize: 15 },
 });

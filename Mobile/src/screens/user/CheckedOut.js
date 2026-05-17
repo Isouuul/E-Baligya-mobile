@@ -185,7 +185,7 @@ export default function CheckedOut() {
     );
   };
 
-  const handlePlaceOrder = async () => {
+const handlePlaceOrder = async () => {
     if (isSubmitting) return;
     const user = auth.currentUser;
     if (!user) return;
@@ -248,7 +248,41 @@ export default function CheckedOut() {
       // 1. Save order to FireStore
       await addDoc(collection(db, 'Orders'), orderData);
 
-      // 2. Clear from cart collection ONLY if order originated from CartShop screen
+      // 2. NEW: Trigger Vendor Notifications for Cart Items
+      const uniqueVendorIds = new Set();
+      const notificationPromises = [];
+
+      selectedItems.forEach(item => {
+        // Extracting UID dynamically handling nested object layouts or raw string targets
+        const vendorId = item.uploadedBy?.uid || item.uploadedBy;
+        
+        if (vendorId && !uniqueVendorIds.has(vendorId)) {
+          uniqueVendorIds.add(vendorId);
+
+          const vendorNotificationData = {
+            vendorId: vendorId,
+            userId: user.uid,
+            userFullName: `${userData.firstName} ${userData.lastName}`.trim(),
+            userProfileImage: userData.profileImage,
+            orderNumber: orderNumber,
+            type: 'product_purchased',
+            title: 'New Cart Order Received!',
+            message: `${userData.firstName || 'A user'} has checked out items from your shop inventory.`,
+            isRead: false,
+            createdAt: serverTimestamp()
+          };
+
+          notificationPromises.push(
+            addDoc(collection(db, 'Vendor_Notifications_Product'), vendorNotificationData)
+          );
+        }
+      });
+
+      if (notificationPromises.length > 0) {
+        await Promise.all(notificationPromises);
+      }
+
+      // 3. Clear from cart collection ONLY if order originated from CartShop screen
       if (checkoutOrigin === 'cart') {
         const cartCollection = collection(db, 'Carts', user.uid, 'items');
         
