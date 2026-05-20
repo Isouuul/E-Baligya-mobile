@@ -213,7 +213,7 @@ export default function VendorOrdersScreen() {
     });
   };
 
-const handleAcceptOrder = async (order) => {
+  const handleAcceptOrder = async (order) => {
     if (processing === order.id) return;
     setProcessing(order.id);
     try {
@@ -225,7 +225,6 @@ const handleAcceptOrder = async (order) => {
       const sampleProductName = order.items?.[0]?.productName || null;
 
       await runTransaction(db, async (transaction) => {
-        // 1. Gather all product data configurations securely within the transaction
         const productSnapshots = [];
         for (const item of order.items) {
           const isBiddingItem = item.source === 'notification' || item.productType === 'bidding';
@@ -239,7 +238,6 @@ const handleAcceptOrder = async (order) => {
           }
         }
 
-        // 2. Perform accurate inventory decreases right now on order acceptance
         for (const { ref, snap, item, isBiddingItem } of productSnapshots) {
           const orderQty = item.quantity || 0;
 
@@ -260,7 +258,6 @@ const handleAcceptOrder = async (order) => {
           }
         }
 
-        // 3. Complete normal acceptance status modifications
         transaction.update(orderRef, { status: 'Preparing' });
         
         transaction.set(notifRef, {
@@ -298,7 +295,7 @@ const handleAcceptOrder = async (order) => {
     setProcessing(null);
   };
 
-const handleDeliverOrder = async (order) => {
+  const handleDeliverOrder = async (order) => {
     if (processing === order.id) return;
     setProcessing(order.id);
 
@@ -312,8 +309,6 @@ const handleDeliverOrder = async (order) => {
       const sampleProductName = order.items?.[0]?.productName || null;
 
       await runTransaction(db, async (transaction) => {
-        // Stock loop removed from here to prevent duplicate calculations!
-
         if (order.deliveryMethod === 'Delivery') {
           transaction.set(deliverRef, { ...order, status: 'To Deliver' });
           
@@ -403,7 +398,6 @@ const handleDeliverOrder = async (order) => {
         transaction.set(completeRef, { ...order, status: 'Complete', completedAt: new Date() });
         transaction.delete(deliverRef);
 
-        // ✅ VENDOR NOTIFICATION: Delivered & Completed
         transaction.set(vendorNotifRef, {
           vendorId: vendorId,
           orderId: order.id,
@@ -458,7 +452,6 @@ const handleDeliverOrder = async (order) => {
           createdAt: new Date(),
         });
 
-        // ✅ VENDOR NOTIFICATION: Handover Completed
         transaction.set(vendorNotifRef, {
           vendorId: vendorId,
           orderId: order.id,
@@ -546,11 +539,25 @@ const handleDeliverOrder = async (order) => {
         activeOpacity={0.9}
       >
         <View style={styles.orderHeader}>
-          <View>
+          <View style={{ flex: 1, paddingRight: 8 }}>
             <View style={styles.headerLabelRow}>
               <View style={styles.orderIdBadge}>
                 <Text style={styles.orderIDLabel}>ORDER REFERENCE</Text>
               </View>
+              
+              {/* Delivery / Store Pickup Dynamic Badge */}
+              {item.deliveryMethod === 'Pickup' ? (
+                <View style={styles.pickupBadge}>
+                  <Ionicons name="storefront-outline" size={11} color="#1E3A8A" style={{ marginRight: 3 }} />
+                  <Text style={styles.pickupBadgeText}>PICKUP</Text>
+                </View>
+              ) : (
+                <View style={styles.deliveryBadge}>
+                  <Ionicons name="car-outline" size={11} color="#047857" style={{ marginRight: 3 }} />
+                  <Text style={styles.deliveryBadgeText}>DELIVERY</Text>
+                </View>
+              )}
+
               {isBiddingOrder && (
                 <View style={styles.biddingBadge}>
                   <Ionicons name="gavel" size={10} color="#1E3A8A" style={{ marginRight: 2 }} />
@@ -781,46 +788,50 @@ const styles = StyleSheet.create({
   countText: { fontSize: 10, fontWeight: '700', color: '#64748B' },
   activeCountText: { color: '#FFFFFF' },
   orderCard: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.02, shadowRadius: 6, elevation: 1 },
-  orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingBottom: 12 },
-  headerLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
-  orderIdBadge: { backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  orderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  headerLabelRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 4 },
+  orderIdBadge: { backgroundColor: '#F1F5F9', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 4 },
   orderIDLabel: { fontSize: 9, fontWeight: '700', color: '#64748B', letterSpacing: 0.5 },
-  biddingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 0.5, borderColor: '#BFDBFE' },
-  biddingBadgeText: { fontSize: 9, fontWeight: '800', color: '#1E3A8A', letterSpacing: 0.5 },
   orderNumber: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
   statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
   statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
   statusBadgeText: { fontSize: 12, fontWeight: '700' },
-  cardContent: { paddingVertical: 12 },
+  cardContent: { marginVertical: 14 },
   itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  itemImage: { width: 44, height: 44, borderRadius: 8, backgroundColor: '#F1F5F9' },
-  itemImagePlaceholder: { width: 44, height: 44, borderRadius: 8, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
-  itemName: { fontSize: 14, fontWeight: '600', color: '#1F2937', marginBottom: 2 },
+  itemImage: { width: 50, height: 50, borderRadius: 10, marginRight: 12, backgroundColor: '#F8FAFC' },
+  itemImagePlaceholder: { width: 50, height: 50, borderRadius: 10, marginRight: 12, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
+  itemName: { fontSize: 14, fontWeight: '600', color: '#1E293B', marginBottom: 2 },
   qtyContainer: { flexDirection: 'row', alignItems: 'center' },
-  itemQty: { fontSize: 12, color: '#6B7280' },
-  qtyHigh: { fontWeight: '700', color: '#111827' },
-  itemSub: { fontSize: 11, color: '#64748B', marginTop: 2 },
-  footerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 12 },
+  itemQty: { fontSize: 12, color: '#64748B' },
+  qtyHigh: { fontWeight: '700', color: '#0F172A' },
+  itemSub: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
+  footerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTopWidth: 1, borderColor: '#F1F5F9' },
   revenueBox: { flex: 1 },
   totalLabel: { fontSize: 9, fontWeight: '700', color: '#94A3B8', letterSpacing: 0.5 },
-  totalAmount: { fontSize: 16, fontWeight: '800', color: '#10B981', marginTop: 2 },
-  actionContainer: { flexDirection: 'row', gap: 8 },
-  btnPrimary: { backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, justifyContent: 'center', alignItems: 'center', minWidth: 90 },
+  totalAmount: { fontSize: 16, fontWeight: '800', color: '#1E3A8A' },
+  actionContainer: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  btnPrimary: { backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, justifyContent: 'center', alignItems: 'center', minWidth: 100 },
   btnPrimaryText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   btnIconSecondary: { width: 36, height: 36, borderRadius: 10, borderWidth: 1, borderColor: '#FEE2E2', backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center' },
-  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingTop: 60 },
+  biddingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 0.5, borderColor: '#BFDBFE' },
+  biddingBadgeText: { fontSize: 9, fontWeight: '700', color: '#1E3A8A' },
+  pickupBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EFF6FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 0.5, borderColor: '#BFDBFE' },
+  pickupBadgeText: { fontSize: 9, fontWeight: '700', color: '#1E3A8A' },
+  deliveryBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 0.5, borderColor: '#A7F3D0' },
+  deliveryBadgeText: { fontSize: 9, fontWeight: '700', color: '#047857' },
+  emptyContainer: { alignItems: 'center', marginTop: 60 },
   emptyCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
   emptyText: { fontSize: 16, fontWeight: '700', color: '#475569', marginBottom: 4 },
   emptySubText: { fontSize: 13, color: '#94A3B8' },
   sileoOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.3)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  sileoModal: { width: width - 48, backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.1, shadowRadius: 24, elevation: 10 },
+  sileoModal: { width: width * 0.85, backgroundColor: '#FFFFFF', borderRadius: 24, padding: 24, alignItems: 'center' },
   sileoIconCircle: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  sileoSuccess: { backgroundColor: '#DCFCE7' },
-  sileoWarning: { backgroundColor: '#FEF3C7' },
-  sileoError: { backgroundColor: '#FEE2E2' },
-  sileoIconText: { fontSize: 24, fontWeight: '700' },
+  sileoIconText: { fontSize: 24, fontWeight: '700', color: '#FFFFFF' },
+  sileoSuccess: { backgroundColor: '#10B981' },
+  sileoWarning: { backgroundColor: '#F59E0B' },
+  sileoError: { backgroundColor: '#EF4444' },
   sileoTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' },
   sileoMessage: { fontSize: 14, color: '#475569', textAlign: 'center', marginBottom: 24, lineHeight: 20 },
-  sileoButton: { width: '100%', backgroundColor: '#3B82F6', paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
+  sileoButton: { backgroundColor: '#1E3A8A', width: '100%', paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
   sileoButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });

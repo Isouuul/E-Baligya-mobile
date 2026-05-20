@@ -20,27 +20,22 @@ import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { classifyFish } from '../../../utils/nyckel';
 
-const EditProductForm = ({ product, onCancel, onSubmit }) => {
+const EditProductForm = ({ onCancel, onSubmit, visible, product }) => {
   const auth = getAuth();
   const user = auth.currentUser;
 
-  // Initialize state with the product's existing values
-  const [productName, setProductName] = useState(product?.productName || '');
-  const [basePrice, setBasePrice] = useState(product?.basePrice ? String(product.basePrice) : '');
-  const [quantityKg, setQuantityKg] = useState(product?.quantityKg ? String(product.quantityKg) : '');
-  const [description, setDescription] = useState(product?.description || '');
-  const [category, setCategory] = useState(product?.category || '');
-  
-  // Handle existing image or base64 data
-  const [imageUri, setImageUri] = useState(product?.imageBase64 || null);
-  const [freshness, setFreshness] = useState(product?.uploadedBy?.freshness || null);
-  
+  const [productName, setProductName] = useState('');
+  const [basePrice, setBasePrice] = useState('');
+  const [quantityKg, setQuantityKg] = useState('');
+  const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [imageUri, setImageUri] = useState(null);
+  const [category, setCategory] = useState('');
   const [prediction, setPrediction] = useState(null);
   const [isClassifying, setIsClassifying] = useState(false);
+  const [freshness, setFreshness] = useState(null);
   const submitLockRef = useRef(false);
 
-  // Custom Sileo Modal Configuration
   const [sileoVisible, setSileoVisible] = useState(false);
   const [sileoConfig, setSileoConfig] = useState({
     title: '',
@@ -48,6 +43,12 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
     buttonText: 'OK',
     type: 'info',
     onPress: null,
+  });
+
+  const [services, setServices] = useState({
+    cleaned: { label: 'Cleaned & Gutted', enabled: false, price: '' },
+    filleted: { label: 'Filleted', enabled: false, price: '' },
+    vacuum: { label: 'Vacuum Packed', enabled: false, price: '' },
   });
 
   const showSileo = ({ title, message, buttonText = 'OK', type = 'info', onPress = null }) => {
@@ -62,6 +63,36 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
     }
     setSileoConfig((prev) => ({ ...prev, onPress: null }));
   };
+
+  // Pre-populate fields when the product prop changes
+  useEffect(() => {
+    if (product) {
+      setProductName(product.productName || '');
+      setCategory(product.category || '');
+      setBasePrice(product.basePrice ? product.basePrice.toString() : '');
+      setQuantityKg(product.quantityKg ? product.quantityKg.toString() : '');
+      setDescription(product.description || '');
+      setImageUri(product.imageBase64 || null); // Can process remote image or base64 data
+      setFreshness(product.uploadedBy?.freshness || 'Unknown');
+      
+      // Map premium services if they already exist
+      if (product.premiumServices && Array.isArray(product.premiumServices)) {
+        const updatedServices = {
+          cleaned: { label: 'Cleaned & Gutted', enabled: false, price: '' },
+          filleted: { label: 'Filleted', enabled: false, price: '' },
+          vacuum: { label: 'Vacuum Packed', enabled: false, price: '' },
+        };
+
+        product.premiumServices.forEach((srv) => {
+          if (updatedServices[srv.id]) {
+            updatedServices[srv.id].enabled = true;
+            updatedServices[srv.id].price = srv.price ? srv.price.toString() : '';
+          }
+        });
+        setServices(updatedServices);
+      }
+    }
+  }, [product, visible]);
 
   const pickImage = async () => {
     try {
@@ -89,6 +120,7 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
             });
 
             let freshnessResult = 'Unknown';
+
             if (data.labelName?.toLowerCase().includes('fresh')) {
               freshnessResult = 'Fresh';
             } else if (data.labelName?.toLowerCase().includes('rotten')) {
@@ -122,10 +154,9 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
 
   const convertImageToBase64 = async (uri) => {
     if (!uri) return null;
-    // If the image is already base64 string from the database, return it as-is
-    if (uri.startsWith('data:image')) {
-      return uri;
-    }
+    // If it's already converted or pulling from database string, skip processing
+    if (uri.startsWith('data:image')) return uri; 
+
     try {
       const maxBase64Length = 780000;
       const attempts = [
@@ -161,8 +192,8 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
   };
 
   const handleClose = () => {
-    if (onCancel) onCancel();
-    else if (onSubmit) onSubmit();
+    const closeHandler = onCancel || onSubmit;
+    closeHandler?.();
   };
 
   const handleSubmit = async () => {
@@ -185,7 +216,15 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
         throw new Error('Image is too large to upload. Please use a smaller image.');
       }
 
-      // Prepare updated details
+      const enabledServices = Object.keys(services)
+        .filter((key) => services[key].enabled)
+        .map((key) => ({
+          id: key,
+          label: services[key].label,
+          price: parseFloat(services[key].price) || 0,
+        }));
+
+      // Merge structural updates while preserving immutable original vendor properties
       const updatedProductData = {
         category,
         productName: productName.trim(),
@@ -194,16 +233,17 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
         quantityKg: quantityKg ? parseFloat(quantityKg) : null,
         updatedAt: Timestamp.now(),
         imageBase64,
+        premiumServices: enabledServices,
         'uploadedBy.freshness': freshness || 'Unknown',
       };
 
-      // Reference the specific Firestore product document by its ID
-      const productRef = doc(db, 'Products', product.id);
-      await updateDoc(productRef, updatedProductData);
+      // Perform updates directly via specific document instance ID
+      const productDocRef = doc(db, 'Products', product.id);
+      await updateDoc(productDocRef, updatedProductData);
 
       showSileo({
         title: 'Success',
-        message: 'Product updated successfully.',
+        message: 'Product changes saved successfully.',
         type: 'success',
         onPress: handleClose,
       });
@@ -216,7 +256,7 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
       if (errorCode.includes('permission-denied')) {
         showSileo({
           title: 'Permission Denied',
-          message: 'Your Firestore rules are blocking writes to Products.',
+          message: 'Your Firestore rules are blocking modifications to this Product.',
           type: 'error',
         });
       } else if (
@@ -225,19 +265,13 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
       ) {
         showSileo({
           title: 'Image Too Large',
-          message: 'This image is too large for Firestore document size limits. Use a smaller image.',
-          type: 'warning',
-        });
-      } else if (errorCode.includes('unavailable') || errorCode.includes('network-request-failed')) {
-        showSileo({
-          title: 'Network Error',
-          message: 'Cannot reach Firebase right now. Check internet and try again.',
+          message: 'This image is too large for Firestore document size limits.',
           type: 'warning',
         });
       } else {
         showSileo({
           title: 'Update Failed',
-          message: errorMessage || 'Something went wrong while updating.',
+          message: errorMessage || 'Something went wrong while saving changes.',
           type: 'error',
         });
       }
@@ -247,194 +281,204 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
     }
   };
 
+  const renderServiceRow = (serviceKey) => {
+    const isSelected = services[serviceKey].enabled;
+
+    return (
+      <View key={serviceKey} style={[styles.cardRow, isSelected && styles.activeRow]}>
+        <TouchableOpacity
+          style={styles.checkboxContainer}
+          onPress={() =>
+            setServices((prev) => ({
+              ...prev,
+              [serviceKey]: {
+                ...prev[serviceKey],
+                enabled: !prev[serviceKey].enabled,
+              },
+            }))
+          }
+        >
+          <View style={[styles.customCheckbox, isSelected && styles.customCheckboxChecked]}>
+            {isSelected && <View style={styles.checkmark} />}
+          </View>
+
+          <Text style={styles.rowLabel}>{services[serviceKey].label}</Text>
+        </TouchableOpacity>
+
+        {isSelected && (
+          <TextInput
+            style={styles.rowInput}
+            placeholder="Add-on ₱"
+            keyboardType="numeric"
+            placeholderTextColor="#94A3B8"
+            value={services[serviceKey].price}
+            onChangeText={(txt) =>
+              setServices((prev) => ({
+                ...prev,
+                [serviceKey]: {
+                  ...prev[serviceKey],
+                  price: txt,
+                },
+              }))
+            }
+          />
+        )}
+      </View>
+    );
+  };
+
   const isRotten = freshness === 'Rotten';
 
   return (
-    <Modal
-      visible={true}
-      transparent
-      animationType="fade"
-      onRequestClose={handleClose}
-    >
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
+        <View style={styles.cardModalContainer}>
           <View style={styles.header}>
-            <View style={{ width: 32 }} />
-            <Text style={styles.headerTitle}>Edit Listing</Text>
-            <TouchableOpacity onPress={handleClose} style={styles.closeButton} activeOpacity={0.7}>
+            <Text style={styles.headerTitle}>Edit Product Listing</Text>
+            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
               <Text style={styles.closeButtonText}>✕</Text>
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-            {/* Image Section */}
-            <View style={styles.section}>
-<View style={styles.imagePlaceholder}>
-  {imageUri ? (
-    <Image source={{ uri: imageUri }} style={styles.fullImage} />
-  ) : (
-    <View style={styles.uploadPrompt}>
-      <Text style={styles.uploadIcon}>📸</Text>
-      <Text style={styles.uploadText}>No Image Available</Text>
-    </View>
-  )}
-</View>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+            {/* Image Card Section */}
+            <View style={styles.cardSection}>
+              <Pressable onPress={pickImage} style={styles.imagePlaceholder}>
+                {imageUri ? (
+                  <Image source={{ uri: imageUri }} style={styles.fullImage} />
+                ) : (
+                  <View style={styles.uploadPrompt}>
+                    <Text style={styles.uploadIcon}>📸</Text>
+                    <Text style={styles.uploadText}>Change Product Photo</Text>
+                  </View>
+                )}
+              </Pressable>
 
               {isClassifying && (
                 <View style={styles.aiBadgeLoading}>
-                  <ActivityIndicator size="small" color="#2563eb" />
-                  <Text style={styles.aiText}> Analyzing Quality...</Text>
+                  <ActivityIndicator size="small" color="#1e3a8a" />
+                  <Text style={styles.aiText}> Re-analyzing Quality...</Text>
+                </View>
+              )}
+
+              {freshness && !isClassifying && (
+                <View style={[styles.aiBadge, isRotten ? styles.badgeRotten : styles.badgeFresh]}>
+                  <Text style={styles.aiTextMain}>Freshness Status: {freshness}</Text>
+                  {prediction && (
+                    <Text style={styles.aiTextSub}>
+                      {prediction.label} • {(prediction.confidence * 100).toFixed(0)}% match
+                    </Text>
+                  )}
                 </View>
               )}
             </View>
 
-            {/* Details Section */}
-            <View style={styles.section}>
+            {/* Details Card Section */}
+            <View style={styles.cardSection}>
               <Text style={styles.sectionLabel}>Basic Information</Text>
               
-              <View style={styles.inputRowCat}>
-                {/* Category Picker */}
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.inputTitle}>Category</Text>
-                  <View style={[styles.pickerWrapper, { marginBottom: 0 }]}>
-                    <Picker selectedValue={category} onValueChange={setCategory} style={styles.picker}>
-                      <Picker.Item label="Select Category" value="" color="#94a3b8" />
-                      <Picker.Item label="Fish" value="Fish" color="#0f172a" />
-                      <Picker.Item label="Mollusk" value="Mollusk" color="#0f172a" />
-                      <Picker.Item label="Crustacean" value="Crustacean" color="#0f172a" />
-                      <Picker.Item label="Seasonal" value="Seasonal" color="#0f172a" />
-                    </Picker>
-                  </View>
-                </View>
-
-                {/* Premium Read-Only Freshness Display */}
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputTitle}>Quality Status</Text>
-                  <View style={styles.inputGroup}>
-                    <View style={styles.readOnlyContainer}>
-                      <Text style={styles.readOnlyText}>{freshness}</Text>
-                    </View>
-                  </View>
-                </View>
+              <View style={styles.pickerWrapper}>
+                <Picker selectedValue={category} onValueChange={setCategory} style={styles.picker}>
+                  <Picker.Item label="Select Category" value="" color="#94A3B8" />
+                  <Picker.Item label="Fish" value="Fish" color="#1E293B" />
+                  <Picker.Item label="Mollusk" value="Mollusk" color="#1E293B" />
+                  <Picker.Item label="Crustacean" value="Crustacean" color="#1E293B" />
+                  <Picker.Item label="Seasonal" value="Seasonal" color="#1E293B" />
+                </Picker>
               </View>
 
-              {/* Product Name Input */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.inputTitle}>Product Name</Text>
-                <TextInput 
-                  style={styles.premiumInput} 
-                  placeholder="e.g., Bangus, Yellowfin Tuna" 
-                  placeholderTextColor="#94a3b8"
-                  value={productName} 
-                  onChangeText={setProductName} 
-                />
-              </View>
-              
-              {/* Pricing & Stock Grid */}
+              <TextInput 
+                style={styles.premiumInput} 
+                placeholder="Product Name" 
+                placeholderTextColor="#94A3B8" 
+                value={productName} 
+                onChangeText={setProductName} 
+              />
+
               <View style={styles.inputRow}>
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.inputTitle}>Base Price (₱)</Text>
-                  <TextInput 
-                    style={styles.premiumInput} 
-                    placeholder="0.00" 
-                    keyboardType="numeric" 
-                    placeholderTextColor="#94a3b8"      
-                    value={basePrice} 
-                    onChangeText={setBasePrice} 
-                  />
-                </View>
-                
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputTitle}>Stock (kg)</Text>
-                  <TextInput 
-                    style={styles.premiumInput} 
-                    placeholder="0" 
-                    keyboardType="numeric" 
-                    placeholderTextColor="#94a3b8"
-                    value={quantityKg} 
-                    onChangeText={setQuantityKg} 
-                  />
-                </View>
-              </View>
-
-              {/* Description Input */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.inputTitle}>Product Description</Text>
                 <TextInput 
-                  style={[styles.premiumInput, { minHeight: 110, paddingTop: 14, paddingBottom: 14, textAlignVertical: 'top' }]} 
-                  placeholder="Describe your batch freshness, catching location, etc. (optional)" 
-                  placeholderTextColor="#94a3b8"
-                  value={description} 
-                  onChangeText={setDescription}
-                  multiline
+                  style={[styles.premiumInput, { flex: 1, marginRight: 12 }]} 
+                  placeholder="Base Price" 
+                  keyboardType="numeric" 
+                  placeholderTextColor="#94A3B8" 
+                  value={basePrice} 
+                  onChangeText={setBasePrice} 
+                />
+                <TextInput 
+                  style={[styles.premiumInput, { flex: 1 }]} 
+                  placeholder="Stock (kg)" 
+                  keyboardType="numeric" 
+                  placeholderTextColor="#94A3B8" 
+                  value={quantityKg} 
+                  onChangeText={setQuantityKg} 
                 />
               </View>
+
+              <View style={styles.cardSection}>
+                <Text style={styles.sectionLabel}>Premium Services</Text>
+                {Object.keys(services).map(renderServiceRow)}
+              </View>
+
+              <TextInput 
+                style={[styles.premiumInput, { minHeight: 100, textAlignVertical: 'top' }]} 
+                placeholder="Product Description (optional)" 
+                placeholderTextColor="#94A3B8" 
+                value={description} 
+                onChangeText={setDescription}
+                multiline
+              />
             </View>
 
-            {/* Quality Warning Check */}
             {isRotten && (
               <View style={styles.errorBanner}>
-                <Text style={styles.errorText}>⚠️ Quality check failed. Spoiled products cannot remain active.</Text>
+                <Text style={styles.errorText}>⚠️ Quality check failed. Cannot list spoiled products.</Text>
               </View>
             )}
 
-            <TouchableOpacity
-              onPress={handleSubmit}
-              style={[styles.submitButton, (isSubmitting || isRotten) && styles.disabledButton]}
-              disabled={isSubmitting || isRotten}
-              activeOpacity={0.8}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.submitButtonText}>Save Changes</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handleClose}
-              style={styles.resetButton}
-              disabled={isSubmitting || isClassifying}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.resetButtonText}>Cancel</Text>
-            </TouchableOpacity>
-
-            {/* Custom Sileo Dialog Modal */}
-            <Modal
-              visible={sileoVisible}
-              transparent
-              animationType="fade"
-              statusBarTranslucent
-              onRequestClose={handleSileoClose}
-            >
-              <View style={styles.sileoOverlay}>
-                <View style={styles.sileoModal}>
-                  <View
-                    style={[
-                      styles.sileoIconCircle,
-                      sileoConfig.type === 'success'
-                        ? styles.sileoSuccess
-                        : sileoConfig.type === 'warning'
-                          ? styles.sileoWarning
-                          : styles.sileoError,
-                    ]}
-                  >
-                    <Text style={styles.sileoIconText}>
-                      {sileoConfig.type === 'success' ? '✓' : sileoConfig.type === 'warning' ? '!' : '✕'}
-                    </Text>
-                  </View>
-                  <Text style={styles.sileoTitle}>{sileoConfig.title}</Text>
-                  <Text style={styles.sileoMessage}>{sileoConfig.message}</Text>
-                  <TouchableOpacity style={styles.sileoButton} onPress={handleSileoClose} activeOpacity={0.8}>
-                    <Text style={styles.sileoButtonText}>{sileoConfig.buttonText}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </Modal>
+            {/* Action Buttons */}
+            <View style={styles.actionContainer}>
+              <TouchableOpacity
+                onPress={handleSubmit}
+                style={[styles.submitButton, (isSubmitting || isRotten) && styles.disabledButton]}
+                disabled={isSubmitting || isRotten}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.submitButtonText}>Save Changes</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </ScrollView>
         </View>
       </View>
+
+      {/* Sileo Custom Alert Modal */}
+      <Modal visible={sileoVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={handleSileoClose}>
+        <View style={styles.sileoOverlay}>
+          <View style={styles.sileoModal}>
+            <View
+              style={[
+                styles.sileoIconCircle,
+                sileoConfig.type === 'success'
+                  ? styles.sileoSuccess
+                  : sileoConfig.type === 'warning'
+                    ? styles.sileoWarning
+                    : styles.sileoError,
+              ]}
+            >
+              <Text style={styles.sileoIconText}>
+                {sileoConfig.type === 'success' ? '✓' : sileoConfig.type === 'warning' ? '!' : '✕'}
+              </Text>
+            </View>
+            <Text style={styles.sileoTitle}>{sileoConfig.title}</Text>
+            <Text style={styles.sileoMessage}>{sileoConfig.message}</Text>
+            <TouchableOpacity style={styles.sileoButton} onPress={handleSileoClose}>
+              <Text style={styles.sileoButtonText}>{sileoConfig.buttonText}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 };
@@ -442,213 +486,152 @@ const EditProductForm = ({ product, onCancel, onSubmit }) => {
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.45)', 
-    justifyContent: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'flex-end', 
     alignItems: 'center',
-    paddingHorizontal: 20,
   },
-  modalContent: {
+  cardModalContainer: {
     width: '100%',
-    maxWidth: 480,
-    maxHeight: '82%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 28,
+    maxWidth: 550,
+    maxHeight: '90%',
+    backgroundColor: '#F8FAFC', 
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     overflow: 'hidden',
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 10,
-  },
-  container: { 
-    padding: 24,
-    paddingBottom: 28,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 24,
   },
   header: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
-    paddingTop: 20,
-    paddingBottom: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    paddingHorizontal: 20,
+    borderBottomColor: '#E2E8F0',
   },
-  headerTitle: { 
-    fontSize: 17, 
-    fontWeight: '700', 
-    color: '#0f172a',
-    letterSpacing: -0.3
-  },
+  headerTitle: { fontSize: 20, fontWeight: '800', color: '#1E3A8A' },
   closeButton: { 
-    width: 32, 
-    height: 32, 
-    borderRadius: 16, 
+    width: 36, 
+    height: 36, 
+    borderRadius: 18, 
     backgroundColor: '#F1F5F9', 
     alignItems: 'center', 
     justifyContent: 'center',
   },
-  closeButtonText: { fontSize: 13, color: '#475569', fontWeight: '600' },
-  
-  section: { marginBottom: 24 },
+  closeButtonText: { fontSize: 16, color: '#64748B', fontWeight: 'bold' },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+  cardSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    elevation: 2,
+  },
   sectionLabel: { 
     fontSize: 12, 
     fontWeight: '700', 
-    color: '#64748b', 
-    marginBottom: 16, 
+    color: '#64748B', 
+    marginBottom: 14, 
     textTransform: 'uppercase', 
-    letterSpacing: 0.8,
-    marginLeft: 2
-  },
-  fieldGroup: {
-    marginBottom: 40
-  },
-  inputTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: 6,
-    marginLeft: 2,
+    letterSpacing: 1.2 
   },
   imagePlaceholder: { 
     width: '100%', 
-    height: 190, 
-    borderRadius: 20, 
-    backgroundColor: '#f8fafc', 
-    borderWidth: 1, 
-    borderColor: '#e2e8f0', 
+    height: 180, 
+    borderRadius: 14, 
+    backgroundColor: '#F8FAFC', 
+    borderStyle: 'dashed', 
+    borderWidth: 2, 
+    borderColor: '#CBD5E1', 
     overflow: 'hidden', 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
-  imageContainer: {
-    width: '100%',
-    height: '100%',
-    position: 'relative'
-  },
-  fullImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  imageOverlayBadge: {
-    position: 'absolute',
-    bottom: 12,
-    right: 12,
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  imageOverlayText: { color: '#ffffff', fontSize: 12, fontWeight: '600' },
+  fullImage: { width: '100%', height: '100%' },
   uploadPrompt: { alignItems: 'center' },
-  uploadIcon: { fontSize: 32, marginBottom: 8 },
-  uploadText: { color: '#64748b', fontWeight: '600', fontSize: 14 },
-  
+  uploadIcon: { fontSize: 36, marginBottom: 6 },
+  uploadText: { color: '#64748B', fontWeight: '600', fontSize: 14 },
+  aiBadge: { padding: 14, borderRadius: 12, marginTop: 14, borderLeftWidth: 5 },
   aiBadgeLoading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 14 },
-  aiText: { color: '#475569', fontWeight: '600', fontSize: 14 },
-
-  premiumInput: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    height: 50,
-    fontSize: 15,
-    color: '#0f172a',
-  },
-
-  inputRow: { 
-    flexDirection: 'row',
-    marginBottom: 16
-  },
-  inputRowCat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16, 
-  },
-  inputGroup: {
-    justifyContent: 'center',
-  },
-  readOnlyContainer: {
+  badgeFresh: { backgroundColor: '#F0FDF4', borderLeftColor: '#22C55E' },
+  badgeRotten: { backgroundColor: '#FEF2F2', borderLeftColor: '#EF4444' },
+  aiTextMain: { fontWeight: 'bold', fontSize: 15, color: '#1E293B' },
+  aiTextSub: { fontSize: 12, color: '#64748B', marginTop: 2 },
+  aiText: { color: '#1E3A8A', fontWeight: '600' },
+  premiumInput: { 
     backgroundColor: '#F8FAFC', 
+    padding: 14, 
+    borderRadius: 12, 
+    fontSize: 15, 
+    color: '#1E293B', 
+    marginBottom: 12, 
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 14,
-    height: 50, 
-    paddingHorizontal: 16,
-    justifyContent: 'center',
+    borderColor: '#E2E8F0'
   },
-  readOnlyText: {
-    color: '#0F172A', 
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  pickerWrapper: {
-    backgroundColor: '#ffffff',
-    borderRadius: 14,
-    overflow: 'hidden',
+  inputRow: { flexDirection: 'row' },
+  pickerWrapper: { 
+    backgroundColor: '#F8FAFC', 
+    borderRadius: 12, 
+    marginBottom: 12, 
+    overflow: 'hidden', 
     borderWidth: 1,
-    borderColor: '#cbd5e1',
-    height: 50,
-    justifyContent: 'center',
+    borderColor: '#E2E8F0'
   },
-  picker: {
-    color: '#0f172a',
-    backgroundColor: 'transparent',
+  picker: { height: 50, color: '#1E293B' },
+  errorBanner: { backgroundColor: '#EF4444', padding: 14, borderRadius: 14, marginBottom: 16 },
+  errorText: { color: '#FFF', fontWeight: 'bold', textAlign: 'center', fontSize: 14 },
+  actionContainer: {
+    paddingHorizontal: 4,
+    marginTop: 8,
   },
-
-  errorBanner: { backgroundColor: '#ef4444', padding: 14, borderRadius: 14, marginBottom: 16 },
-  errorText: { color: '#FFF', fontWeight: '600', fontSize: 13, textAlign: 'center', lineHeight: 18 },
-
   submitButton: { 
-    backgroundColor: '#2563eb', 
-    height: 54,
-    borderRadius: 16, 
-    alignItems: 'center', 
-    justifyContent: 'center',
-    marginTop: 8, 
-    shadowColor: '#2563eb', 
-    shadowOffset: { width: 0, height: 6 }, 
-    shadowOpacity: 0.2, 
-    shadowRadius: 12, 
-    elevation: 3 
-  },
-  disabledButton: { backgroundColor: '#94a3b8', shadowOpacity: 0, elevation: 0 },
-  submitButtonText: { color: '#FFF', fontSize: 16, fontWeight: '600', letterSpacing: -0.2 },
-  resetButton: { 
-    height: 50,
-    borderWidth: 1.5, 
-    borderColor: '#cbd5e1', 
+    backgroundColor: '#1E3A8A', 
+    paddingVertical: 16, 
     borderRadius: 14, 
     alignItems: 'center', 
-    justifyContent: 'center',
-    marginTop: 12, 
-    backgroundColor: '#FFFFFF' 
+    shadowColor: '#1E3A8A', 
+    shadowOffset: { width: 0, height: 4 }, 
+    shadowOpacity: 0.2, 
+    shadowRadius: 8, 
+    elevation: 4 
   },
-  resetButtonText: { color: '#475569', fontSize: 15, fontWeight: '600' },
-  
+  disabledButton: { backgroundColor: '#94A3B8', shadowOpacity: 0, elevation: 0 },
+  submitButtonText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   sileoOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1000,
   },
   sileoModal: {
-    width: '84%',
-    maxWidth: 340,
+    width: '85%',
+    maxWidth: 360,
     backgroundColor: '#fff',
     borderRadius: 24,
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 28,
     alignItems: 'center',
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.15,
-    shadowRadius: 30,
-    elevation: 10
+    elevation: 20,
   },
   sileoIconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
@@ -656,17 +639,63 @@ const styles = StyleSheet.create({
   sileoSuccess: { backgroundColor: '#10B981' },
   sileoWarning: { backgroundColor: '#F59E0B' },
   sileoError: { backgroundColor: '#EF4444' },
-  sileoIconText: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  sileoTitle: { fontSize: 18, fontWeight: '700', color: '#0F172A', marginBottom: 8, letterSpacing: -0.3 },
+  sileoIconText: { color: '#fff', fontSize: 22, fontWeight: '800' },
+  sileoTitle: { fontSize: 18, fontWeight: '800', color: '#0F172A', marginBottom: 8 },
   sileoMessage: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
   sileoButton: {
     backgroundColor: '#0F172A',
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 12,
     width: '100%',
-    paddingVertical: 14,
-    borderRadius: 14,
     alignItems: 'center'
   },
-  sileoButtonText: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  sileoButtonText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  activeRow: { borderColor: '#1E3A8A' },
+  checkboxContainer: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  customCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
+    marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customCheckboxChecked: { backgroundColor: '#1E3A8A', borderColor: '#1E3A8A' },
+  checkmark: {
+    width: 10,
+    height: 5,
+    borderBottomWidth: 2,
+    borderLeftWidth: 2,
+    borderColor: '#FFF',
+    transform: [{ rotate: '-45deg' }],
+    marginTop: -2,
+  },
+  rowLabel: { fontSize: 15, color: '#334155', fontWeight: '500' },
+  rowInput: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    width: 110,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    color: '#1E293B',
+  },
 });
 
 export default EditProductForm;
