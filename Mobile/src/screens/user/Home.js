@@ -21,12 +21,14 @@ import * as Location from "expo-location";
 import { auth, db } from "../../firebase";
 import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import BuyNowModal from "./BuyNow";
-
-import BasketIcon from '../../../assets/basket.png';
-import MessageIcon from '../../../assets/message.png';
+import NotificationModal from './NotificationModal'; // Connected here
 
 const { width } = Dimensions.get("window");
 const ITEMS_PER_PAGE = 4;
+
+import BasketIcon from '../../../assets/basket.png';
+import MessageIcon from '../../../assets/message.png';
+import NotificationIcon from '../../../assets/notification.png';
 
 export default function Home({ navigation }) {
   const [firstName, setFirstName] = useState("User");
@@ -40,6 +42,8 @@ export default function Home({ navigation }) {
   const [buyNowModalVisible, setBuyNowModalVisible] = useState(false);
   const [buyNowProduct, setBuyNowProduct] = useState(null);
   const [cartCount, setCartCount] = useState(0);
+  const [notificationCount, setNotificationCount] = useState(0); 
+  const [notifVisible, setNotifVisible] = useState(false); // Controls Notification Overlay state
 
   const categories = [
     { name: "All", icon: require("../../../assets/all.png") },
@@ -72,6 +76,26 @@ export default function Home({ navigation }) {
     const q = collection(db, 'Carts', uid, 'items');
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setCartCount(snapshot.size);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Real-time Notification Badge Logic
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    const q = query(
+      collection(db, "Notifications"), 
+      where("uid", "==", uid), 
+      where("status", "==", "unread")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setNotificationCount(snapshot.size);
+    }, (error) => {
+      console.error("Notification listener error: ", error);
     });
 
     return () => unsubscribe();
@@ -114,34 +138,25 @@ export default function Home({ navigation }) {
     return () => sub?.remove();
   }, []);
 
-  /* -------------------------------------
-     FETCH DATA & COMPLIANCE ENGINE FILTER
-  -------------------------------------*/
-  const fetchAllData = async () => {
+const fetchAllData = async () => {
     try {
       const qProducts = query(collection(db, "Products"));
       const snapshotProducts = await getDocs(qProducts);
       
-      // Map all documents into local array structured variables
       const rawProductsList = snapshotProducts.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      
-      // COMPLIANCE GUARD: Strip out any listing modified to a "restricted" status state
       const compliantProducts = rawProductsList.filter(item => item.status !== 'restricted');
 
-      // Set standard products display pool
       setProducts(shuffleArray(compliantProducts));
       
-      // Set seasonal favorites (Trend) tracking pool from compliant list only
       const listTrend = compliantProducts.filter((i) => i.category === "Trend");
       setTrendFish(shuffleArray(listTrend));
     } catch (err) { 
       console.error(err); 
-    } finally { 
+    } finally { // <-- Fixed the typo here
       setLoading(false); 
       setRefreshing(false); 
     }
   };
-
   useEffect(() => { fetchAllData(); }, []);
 
   const handleRefresh = () => { setRefreshing(true); fetchAllData(); };
@@ -306,6 +321,20 @@ export default function Home({ navigation }) {
             >
               <Image source={MessageIcon} style={styles.customHeaderIcon} />
             </TouchableOpacity>
+
+            {/* NOTIFICATION BELL ICON (MODAL VISIBILITY ONPRESS ACTION) */}
+            <TouchableOpacity 
+              onPress={() => setNotifVisible(true)} 
+              style={[styles.iconCircle, { marginLeft: 12 }]}
+              activeOpacity={0.8}
+            >
+              <Image source={NotificationIcon} style={styles.customHeaderIcon} />
+              {notificationCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
       </SafeAreaView>
@@ -366,10 +395,18 @@ export default function Home({ navigation }) {
         <View style={{ height: 40 }} />
       </ScrollView>
 
+      {/* REUSABLE PRODUCT BUY-NOW INJECTION OVERLAYS */}
       <BuyNowModal
         visible={buyNowModalVisible}
         onClose={() => setBuyNowModalVisible(false)}
         product={buyNowProduct}
+      />
+
+      {/* NOTIFICATION CENTER INJECTION OVERLAYS */}
+      <NotificationModal 
+        visible={notifVisible}
+        onClose={() => setNotifVisible(false)}
+        navigation={navigation}
       />
     </View>
   );

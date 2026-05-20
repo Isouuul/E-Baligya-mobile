@@ -7,14 +7,14 @@ import {
   Image,
   ScrollView,
   ActivityIndicator,
-  TextInput,
   Dimensions,
+  Modal,
+  FlatList,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Picker } from '@react-native-picker/picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 /* ------------------------- PROGRESS STEPS UI ------------------------- */
 const ProgressSteps = ({ currentStep = 1 }) => {
@@ -53,11 +53,10 @@ const ProgressSteps = ({ currentStep = 1 }) => {
   );
 };
 
-
-
 /* ------------------------- MAIN COMPONENT ------------------------- */
 const VendorSignupStep1 = ({ route, navigation }) => {
   const [selectedMarket, setSelectedMarket] = useState(null);
+  const [marketModalVisible, setMarketModalVisible] = useState(false);
   const [govIDFront, setGovIDFront] = useState(null);
   const [govIDBack, setGovIDBack] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -88,7 +87,7 @@ const VendorSignupStep1 = ({ route, navigation }) => {
     { name: 'North Capitol Road (Pala-Pala Market)', latitude: 10.66369, longitude: 122.93918 },
   ];
 
-  /* ------------------------- PICK IMAGE FUNCTIONS (LOGS RESTORED) ------------------------- */
+  /* ------------------------- PICK IMAGE FUNCTIONS ------------------------- */
   const pickGovIDFront = async () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -152,50 +151,50 @@ const VendorSignupStep1 = ({ route, navigation }) => {
       console.error('Pick Back ID Error:', err);
     }
   };
-const handleNext = () => {
-  if (isLoading) return;
 
-  if (!selectedMarket) {
-    return showSileo({
-      title: 'Missing Field',
-      message: 'Please select your market.',
-      type: 'warning',
-    });
-  }
+  const handleNext = () => {
+    if (isLoading) return;
 
-  if (!govIDFront || !govIDBack) {
-    return showSileo({
-      title: 'Missing Photos',
-      message: 'Upload both sides of your ID.',
-      type: 'warning',
-    });
-  }
+    if (!selectedMarket) {
+      return showSileo({
+        title: 'Missing Field',
+        message: 'Please select your market.',
+        type: 'warning',
+      });
+    }
 
-  setIsLoading(true);
+    if (!govIDFront || !govIDBack) {
+      return showSileo({
+        title: 'Missing Photos',
+        message: 'Upload both sides of your ID.',
+        type: 'warning',
+      });
+    }
 
-  try {
-    const formData = {
-      businessType,
-      marketName: selectedMarket.name,
-      latitude: selectedMarket.latitude,
-      longitude: selectedMarket.longitude,
-      govIDFront,
-      govIDBack,
-    };
+    setIsLoading(true);
 
-    navigation.navigate('VendorSignupBusPermit', {
-      formData,
-    });
+    try {
+      const formData = {
+        businessType,
+        marketName: selectedMarket.name,
+        latitude: selectedMarket.latitude,
+        longitude: selectedMarket.longitude,
+        govIDFront,
+        govIDBack,
+      };
 
-  } finally {
-    setIsLoading(false);
-  }
-};
+      navigation.navigate('VendorSignupBusPermit', {
+        formData,
+      });
 
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <View style={styles.mainWrapper}>
-      {/* IMPROVED HEADER */}
+      {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <Text style={styles.backIcon}>←</Text>
@@ -218,20 +217,18 @@ const handleNext = () => {
           </View>
 
           <Text style={styles.label}>Assigned Market</Text>
-          <View style={styles.pickerWrapper}>
-            <Picker
-              selectedValue={selectedMarket?.name ?? ""}
-              onValueChange={(value) => {
-                const market = marketOptions.find((m) => m.name === value);
-                setSelectedMarket(market || null);
-              }}
-              style={{ color: '#1E293B' }}
-            >
-              <Picker.Item label="Select market location" value="" color="#94A3B8" />
-              {marketOptions.map((m, i) => <Picker.Item key={i} label={m.name} value={m.name} color="#1E293B" />)}
-            </Picker>
-          </View>
-
+          
+          {/* PREMIUM SELECT TRIGGER */}
+          <TouchableOpacity 
+            style={[styles.premiumSelector, selectedMarket && styles.premiumSelectorSelected]} 
+            onPress={() => setMarketModalVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.premiumSelectorText, !selectedMarket && styles.premiumSelectorPlaceholder]}>
+              {selectedMarket ? selectedMarket.name : 'Select market location'}
+            </Text>
+            <Text style={styles.chevronIcon}>▼</Text>
+          </TouchableOpacity>
 
           {selectedMarket && (
             <View style={styles.coordBox}>
@@ -265,8 +262,6 @@ const handleNext = () => {
               </View>
             )}
           </TouchableOpacity>
-
-
         </View>
 
         {/* BACK ID SECTION */}
@@ -286,8 +281,6 @@ const handleNext = () => {
               </View>
             )}
           </TouchableOpacity>
-
-
         </View>
 
         <View style={{ height: 100 }} />
@@ -308,6 +301,52 @@ const handleNext = () => {
         </TouchableOpacity>
       </View>
 
+      {/* PREMIUM BOTTOM SHEET MODAL */}
+      <Modal
+        visible={marketModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setMarketModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalDismissZone} 
+            activeOpacity={1} 
+            onPress={() => setMarketModalVisible(false)} 
+          />
+          <View style={styles.bottomSheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Select Market Location</Text>
+            
+            <FlatList
+              data={marketOptions}
+              keyExtractor={(item, index) => index.toString()}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.sheetList}
+              renderItem={({ item }) => {
+                const isSelected = selectedMarket?.name === item.name;
+                return (
+                  <TouchableOpacity
+                    style={[styles.marketOptionRow, isSelected && styles.marketOptionRowSelected]}
+                    onPress={() => {
+                      setSelectedMarket(item);
+                      setMarketModalVisible(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.marketOptionText, isSelected && styles.marketOptionTextSelected]}>
+                      {item.name}
+                    </Text>
+                    {isSelected && <Text style={styles.checkmarkIcon}>✓</Text>}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* SILEO ALERTS SYSTEM */}
       {sileoVisible && (
         <View style={styles.sileoOverlay}>
           <View style={styles.sileoModal}>
@@ -469,33 +508,44 @@ const styles = StyleSheet.create({
     backgroundColor: '#EFF6FF',
     paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#DBEAFE',
     marginBottom: 16,
   },
   fixedValueText: { color: '#2563EB', fontWeight: '700', fontSize: 15 },
-  pickerWrapper: {
+  
+  /* PREMIUM SELECTOR BOX */
+  premiumSelector: {
     backgroundColor: '#F8FAFC',
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    marginBottom: 12,
-    overflow: 'hidden',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  selectedMarketDisplay: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#DBEAFE',
+  premiumSelectorSelected: {
+    borderColor: '#2563EB',
+    backgroundColor: '#FFF',
   },
-  selectedMarketText: {
-    fontSize: 14,
+  premiumSelectorText: {
+    fontSize: 15,
     fontWeight: '600',
-    color: '#2563EB',
+    color: '#1E293B',
   },
+  premiumSelectorPlaceholder: {
+    color: '#94A3B8',
+    fontWeight: '500',
+  },
+  chevronIcon: {
+    fontSize: 10,
+    color: '#64748B',
+  },
+
   coordBox: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -526,6 +576,74 @@ const styles = StyleSheet.create({
   uploadBtnText: { color: '#64748B', fontWeight: '600' },
   imagePreview: { width: '100%', height: '100%', resizeMode: 'cover' },
   instructionText: { fontSize: 12, color: '#94A3B8', marginBottom: 10 },
+
+  /* PREMIUM BOTTOM SHEET STYLES */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalDismissZone: {
+    flex: 1,
+  },
+  bottomSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 14,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+    maxHeight: height * 0.6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 24,
+  },
+  sheetHandle: {
+    width: 38,
+    height: 4,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 18,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 16,
+  },
+  sheetList: {
+    paddingBottom: 20,
+  },
+  marketOptionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: '#F8FAFC',
+  },
+  marketOptionRowSelected: {
+    backgroundColor: '#EFF6FF',
+  },
+  marketOptionText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#334155',
+  },
+  marketOptionTextSelected: {
+    color: '#2563EB',
+    fontWeight: '700',
+  },
+  checkmarkIcon: {
+    fontSize: 16,
+    color: '#2563EB',
+    fontWeight: 'bold',
+  },
 
   /* FOOTER */
   footer: {

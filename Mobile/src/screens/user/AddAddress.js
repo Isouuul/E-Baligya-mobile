@@ -9,11 +9,13 @@ import {
   Switch,
   StatusBar,
   ActivityIndicator,
-  SafeAreaView, Animated
+  SafeAreaView,
+  Animated
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import RNPickerSelect from 'react-native-picker-select';
-import { useNavigation } from '@react-navigation/native';
+import MapView, { Marker } from 'react-native-maps';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { auth, db } from '../../firebase';
 import {
   doc,
@@ -21,11 +23,14 @@ import {
   addDoc,
   collection,
   serverTimestamp,
+  getDocs,
+  updateDoc
 } from 'firebase/firestore';
 import phLocations from '../../data/ph_locations.json';
 
 export default function AddAddress() {
   const navigation = useNavigation();
+  const route = useRoute();
   const user = auth.currentUser;
 
   const [userData, setUserData] = useState({});
@@ -36,16 +41,19 @@ export default function AddAddress() {
   const [isDefault, setIsDefault] = useState(true);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  const [latitude, setLatitude] = useState(10.6689);
+  const [longitude, setLongitude] = useState(122.9497);
+  const [hasMapPin, setHasMapPin] = useState(false);
+
+  // Focus tracking for premium input states
+  const [focusedInput, setFocusedInput] = useState(null);
+
   const [sileoVisible, setSileoVisible] = useState(false);
   const [sileoConfig, setSileoConfig] = useState({
-    title: '',
-    message: '',
-    type: 'info',
-    buttonText: 'OK',
-    onClose: null,
+    title: '', message: '', type: 'info', buttonText: 'OK', onClose: null,
   });
 
-  // Default location (Bacolod City, Western Visayas)
   const selectedRegion = 'Western Visayas';
   const selectedProvince = 'Negros Occidental';
   const selectedCity = 'Bacolod City';
@@ -58,21 +66,26 @@ export default function AddAddress() {
   const handleSileoClose = () => {
     const callback = sileoConfig.onClose;
     setSileoVisible(false);
-    if (typeof callback === 'function') {
-      callback();
-    }
+    if (typeof callback === 'function') callback();
   };
 
   useEffect(() => {
-    if (!sileoVisible) return;
-    const timeout = setTimeout(() => {
-      handleSileoClose();
-    }, 5000);
+    if (route.params?.hasSelectedLocation) {
+      setLatitude(route.params.selectedLatitude);
+      setLongitude(route.params.selectedLongitude);
+      setHasMapPin(true);
+    }
+    
+    if (route.params?.savedFormState) {
+      const { formBarangay, formStreet, formPhone, formLabel, formDefault } = route.params.savedFormState;
+      if (formBarangay) setSelectedBarangay(formBarangay);
+      if (formStreet) setStreetName(formStreet);
+      if (formPhone) setPhoneNumber(formPhone);
+      if (formLabel) setLabel(formLabel);
+      if (formDefault !== undefined) setIsDefault(formDefault);
+    }
+  }, [route.params]);
 
-    return () => clearTimeout(timeout);
-  }, [sileoVisible, sileoConfig]);
-
-  // ✅ Logic Preserved: Load user info
   useEffect(() => {
     const fetchUser = async () => {
       if (!user) return;
@@ -81,63 +94,51 @@ export default function AddAddress() {
       if (snap.exists()) {
         const data = snap.data();
         setUserData(data);
-        if (data.phoneNumber) setPhoneNumber(data.phoneNumber);
+        if (data.phoneNumber && !phoneNumber) setPhoneNumber(data.phoneNumber);
       }
     };
     fetchUser();
   }, [user]);
 
-  // ✅ Logic Preserved: Get barangays
-  const barangays =
-    phLocations?.regions?.[selectedRegion]?.[selectedProvince]?.[selectedCity]
-      ?.barangays || [];
+  const barangays = phLocations?.regions?.[selectedRegion]?.[selectedProvince]?.[selectedCity]?.barangays || [];
 
-  // ✅ Logic Preserved: Strict validation and save logic
   const handleSaveAddress = async () => {
     if (!selectedBarangay) {
-      showSileo({
-        title: 'Missing Information',
-        message: 'Please select a barangay.',
-        type: 'warning',
-      });
+      showSileo({ title: 'Missing Field', message: 'Please select your barangay to continue.', type: 'warning' });
+      return;
+    }
+    if (!hasMapPin) {
+      showSileo({ title: 'Map Pin Required', message: 'Please pin your exact coordinates on the map map baseline.', type: 'warning' });
       return;
     }
     if (!streetName.trim()) {
-      showSileo({
-        title: 'Missing Information',
-        message: 'Please enter your street name.',
-        type: 'warning',
-      });
+      showSileo({ title: 'Missing Field', message: 'Please enter your street address details.', type: 'warning' });
       return;
     }
     if (!phoneNumber.trim()) {
-      showSileo({
-        title: 'Missing Information',
-        message: 'Please enter your phone number.',
-        type: 'warning',
-      });
+      showSileo({ title: 'Missing Field', message: 'A secure contact number is required.', type: 'warning' });
       return;
     }
     if (!/^(09)\d{9}$/.test(phoneNumber)) {
-      showSileo({
-        title: 'Invalid Number',
-        message: 'Please enter a valid 11-digit phone number starting with 09.',
-        type: 'warning',
-      });
-      return;
-    }
-    if (!auth.currentUser) {
-      showSileo({
-        title: 'Error',
-        message: 'You must be logged in to save your address.',
-        type: 'error',
-      });
+      showSileo({ title: 'Invalid Contact', message: 'Please supply a verified 11-digit mobile number.', type: 'warning' });
       return;
     }
 
     try {
       setLoading(true);
       const userId = auth.currentUser.uid;
+      const addressRef = collection(db, 'Users-Address', userId, 'addresses');
+
+      if (isDefault) {
+        const snapshot = await getDocs(addressRef);
+        const updates = snapshot.docs.map(async (d) => {
+          await updateDoc(doc(db, 'Users-Address', userId, 'addresses', d.id), {
+            status: 'inactive',
+          });
+        });
+        await Promise.all(updates);
+      }
+      
       const addressData = {
         firstName: userData.firstName || '',
         lastName: userData.lastName || '',
@@ -149,200 +150,242 @@ export default function AddAddress() {
         phoneNumber,
         postalCode,
         label,
-        isDefault,
+        status: isDefault ? 'active' : 'inactive', 
+        latitude,
+        longitude,
         createdAt: serverTimestamp(),
       };
 
-      await addDoc(collection(db, 'Users-Address', userId, 'addresses'), addressData);
+      await addDoc(addressRef, addressData);
+
       showSileo({
-        title: 'Success',
-        message: 'Address saved successfully!',
+        title: 'Address Saved',
+        message: 'Your dynamic shipping destination has been stored securely.',
         type: 'success',
-        onClose: () => navigation.goBack(),
+        onClose: () => navigation.navigate('AddressSelection'),
       });
     } catch (error) {
       console.error('Error saving address:', error);
-      showSileo({
-        title: 'Error',
-        message: 'Something went wrong while saving your address.',
-        type: 'error',
-      });
+      showSileo({ title: 'System Error', message: 'Could not record layout. Please try again.', type: 'error' });
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleNavigateToMap = () => {
+    navigation.navigate('UserAddressMapView', {
+      latitude,
+      longitude,
+      savedFormState: {
+        formBarangay: selectedBarangay,
+        formStreet: streetName,
+        formPhone: phoneNumber,
+        formLabel: label,
+        formDefault: isDefault
+      }
+    });
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* ✅ PROFESSIONAL HEADER (Matches Product.js style) */}
+      {/* Premium Minimalist Header */}
       <View style={styles.customHeader}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerIconButton}>
-            <Ionicons name="chevron-back" size={24} color="#1E3A8A" />
-          </TouchableOpacity>
-          <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerMainTitle}>Add Address</Text>
-            <Text style={styles.headerSubTitle}>Set your delivery location</Text>
-          </View>
-          <View style={{ width: 45 }} /> 
-        </View>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerIconButton} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={20} color="#0F172A" />
+        </TouchableOpacity>
+        <Text style={styles.headerMainTitle}>Add Address</Text>
+        <View style={{ width: 38 }} /> 
       </View>
 
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View style={styles.sectionHeader}>
-            <MaterialCommunityIcons name="account-outline" size={20} color="#1E3A8A" />
-            <Text style={styles.sectionTitle}>Contact Information</Text>
-        </View>
-
-        {/* Full Name */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Full Name</Text>
-          <View style={[styles.inputWrapper, styles.disabledInput]}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        
+        {/* SECTION 1: CONTACT */}
+        <Text style={styles.sectionTitle}>Contact Parameters</Text>
+        <View style={styles.premiumCard}>
+          <View style={[styles.inputGroup, styles.borderBottom]}>
+            <Text style={styles.label}>Recipient Name</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, styles.disabledText]}
               value={`${userData.firstName || ''} ${userData.lastName || ''}`.trim()}
               editable={false}
             />
           </View>
-        </View>
 
-        {/* Phone Number */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Phone Number</Text>
-          <View style={styles.inputWrapper}>
+          <View style={[styles.inputGroup, focusedInput === 'phone' && styles.focusedGroup]}>
+            <Text style={styles.label}>Contact Number</Text>
             <TextInput
               style={styles.input}
-              placeholder="09123456789"
+              placeholder="e.g. 09123456789"
               value={phoneNumber}
               onChangeText={setPhoneNumber}
               keyboardType="phone-pad"
               maxLength={11}
+              placeholderTextColor="#94A3B8"
+              onFocus={() => setFocusedInput('phone')}
+              onBlur={() => setFocusedInput(null)}
             />
           </View>
         </View>
 
-        <View style={[styles.sectionHeader, { marginTop: 20 }]}>
-            <MaterialCommunityIcons name="map-marker-outline" size={20} color="#1E3A8A" />
-            <Text style={styles.sectionTitle}>Address Information</Text>
-        </View>
-
-        {/* Static Fields in a 2-column or simple row design */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Location</Text>
-          <View style={[styles.inputWrapper, styles.disabledInput]}>
+        {/* SECTION 2: LOCATION CRITERIA */}
+        <Text style={styles.sectionTitle}>Core Destination</Text>
+        <View style={styles.premiumCard}>
+          <View style={[styles.inputGroup, styles.borderBottom]}>
+            <Text style={styles.label}>City & Province</Text>
             <Text style={styles.staticText}>{selectedCity}, {selectedProvince}</Text>
           </View>
-        </View>
 
-        {/* Barangay Dropdown */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Barangay</Text>
-          <View style={styles.inputWrapper}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Barangay Sector</Text>
             <RNPickerSelect
                 onValueChange={(value) => setSelectedBarangay(value)}
                 items={barangays.map((b) => ({ label: b, value: b }))}
                 value={selectedBarangay}
-                placeholder={{ label: 'Select your Barangay...', value: null }}
+                placeholder={{ label: 'Tap to select barangay...', value: null }}
                 style={pickerSelectStyles}
                 useNativeAndroidPickerStyle={false}
-                Icon={() => <Ionicons name="chevron-down" size={20} color="#94A3B8" />}
+                Icon={() => <Ionicons name="chevron-down" size={16} color="#64748B" style={{ marginTop: 2 }} />}
             />
           </View>
         </View>
 
-        {selectedBarangay && (
-          <Animated.View style={styles.expandedFields}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Street / Building / House No.</Text>
-              <View style={styles.inputWrapper}>
+        {/* EXPANDED MAP AND DETAILS SECTOR */}
+        {selectedBarangay ? (
+          <View>
+            <Text style={styles.sectionTitle}>Geographic Verification</Text>
+            
+            {!hasMapPin ? (
+              <TouchableOpacity 
+                style={styles.mapSelectorButton}
+                onPress={handleNavigateToMap}
+                activeOpacity={0.8}
+              >
+                <View style={styles.mapSelectorIconCircle}>
+                  <Ionicons name="map-outline" size={20} color="#0F172A" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.mapSelectorText}>Establish Coordinates</Text>
+                  <Text style={styles.mapSelectorSubtext}>Pin your home location on the satellite mesh</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="#94A3B8" />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.miniMapWrapper}>
+                <View style={styles.miniMapContainer}>
+                  <MapView
+                    style={styles.miniMap}
+                    region={{
+                      latitude: latitude,
+                      longitude: longitude,
+                      latitudeDelta: 0.004,
+                      longitudeDelta: 0.004,
+                    }}
+                    scrollEnabled={false}
+                    zoomEnabled={false}
+                    pitchEnabled={false}
+                    rotateEnabled={false}
+                  >
+                    <Marker coordinate={{ latitude, longitude }} pinColor="#0F172A" />
+                  </MapView>
+                </View>
+
+                <TouchableOpacity 
+                  style={styles.changePinButton} 
+                  onPress={handleNavigateToMap}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="locate-outline" size={14} color="#0F172A" />
+                  <Text style={styles.changePinText}>Modify Coordinates</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <Text style={styles.sectionTitle}>Street Address Details</Text>
+            <View style={styles.premiumCard}>
+              <View style={[styles.inputGroup, focusedInput === 'street' && styles.focusedGroup]}>
+                <Text style={styles.label}>House No. / Building / Street Name</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="e.g. 123 Lopez Jaena St."
+                  placeholder="e.g. Unit 4B, 123 Lopez Jaena St."
                   value={streetName}
                   onChangeText={setStreetName}
+                  placeholderTextColor="#94A3B8"
+                  onFocus={() => setFocusedInput('street')}
+                  onBlur={() => setFocusedInput(null)}
                 />
               </View>
             </View>
 
-            <View style={styles.switchContainer}>
-              <View>
-                <Text style={styles.switchLabel}>Set as Default</Text>
-                <Text style={styles.switchSub}>Use this for future checkouts</Text>
+            {/* PREFERENCES CARD */}
+            <Text style={styles.sectionTitle}>Preferences</Text>
+            <View style={styles.premiumCard}>
+              <View style={styles.switchContainer}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={styles.switchLabel}>Designate Primary</Text>
+                  <Text style={styles.switchSub}>Set as preferred fallback address</Text>
+                </View>
+                <Switch
+                  value={isDefault}
+                  onValueChange={setIsDefault}
+                  trackColor={{ false: '#E2E8F0', true: '#0F172A' }}
+                  thumbColor="#fff"
+                />
               </View>
-              <Switch
-                value={isDefault}
-                onValueChange={setIsDefault}
-                trackColor={{ false: '#E2E8F0', true: '#1E3A8A' }}
-                thumbColor="#fff"
-              />
             </View>
 
-            <Text style={[styles.label, { marginTop: 15 }]}>Address Label</Text>
-            <View style={styles.labelButtons}>
-              {['Home', 'Work'].map((l) => (
-                <TouchableOpacity
-                  key={l}
-                  style={[styles.labelOption, label === l && styles.selectedLabel]}
-                  onPress={() => setLabel(l)}
-                >
-                  <MaterialCommunityIcons 
-                    name={l === 'Home' ? 'home-outline' : 'briefcase-outline'} 
-                    size={18} 
-                    color={label === l ? '#fff' : '#64748B'} 
-                  />
-                  <Text style={[styles.labelText, label === l && styles.selectedLabelText]}> {l}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {/* ADDRESS CLASSIFICATION TAGS */}
+{/* ADDRESS CLASSIFICATION TAGS */}
+<Text style={styles.sectionTitle}>Address Label</Text>
+<View style={{ flexDirection: 'row', gap: 10, marginTop: 4, marginBottom: 20 }}>
+  {['Home', 'Work'].map((l) => {
+    const isActive = label === l;
+    return (
+      <TouchableOpacity
+        key={l}
+        style={[styles.labelOption, isActive && styles.selectedLabel]}
+        onPress={() => setLabel(l)}
+        activeOpacity={0.8}
+      >
+        <MaterialCommunityIcons 
+          name={l === 'Home' ? 'home-variant-outline' : 'briefcase-outline'} 
+          size={16} 
+          color={isActive ? '#FFFFFF' : '#64748B'} 
+        />
+        <Text style={[styles.labelText, isActive && styles.selectedLabelText]}>{l}</Text>
+      </TouchableOpacity>
+    );
+  })}
+</View>
 
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handleSaveAddress}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.saveButtonText}>Save Address</Text>
-              )}
+            {/* HIGH END SAVING TRIGGER */}
+            <TouchableOpacity style={styles.saveButton} onPress={handleSaveAddress} disabled={loading} activeOpacity={0.9}>
+              {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.saveButtonText}>Secure Location Configuration</Text>}
             </TouchableOpacity>
-          </Animated.View>
+          </View>
+        ) : (
+          <View style={styles.onboardingSpacer}>
+             <Ionicons name="map-outline" size={32} color="#94A3B8" style={{ marginBottom: 12 }} />
+             <Text style={styles.onboardingHint}>Select a Barangay Sector above to begin geographic localization parameters.</Text>
+          </View>
         )}
       </ScrollView>
 
+      {/* LUXURY SYSTEM ALERTS MODAL */}
       {sileoVisible && (
         <View style={styles.sileoOverlay}>
           <View style={styles.sileoModal}>
-            <View
-              style={[
-                styles.sileoIconCircle,
-                sileoConfig.type === 'warning'
-                  ? styles.sileoWarningCircle
-                  : sileoConfig.type === 'error'
-                    ? styles.sileoErrorCircle
-                    : sileoConfig.type === 'success'
-                      ? styles.sileoSuccessCircle
-                      : styles.sileoInfoCircle,
-              ]}
-            >
-              <Text style={styles.sileoIcon}>
-                {sileoConfig.type === 'warning'
-                  ? '!'
-                  : sileoConfig.type === 'error'
-                    ? '×'
-                    : sileoConfig.type === 'success'
-                      ? '✓'
-                      : 'i'}
-              </Text>
+            <View style={[styles.sileoIconCircle, sileoConfig.type === 'warning' ? styles.sileoWarningCircle : sileoConfig.type === 'error' ? styles.sileoErrorCircle : sileoConfig.type === 'success' ? styles.sileoSuccessCircle : styles.sileoInfoCircle]}>
+               <Ionicons 
+                name={sileoConfig.type === 'success' ? "checkmark" : sileoConfig.type === 'warning' ? "alert-circle-outline" : "close"} 
+                size={22} 
+                color="#FFF" 
+               />
             </View>
             <Text style={styles.sileoTitle}>{sileoConfig.title}</Text>
             <Text style={styles.sileoMessage}>{sileoConfig.message}</Text>
-            <TouchableOpacity style={styles.sileoButton} onPress={handleSileoClose}>
+            <TouchableOpacity style={styles.sileoButton} onPress={handleSileoClose} activeOpacity={0.8}>
               <Text style={styles.sileoButtonText}>{sileoConfig.buttonText}</Text>
             </TouchableOpacity>
           </View>
@@ -353,166 +396,168 @@ export default function AddAddress() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  container: { flex: 1, backgroundColor: '#FAFAFA' },
   
-  // Professional Rounded Header
+  // Premium Header Look matching modern system screens
   customHeader: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 4 },
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    height: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderColor: '#F1F5F9',
   },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerIconButton: { width: 45, height: 45, borderRadius: 15, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
-  headerTitleContainer: { alignItems: 'center' },
-  headerMainTitle: { fontSize: 18, fontWeight: '900', color: '#1E3A8A' },
-  headerSubTitle: { fontSize: 11, color: '#94A3B8', fontWeight: '700', textTransform: 'uppercase' },
+  headerIconButton: { 
+    width: 38, 
+    height: 38, 
+    borderRadius: 12, 
+    backgroundColor: '#F8FAFC', 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F1F5F9'
+  },
+  headerMainTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', letterSpacing: -0.3 },
 
-  scrollContent: { padding: 20 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-  sectionTitle: { fontSize: 15, fontWeight: '800', color: '#1E3A8A', marginLeft: 8 },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 60 },
+  sectionTitle: { fontSize: 12, fontWeight: '700', color: '#64748B', textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 24, marginBottom: 10, marginLeft: 4 },
 
-  inputGroup: { marginBottom: 16 },
-  label: { fontSize: 13, fontWeight: '700', color: '#64748B', marginBottom: 8, marginLeft: 4 },
-  inputWrapper: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    paddingHorizontal: 15,
-    height: 52,
+  // Grouped Item Container Form Card
+  premiumCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    justifyContent: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.02,
+    overflow: 'hidden',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.012,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
-  input: { fontSize: 15, color: '#1E293B', fontWeight: '600' },
-  disabledInput: { backgroundColor: '#F1F5F9', borderColor: '#E2E8F0' },
-  staticText: { fontSize: 15, color: '#64748B', fontWeight: '600' },
+  inputGroup: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 64,
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF'
+  },
+  borderBottom: {
+    borderBottomWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  focusedGroup: {
+    backgroundColor: '#FAFAFA'
+  },
+  label: { fontSize: 11, fontWeight: '600', color: '#94A3B8', letterSpacing: 0.1, marginBottom: 4 },
+  input: { fontSize: 14, color: '#0F172A', fontWeight: '500', padding: 0 },
+  disabledText: { color: '#64748B' },
+  staticText: { fontSize: 14, color: '#0F172A', fontWeight: '500' },
 
-  expandedFields: { marginTop: 10 },
+  // Premium Custom Map Launcher
+  mapSelectorButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+  },
+  mapSelectorIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F1F5F9'
+  },
+  mapSelectorText: { fontSize: 14, color: '#0F172A', fontWeight: '600', letterSpacing: -0.1 },
+  mapSelectorSubtext: { fontSize: 12, color: '#64748B', marginTop: 2 },
+
+  // Premium Miniature Map Mesh
+  miniMapWrapper: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  miniMapContainer: {
+    height: 140,
+    width: '100%',
+    backgroundColor: '#F1F5F9',
+  },
+  miniMap: { ...StyleSheet.absoluteFillObject },
+  changePinButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderColor: '#F1F5F9',
+    gap: 6
+  },
+  changePinText: { color: '#0F172A', fontSize: 13, fontWeight: '600' },
+
   switchContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 15,
-    borderRadius: 15,
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: '#E2E8F0'
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
-  switchLabel: { fontSize: 14, fontWeight: '800', color: '#1E293B' },
-  switchSub: { fontSize: 11, color: '#94A3B8', fontWeight: '600' },
+  switchLabel: { fontSize: 14, fontWeight: '600', color: '#0F172A', letterSpacing: -0.1 },
+  switchSub: { fontSize: 12, color: '#64748B', marginTop: 1 },
 
-  labelButtons: { flexDirection: 'row', marginTop: 5 },
+  // Luxury classification pill design
   labelOption: {
     flexDirection: 'row',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 25,
-    marginRight: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E2E8F0'
+    borderColor: '#E2E8F0',
+    gap: 8
   },
-  selectedLabel: { backgroundColor: '#1E3A8A', borderColor: '#1E3A8A' },
-  labelText: { fontSize: 14, fontWeight: '700', color: '#64748B' },
-  selectedLabelText: { color: '#fff' },
+  selectedLabel: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
+  labelText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
+  selectedLabelText: { color: '#FFFFFF' },
 
   saveButton: {
-    backgroundColor: '#1E3A8A',
-    borderRadius: 15,
-    paddingVertical: 16,
-    marginTop: 30,
+    backgroundColor: '#0F172A',
+    borderRadius: 14,
+    paddingVertical: 14,
     alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#1E3A8A',
-    shadowOpacity: 0.3,
-    marginBottom: 40
+    marginTop: 20,
   },
-  saveButtonText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  saveButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 14, letterSpacing: -0.1 },
 
-  // Sileo Modal
-  sileoOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(36, 41, 46, 0.32)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 9999,
-  },
-  sileoModal: {
-    width: '84%',
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    shadowColor: '#2563EB',
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  sileoIconCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
+  onboardingSpacer: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
+  onboardingHint: { fontSize: 13, color: '#64748B', textAlign: 'center', lineHeight: 20 },
+
+  // System Notification Modals styling update
+  sileoOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15, 23, 42, 0.25)', justifyContent: 'center', alignItems: 'center', zIndex: 9999 },
+  sileoModal: { width: '80%', backgroundColor: '#FFFFFF', borderRadius: 20, padding: 24, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 15 },
+  sileoIconCircle: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
   sileoWarningCircle: { backgroundColor: '#F59E0B' },
-  sileoInfoCircle: { backgroundColor: '#2563EB' },
+  sileoInfoCircle: { backgroundColor: '#0F172A' },
   sileoErrorCircle: { backgroundColor: '#EF4444' },
-  sileoSuccessCircle: { backgroundColor: '#16A34A' },
-  sileoIcon: {
-    color: '#fff',
-    fontSize: 30,
-    fontWeight: '900',
-  },
-  sileoTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  sileoMessage: {
-    fontSize: 14,
-    color: '#475569',
-    textAlign: 'center',
-    marginBottom: 20,
-    fontWeight: '500',
-    lineHeight: 20,
-  },
-  sileoButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    paddingVertical: 11,
-    paddingHorizontal: 28,
-    alignItems: 'center',
-  },
-  sileoButtonText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 15,
-    letterSpacing: 0.2,
-  },
+  sileoSuccessCircle: { backgroundColor: '#10B981' },
+  sileoTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 6 },
+  sileoMessage: { fontSize: 13, color: '#64748B', textAlign: 'center', marginBottom: 20, lineHeight: 18, fontWeight: '400' },
+  sileoButton: { backgroundColor: '#0F172A', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 24 },
+  sileoButtonText: { color: '#FFF', fontWeight: '600', fontSize: 13 },
 });
 
-// Dropdown Styles
 const pickerSelectStyles = StyleSheet.create({
-  inputIOS: { fontSize: 15, paddingVertical: 12, color: '#1E293B', fontWeight: '600' },
-  inputAndroid: { fontSize: 15, color: '#1E293B', fontWeight: '600' },
-  iconContainer: { top: 15, right: 0 },
+  inputIOS: { fontSize: 14, paddingVertical: 4, color: '#0F172A', fontWeight: '500', paddingRight: 30 },
+  inputAndroid: { fontSize: 14, color: '#0F172A', fontWeight: '500', paddingRight: 30, paddingVertical: 0 },
+  iconContainer: { right: 0, top: 2 },
 });

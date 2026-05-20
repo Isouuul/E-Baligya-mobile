@@ -41,28 +41,6 @@ function AnimatedBiddingCard({ item, index, navigation }) {
   // A listing is explicitly disabled if marked disabled, or if it is restricted by an admin strike
   const isDisabled = item.isDisabled || item.status === 'restricted';
 
-useEffect(() => {
-  let filtered = biddingProducts.filter(p => {
-    // Hide restricted products
-    if (p.status === 'restricted') return false;
-
-    // Hide products with 0kg or less
-    if ((p.remainingQuantity || 0) <= 0) return false;
-
-    const matchesCat =
-      category === "All" || p.category === category;
-
-    const matchesSearch =
-      p.productName
-        ?.toLowerCase()
-        .includes(searchText.toLowerCase());
-
-    return matchesCat && matchesSearch;
-  });
-
-  setFilteredBidding(filtered);
-}, [category, searchText, biddingProducts]);
-
   useEffect(() => {
     Animated.parallel([
       Animated.timing(slideAnim, { toValue: 0, duration: 450, delay: index * 50, useNativeDriver: true }),
@@ -312,7 +290,6 @@ export default function BiddingProductScreen() {
   );
 }
 
-// Keeping original placeholder references for stylesheet stability
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc', marginTop: 35},
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -353,8 +330,8 @@ const styles = StyleSheet.create({
     borderColor: '#f1f5f9',
     marginBottom: 6,
     marginLeft: 5,
-
-  },   catIconWrapperActive: {
+  },
+  catIconWrapperActive: {
     backgroundColor: '#eff6ff',
     borderColor: '#3b82f6',
   },

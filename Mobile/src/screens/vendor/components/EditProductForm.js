@@ -501,7 +501,7 @@ const styles = StyleSheet.create({
     marginLeft: 2
   },
   fieldGroup: {
-    marginBottom: 16
+    marginBottom: 40
   },
   inputTitle: {
     fontSize: 13,

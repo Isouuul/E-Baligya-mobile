@@ -17,6 +17,7 @@ import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { auth, db } from '../../firebase';
 import * as FileSystem from 'expo-file-system';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps'; // Imported native map modules
 import {
   collection,
   doc,
@@ -56,14 +57,13 @@ const Base64Image = ({ base64, productId, style }) => {
     </View>
   );
 
-  return <Image source={{ uri: localUri }} style={style} />;
+  return <Image source={{ uri: localUri }} style={style} resizeMode="cover" />;
 };
 
 export default function BuyNowCheckedOut() {
   const navigation = useNavigation();
   const route = useRoute();
 
-  // Unified fallback layer matching either "product" or "checkoutData" keys
   const product = useMemo(() => {
     return route.params?.product || route.params?.checkoutData || null;
   }, [route.params]);
@@ -75,10 +75,9 @@ export default function BuyNowCheckedOut() {
   const [loadingAddress, setLoadingAddress] = useState(true);
   const [loadingCheckout, setLoadingCheckout] = useState(false);
 
-  // Sileo Modal State Configuration
   const [modalConfig, setModalConfig] = useState({
     visible: false,
-    type: 'success', // 'success' | 'error'
+    type: 'success', 
     title: '',
     message: '',
     onClose: null
@@ -87,7 +86,6 @@ export default function BuyNowCheckedOut() {
   const SHIPPING_FEE = 50;
   const generateOrderNumber = () => `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-  // Function to summon Sileo Modal
   const showAlertModal = (type, title, message, onClose = null, autoCloseDuration = 0) => {
     setModalConfig({ visible: true, type, title, message, onClose });
     
@@ -104,7 +102,6 @@ export default function BuyNowCheckedOut() {
     }
   };
 
-  // Real-time listener for active address
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
@@ -123,7 +120,22 @@ export default function BuyNowCheckedOut() {
           longitude: docData.longitude || null,
         });
       } else {
-        setAddress(null);
+        const allQ = query(addressesRef);
+        onSnapshot(allQ, allSnapshot => {
+          if (!allSnapshot.empty) {
+            const docData = allSnapshot.docs[0].data();
+            setAddress({
+              id: allSnapshot.docs[0].id,
+              fullName: `${docData.firstName || ''} ${docData.lastName || ''}`.trim(),
+              fullAddress: `${docData.streetName || ''}, ${docData.barangay || ''}, ${docData.city || ''}, ${docData.province || ''}, ${docData.region || ''}`,
+              contactNumber: docData.phoneNumber || '',
+              latitude: docData.latitude || null,
+              longitude: docData.longitude || null,
+            });
+          } else {
+            setAddress(null);
+          }
+        });
       }
       setLoadingAddress(false);
     }, error => {
@@ -134,7 +146,6 @@ export default function BuyNowCheckedOut() {
     return unsubscribe;
   }, []);
 
-  // Sync address changes when returning from Selection Screen
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       if (route.params?.selectedAddress) {
@@ -144,7 +155,6 @@ export default function BuyNowCheckedOut() {
     return unsubscribe;
   }, [navigation, route.params?.selectedAddress]);
 
-  // Derived price calculation
   const subtotal = useMemo(() => {
     if (!product) return 0;
     const base = Number(product.basePrice || 0);
@@ -155,6 +165,15 @@ export default function BuyNowCheckedOut() {
   const totalAmount = useMemo(() => {
     return subtotal + (deliveryMethod === 'Delivery' ? SHIPPING_FEE : 0);
   }, [subtotal, deliveryMethod]);
+
+  const handleDeliveryMethodChange = (method) => {
+    setDeliveryMethod(method);
+    if (method === 'Pickup') {
+      setPaymentMethod('Pay-On-Pickup');
+    } else {
+      setPaymentMethod('Cash-On-Delivery');
+    }
+  };
 
   if (!product) {
     return (
@@ -172,18 +191,14 @@ export default function BuyNowCheckedOut() {
     );
   }
 
-const handleCheckout = async () => {
+  const handleCheckout = async () => {
     if (loadingCheckout) return;
 
     const user = auth.currentUser;
     if (!user) return;
 
     if (deliveryMethod === 'Delivery' && !address) {
-      showAlertModal(
-        'error',
-        'Address Required',
-        'Please select a delivery address to proceed.'
-      );
+      showAlertModal('error', 'Address Required', 'Please select a delivery address to proceed.');
       return;
     }
 
@@ -225,15 +240,13 @@ const handleCheckout = async () => {
         totalAmount,
         paymentMethod,
         leaveNote: leaveNote || '',
-        address: deliveryMethod === 'Delivery' ? address : null,
+        address: deliveryMethod === 'Delivery' ? { ...address } : null,
         status: 'Pending',
         createdAt: serverTimestamp(),
       };
 
-      // 1. Create main Order
       await addDoc(collection(db, 'Orders'), orderData);
 
-      // 2. NEW: Trigger Vendor Notification for Product Purchase
       const vendorId = product.uploadedBy?.uid || product.uploadedBy; 
       if (vendorId) {
         const vendorNotificationData = {
@@ -264,11 +277,7 @@ const handleCheckout = async () => {
 
     } catch (error) {
       console.error("CHECKOUT ERROR: ", error);
-      showAlertModal(
-        'error',
-        'Checkout Failed',
-        'Something went wrong on our end. Please try again.'
-      );
+      showAlertModal('error', 'Checkout Failed', 'Something went wrong on our end. Please try again.');
     } finally {
       setLoadingCheckout(false);
     }
@@ -276,25 +285,26 @@ const handleCheckout = async () => {
 
   return (
     <SafeAreaView style={styles.safeContainer}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
-      {/* Premium Elegant Header */}
       <View style={styles.headerPremium}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButtonCircle} activeOpacity={0.7}>
-          <Feather name="chevron-left" size={20} color="#0F172A" />
+          <Feather name="chevron-left" size={24} color="#0F172A" />
         </TouchableOpacity>
-        <Text style={styles.headerTitlePremium}>Checkout</Text>
+        <Text style={styles.headerTitlePremium}>Finalize Order</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         
-        {/* Delivery Address Card */}
+        {/* Delivery Address Card with True React Native Map */}
         <View style={styles.sectionCardPremium}>
           <View style={styles.sectionHeaderPremium}>
             <View style={styles.titleIconRow}>
-              <Feather name="map-pin" size={16} color="#0F172A" />
-              <Text style={styles.sectionTitlePremium}>Delivery Address</Text>
+              <Feather name="map-pin" size={18} color="#0F172A" />
+              <Text style={styles.sectionTitlePremium}>
+                {deliveryMethod === 'Pickup' ? 'Store Pickup Location' : 'Delivery Address'}
+              </Text>
             </View>
             <TouchableOpacity
               onPress={() => navigation.navigate('AddressSelection', { from: 'BuyNowCheckedOut' })}
@@ -307,15 +317,53 @@ const handleCheckout = async () => {
           
           <View style={styles.addressBox}>
             {loadingAddress ? (
-              <ActivityIndicator size="small" color="#0F172A" style={{ marginVertical: 8 }} />
+              <ActivityIndicator size="small" color="#3b82f6" />
             ) : address ? (
               <View>
                 <Text style={styles.addressName}>{address.fullName}</Text>
-                <Text style={styles.addressPhone}>{address.contactNumber}</Text>
+                <Text style={styles.addressPhone}><Feather name="phone" size={12} /> {address.contactNumber}</Text>
                 <Text style={styles.addressText}>{address.fullAddress}</Text>
+                
+                {/* Native Map Preview Container (Visible on both Store Pickup & Delivery layout states) */}
+                <View style={styles.mapPreviewContainer}>
+                  {address.latitude && address.longitude ? (
+                    <MapView
+                      provider={PROVIDER_GOOGLE}
+                      style={styles.actualMapStyle}
+                      initialRegion={{
+                        latitude: Number(address.latitude),
+                        longitude: Number(address.longitude),
+                        latitudeDelta: 0.005,
+                        longitudeDelta: 0.005,
+                      }}
+                      region={{
+                        latitude: Number(address.latitude),
+                        longitude: Number(address.longitude),
+                        latitudeDelta: 0.005,
+                        longitudeDelta: 0.005,
+                      }}
+                      scrollEnabled={false}
+                      zoomEnabled={false}
+                      pitchEnabled={false}
+                      rotateEnabled={false}
+                    >
+                      <Marker
+                        coordinate={{
+                          latitude: Number(address.latitude),
+                          longitude: Number(address.longitude),
+                        }}
+                      />
+                    </MapView>
+                  ) : (
+                    <View style={styles.mapNoCoordinatesBox}>
+                      <Feather name="map" size={20} color="#94A3B8" style={{ marginBottom: 4 }} />
+                      <Text style={styles.mapNoCoordinatesText}>No map coordinates pinned to this profile</Text>
+                    </View>
+                  )}
+                </View>
               </View>
             ) : (
-              <Text style={styles.emptyTextNote}>No active address found. Tap 'Change' to add one.</Text>
+              <Text style={styles.emptyTextNote}>No active address found. Please select one.</Text>
             )}
           </View>
         </View>
@@ -323,7 +371,7 @@ const handleCheckout = async () => {
         {/* Vendor & Product Details */}
         <View style={styles.vendorGroup}>
           <View style={styles.vendorHeader}>
-            <Feather name="shopping-bag" size={14} color="#64748B" />
+            <Feather name="shopping-bag" size={16} color="#64748B" />
             <Text style={styles.vendorNameText}>{product.uploadedBy?.businessName || product.uploadedBy?.marketName || 'Unknown Vendor'}</Text>
           </View>
 
@@ -342,32 +390,30 @@ const handleCheckout = async () => {
               )}
               
               <View style={styles.productDetailsPremium}>
-                <View>
-                  <Text style={styles.productTextPremium} numberOfLines={2}>{product.productName}</Text>
-                  
+                <Text style={styles.productTextPremium} numberOfLines={1}>{product.productName}</Text>
+                
+                <View style={styles.tagRow}>
                   {product.category && (
-                    <View style={styles.tagRow}>
-                      <View style={styles.categoryBadgePremium}>
-                        <Text style={styles.categoryBadgeTextPremium}>{product.category}</Text>
-                      </View>
+                    <View style={styles.categoryBadgePremium}>
+                      <Text style={styles.categoryBadgeTextPremium}>{product.category.toUpperCase()}</Text>
                     </View>
                   )}
                 </View>
 
-                {product.selectedServices?.length > 0 && (
+                {product.selectedServices && product.selectedServices.length > 0 && (
                   <View style={styles.serviceContainer}>
-                    {product.selectedServices.map((s, i) => (
-                      <View key={i} style={styles.serviceItemRow}>
-                        <Feather name="plus" size={10} color="#64748B" />
-                        <Text style={styles.serviceTextPremium}>{s.label} (+₱{Number(s.price || 0).toLocaleString()})</Text>
+                    {product.selectedServices.map((s, index) => (
+                      <View key={index} style={styles.serviceItem}>
+                        <Ionicons name="add-circle-outline" size={12} color="#64748B" />
+                        <Text style={styles.serviceTextPremium}> {s.label} (₱{Number(s.price || 0).toFixed(2)})</Text>
                       </View>
                     ))}
                   </View>
                 )}
                 
                 <View style={styles.qtyPriceRowPremium}>
-                  <Text style={styles.qtyTextPremium}>Qty: {product.quantity || 1}kg</Text>
-                  <Text style={styles.itemTotalPremium}>₱ {Number(product.basePrice || 0).toLocaleString()}</Text>
+                  <Text style={styles.qtyTextPremium}>Quantity: {product.quantity || 1}kg</Text>
+                  <Text style={styles.itemTotalPremium}>₱{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
                 </View>
               </View>
             </View>
@@ -376,43 +422,57 @@ const handleCheckout = async () => {
 
         {/* Payment & Delivery Options */}
         <View style={styles.sectionCardPremium}>
-          <Text style={styles.sectionTitlePremium}>Shipping Method</Text>
+          <Text style={styles.sectionTitlePremium}>Payment & Shipping</Text>
+          
           <View style={styles.optionGrid}>
             <TouchableOpacity 
               style={[styles.optionPill, deliveryMethod === 'Delivery' && styles.optionPillActive]}
-              onPress={() => setDeliveryMethod('Delivery')}
+              onPress={() => handleDeliveryMethodChange('Delivery')}
               activeOpacity={0.8}
             >
               <Text style={[styles.optionPillText, deliveryMethod === 'Delivery' && styles.optionPillTextActive]}>Delivery</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.optionPill, deliveryMethod === 'Pickup' && styles.optionPillActive]}
-              onPress={() => setDeliveryMethod('Pickup')}
+              onPress={() => handleDeliveryMethodChange('Pickup')}
               activeOpacity={0.8}
             >
-              <Text style={[styles.optionPillText, deliveryMethod === 'Pickup' && styles.optionPillTextActive]}>Pickup</Text>
+              <Text style={[styles.optionPillText, deliveryMethod === 'Pickup' && styles.optionPillTextActive]}>Store Pickup</Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.dividerPremium} />
             
-          <Text style={[styles.sectionTitlePremium, { marginBottom: 12 }]}>Payment Method</Text>
-
-          <TouchableOpacity
-            style={styles.paymentMethodSelector}
-            onPress={() => setPaymentMethod('Cash-On-Delivery')}
-          >
-            <View style={styles.row}>
-              <View style={styles.iconCircleGreen}>
-                <MaterialCommunityIcons name="cash-multiple" size={20} color="#10B981" />
+          {deliveryMethod === 'Delivery' ? (
+            <TouchableOpacity
+              style={styles.paymentMethodSelector}
+              onPress={() => setPaymentMethod('Cash-On-Delivery')}
+            >
+              <View style={styles.row}>
+                <View style={styles.iconCircleGreen}>
+                  <MaterialCommunityIcons name="cash-multiple" size={20} color="#10B981" />
+                </View>
+                <View style={{ marginLeft: 12 }}>
+                  <Text style={styles.paymentMainText}>Cash on Delivery</Text>
+                  <Text style={styles.paymentSubText}>Pay when you receive the items</Text>
+                </View>
               </View>
-              <View style={{ marginLeft: 12 }}>
-                <Text style={styles.paymentMainText}>Cash on Delivery</Text>
-                <Text style={styles.paymentSubText}>Pay when you receive the items</Text>
+              <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.paymentMethodSelector, styles.paymentPickupSelector]}>
+              <View style={styles.row}>
+                <View style={styles.iconCircleBlue}>
+                  <MaterialCommunityIcons name="storefront-outline" size={20} color="#3b82f6" />
+                </View>
+                <View style={{ marginLeft: 12 }}>
+                  <Text style={styles.paymentMainTextBlue}>Pay at Counter</Text>
+                  <Text style={styles.paymentSubTextBlue}>Settle your payment directly at the store</Text>
+                </View>
               </View>
+              <Ionicons name="checkmark-circle" size={24} color="#3b82f6" />
             </View>
-            <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-          </TouchableOpacity>
+          )}
         </View>
 
         {/* Order Instructions */}
@@ -420,30 +480,29 @@ const handleCheckout = async () => {
           <Text style={styles.sectionTitlePremium}>Order Instructions</Text>
           <TextInput
             style={styles.premiumInput}
-            placeholder="Add special instructions or preferences..."
+            placeholder="E.g. Please leave the parcel at the gate..."
             placeholderTextColor="#94A3B8"
             value={leaveNote}
             onChangeText={setLeaveNote}
             multiline
-            showsVerticalScrollIndicator={false}
           />
         </View>
 
         {/* Order Summary */}
         <View style={styles.summaryCardPremium}>
-          <Text style={styles.summaryTitlePremium}>Order Summary</Text>
+          <Text style={styles.summaryTitlePremium}>Summary</Text>
           <View style={styles.summaryRowPremium}>
             <Text style={styles.summaryLabel}>Subtotal</Text>
-            <Text style={styles.summaryValue}>₱ {subtotal.toLocaleString()}</Text>
+            <Text style={styles.summaryValue}>₱{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
           </View>
           <View style={styles.summaryRowPremium}>
-            <Text style={styles.summaryLabel}>Shipping Fee</Text>
-            <Text style={styles.summaryValue}>₱ {deliveryMethod === 'Delivery' ? SHIPPING_FEE.toFixed(2) : '0.00'}</Text>
+            <Text style={styles.summaryLabel}>Delivery Fee</Text>
+            <Text style={styles.summaryValue}>₱{deliveryMethod === 'Delivery' ? SHIPPING_FEE.toFixed(2) : '0.00'}</Text>
           </View>
           <View style={styles.summaryDivider} />
           <View style={styles.summaryRowPremium}>
             <Text style={styles.totalLabelPremium}>Total Amount</Text>
-            <Text style={styles.totalValuePremium}>₱ {totalAmount.toLocaleString()}</Text>
+            <Text style={styles.totalValuePremium}>₱{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
           </View>
         </View>
       </ScrollView>
@@ -452,26 +511,26 @@ const handleCheckout = async () => {
       <View style={styles.footerPremium}>
         <View>
           <Text style={styles.footerTotalLabel}>Grand Total</Text>
-          <Text style={styles.footerTotalValue}>₱ {totalAmount.toLocaleString()}</Text>
+          <Text style={styles.footerTotalValue}>₱{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
         </View>
         <TouchableOpacity
-          style={[styles.checkoutButtonPremium, loadingCheckout && { opacity: 0.8 }]}
+          style={[styles.checkoutButtonPremium, loadingCheckout && styles.checkoutButtonDisabled]}
           onPress={handleCheckout}
           disabled={loadingCheckout}
-          activeOpacity={0.9}
+          activeOpacity={0.8}
         >
           {loadingCheckout ? (
             <ActivityIndicator color="#3b82f6" />
           ) : (
             <>
               <Text style={styles.checkoutTextPremium}>Place Order</Text>
-              <Ionicons name="chevron-forward" size={16} color="#3b82f6" />
+              <Ionicons name="chevron-forward" size={18} color="#3b82f6" />
             </>
           )}
         </TouchableOpacity>
       </View>
 
-      {/* Custom Sileo Premium Modal */}
+      {/* Sileo Premium Modal */}
       <Modal
         visible={modalConfig.visible}
         transparent={true}
@@ -523,223 +582,185 @@ const handleCheckout = async () => {
 }
 
 const styles = StyleSheet.create({
-  safeContainer: { flex: 1, backgroundColor: '#FAFAFA' },
-  scrollContent: { paddingBottom: 140, paddingTop: 16 },
+  safeContainer: { flex: 1, backgroundColor: '#FAFAFA', marginTop: 35 },
+  scrollContent: { padding: 16, paddingBottom: 110 },
   row: { flexDirection: 'row', alignItems: 'center' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: '#FFFFFF' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   
   // Header
-  headerPremium: {
-    height: 60,
-    backgroundColor: '#FFFFFF',
-    flexDirection: 'row',
+  headerPremium: { 
+    height: 60, 
+    flexDirection: 'row', 
     alignItems: 'center', 
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9'
+    justifyContent: 'space-between', 
+    paddingHorizontal: 16, 
+    backgroundColor: '#FFFFFF', 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#F1F5F9' 
   },
-  backButtonCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F8FAFC',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
+  backButtonCircle: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: 20, 
+    backgroundColor: '#F8FAFC', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
   },
-  headerTitlePremium: { fontSize: 16, fontWeight: '800', color: '#0F172A', letterSpacing: -0.3 },
+  headerTitlePremium: { fontSize: 18, fontWeight: '700', color: '#0F172A' },
 
-  // Sections
-  sectionCardPremium: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    marginHorizontal: 16,
-    padding: 18,
-    marginBottom: 16,
-    borderWidth: 1.5,
-    borderColor: '#F1F5F9',
-    shadowColor: '#000',
-    shadowOpacity: 0.02,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 10,
-    elevation: 2,
+  // Address Section
+  sectionCardPremium: { 
+    backgroundColor: '#FFFFFF', 
+    borderRadius: 16, 
+    padding: 16, 
+    marginBottom: 16, 
+    borderWidth: 1, 
+    borderColor: '#F1F5F9' 
   },
-  sectionHeaderPremium: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  sectionHeaderPremium: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   titleIconRow: { flexDirection: 'row', alignItems: 'center' },
-  sectionTitlePremium: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginLeft: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  editButton: { backgroundColor: '#eff6ff', borderColor: '#3b82f6', borderWidth: 1,  paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99 },
-  editButtonText: { color: '#3b82f6', fontSize: 11, fontWeight: '700' },
-  addressBox: { backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#F1F5F9' },
-  addressName: { fontSize: 15, fontWeight: '700', color: '#0F172A' },
-  addressPhone: { fontSize: 12, color: '#64748B', marginTop: 2, fontWeight: '500' },
-  addressText: { fontSize: 13, color: '#475569', marginTop: 6, lineHeight: 18 },
-  emptyTextNote: { fontSize: 12, color: '#94A3B8', textAlign: 'center', marginVertical: 4 },
+  sectionTitlePremium: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginLeft: 8 },
+  editButton: { paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#eff6ff', borderColor: '#3b82f6', borderRadius: 6, borderWidth: 0.5 },
+  editButtonText: { color: '#0EA5E9', fontSize: 13, fontWeight: '600' },
+  addressBox: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  addressName: { fontSize: 14, fontWeight: '600', color: '#1E293B', marginBottom: 4 },
+  addressPhone: { fontSize: 12, color: '#64748B', marginBottom: 4 },
+  addressText: { fontSize: 13, color: '#475569', lineHeight: 18, marginBottom: 10 },
+  emptyTextNote: { fontSize: 13, color: '#94A3B8', textAlign: 'center', paddingVertical: 8 },
+
+  // Native Map View Container Styles
+  mapPreviewContainer: { height: 130, width: '100%', borderRadius: 12, marginTop: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#E2E8F0' },
+  actualMapStyle: { flex: 1 },
+  mapNoCoordinatesBox: { flex: 1, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
+  mapNoCoordinatesText: { fontSize: 11, color: '#94A3B8', fontWeight: '500' },
 
   // Vendor & Items Layout
-  vendorGroup: { marginHorizontal: 16, marginBottom: 16 },
-  vendorHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, paddingLeft: 4 },
-  vendorNameText: { fontSize: 11, fontWeight: '700', color: '#64748B', marginLeft: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
+  vendorGroup: { marginBottom: 16 },
+  vendorHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, marginBottom: 8 },
+  vendorNameText: { fontSize: 13, fontWeight: '600', color: '#64748B', marginLeft: 6 },
   itemCardPremium: { 
     backgroundColor: '#FFFFFF', 
-    borderRadius: 20, 
-    padding: 16, 
-    borderWidth: 1.5, 
-    borderColor: '#F1F5F9',
-    shadowColor: '#000',
-    shadowOpacity: 0.02,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 10,
-    elevation: 2,
+    borderRadius: 14, 
+    padding: 12, 
+    marginBottom: 8, 
+    borderWidth: 1, 
+    borderColor: '#F1F5F9' 
   },
   productRow: { flexDirection: 'row' },
-  productImagePremium: { width: 90, height: 90, borderRadius: 14 },
-  placeholderImagePremium: { width: 90, height: 90, borderRadius: 14, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#E2E8F0', borderStyle: 'dashed' },
-  productDetailsPremium: { flex: 1, marginLeft: 16, justifyContent: 'space-between' },
-  productTextPremium: { fontSize: 15, fontWeight: '700', color: '#0F172A', lineHeight: 20 },
-  tagRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  categoryBadgePremium: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  categoryBadgeTextPremium: { fontSize: 10, fontWeight: '700', color: '#475569', textTransform: 'uppercase' },
-  serviceContainer: { marginTop: 6, gap: 4 },
-  serviceItemRow: { flexDirection: 'row', alignItems: 'center' },
-  serviceTextPremium: { fontSize: 11, color: '#64748B', fontWeight: '500', marginLeft: 4 },
-  qtyPriceRowPremium: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 },
-  qtyTextPremium: { fontSize: 13, fontWeight: '700', color: '#64748B' },
-  itemTotalPremium: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+  productImagePremium: { width: 70, height: 70, borderRadius: 10 },
+  placeholderImagePremium: { width: 70, height: 70, borderRadius: 10, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
+  productDetailsPremium: { flex: 1, marginLeft: 12, justifyContent: 'space-between' },
+  productTextPremium: { fontSize: 14, fontWeight: '600', color: '#1E293B' },
+  tagRow: { flexDirection: 'row', marginTop: 2 },
+  categoryBadgePremium: { backgroundColor: '#E0F2FE', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  categoryBadgeTextPremium: { fontSize: 9, fontWeight: '700', color: '#0EA5E9' },
+  serviceContainer: { marginVertical: 4 },
+  serviceItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+  serviceTextPremium: { fontSize: 11, color: '#64748B' },
+  qtyPriceRowPremium: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  qtyTextPremium: { fontSize: 12, color: '#64748B', fontWeight: '500' },
+  itemTotalPremium: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
 
-  // Pill & Toggle Styles
-  optionGrid: { flexDirection: 'row', gap: 10, marginTop: 12 },
-  optionPill: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 14, backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: '#E2E8F0' },
-  optionPillActive: { backgroundColor: '#eff6ff', borderColor: '#3b82f6', borderWidth: 1.5},
-  optionPillText: { fontSize: 13, fontWeight: '600', color: '#64748B' },
-  optionPillTextActive: { color: '#3b82f6', fontWeight: '700' },
-  dividerPremium: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 16 },
-  premiumInput: { backgroundColor: '#F8FAFC', borderRadius: 14, padding: 14, marginTop: 12, height: 80, fontSize: 13, color: '#0F172A', borderWidth: 1, borderColor: '#F1F5F9', textAlignVertical: 'top' },
-
-  // Summary Card
-  summaryCardPremium: {
-    marginHorizontal: 16,
-    marginTop: 24,
-    padding: 20,
-    backgroundColor: '#FFFFFF', 
-    borderRadius: 20,          
-    borderWidth: 1.5,
-    borderColor: '#F1F5F9',    
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.03,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 16,
-    elevation: 3,
+  // Option Grid
+  optionGrid: { flexDirection: 'row', gap: 10, marginBottom: 14, marginTop: 8 },
+  optionPill: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
+  optionPillActive: { backgroundColor: '#3b82f6', borderColor: '#3b82f6', borderWidth: 1 },
+  optionPillText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
+  optionPillTextActive: { color: '#FFFFFF' },
+  dividerPremium: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 12 },
+  premiumInput: { 
+    backgroundColor: '#F8FAFC', 
+    borderRadius: 12, 
+    padding: 12, 
+    height: 80, 
+    textAlignVertical: 'top', 
+    fontSize: 13, 
+    color: '#1E293B', 
+    borderWidth: 1, 
+    borderColor: '#E2E8F0' 
   },
-  summaryTitlePremium: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.5 },
-  summaryRowPremium: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  summaryLabel: { fontSize: 13, color: '#64748B', fontWeight: '500' },
-  summaryValue: { fontSize: 13, fontWeight: '600', color: '#0F172A' },
-  summaryDivider: { height: 1.5, backgroundColor: '#F1F5F9', marginVertical: 12, borderStyle: 'dashed' },
-  totalLabelPremium: { fontSize: 15, fontWeight: '800', color: '#0F172A' },
-  totalValuePremium: { fontSize: 18, fontWeight: '900', color: '#0F172A' },
 
-  // Premium Sticky Footer
-  footerPremium: {
-    position: 'absolute', bottom: 0, width: '100%', backgroundColor: '#FFFFFF', paddingHorizontal: 24, paddingVertical: 16, paddingBottom: 32,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#F1F5F9',
-    shadowColor: '#000', shadowOpacity: 0.05, shadowOffset: { width: 0, height: -4 }, shadowRadius: 12, elevation: 8
+  // Payment Selection Fields
+  paymentMethodSelector: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    backgroundColor: '#F0FDF4', 
+    padding: 12, 
+    borderRadius: 12, 
+    borderWidth: 1, 
+    borderColor: '#DCFCE7' 
   },
-  footerTotalLabel: { fontSize: 11, color: '#94A3B8', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  footerTotalValue: { fontSize: 22, fontWeight: '900', color: '#0F172A', letterSpacing: -0.5 },
-  checkoutButtonPremium: {
-    backgroundColor: '#eff6ff',
-    borderColor: '#3b82f6', borderWidth: 1.5, paddingHorizontal: 22, paddingVertical: 14, borderRadius: 99, flexDirection: 'row', alignItems: 'center',
-    shadowColor: '#0F172A', shadowOpacity: 0.15, shadowOffset: { width: 0, height: 4 }, shadowRadius: 10, elevation: 4
-  },
-  checkoutTextPremium: { color: '#3b82f6', fontSize: 14, fontWeight: '800', marginRight: 6 },
-
-  // Empty State Fallback
-  emptyTitle: { fontSize: 16, fontWeight: '800', color: '#64748B', marginTop: 12 },
-  browseButtonPremium: { backgroundColor: '#3b82f6', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 99, marginTop: 24 },
-  browseTextPremium: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   iconCircleGreen: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center' },
   paymentMainText: { fontSize: 14, fontWeight: '600', color: '#14532D' },
   paymentSubText: { fontSize: 11, color: '#166534' },
-  paymentMethodSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#F0FDF4', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#DCFCE7' },
+  paymentPickupSelector: { backgroundColor: '#eff6ff', borderColor: '#bfdbfe' },
+  iconCircleBlue: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#dbeafe', justifyContent: 'center', alignItems: 'center' },
+  paymentMainTextBlue: { fontSize: 14, fontWeight: '600', color: '#1e3a8a' },
+  paymentSubTextBlue: { fontSize: 11, color: '#1e40af' },
 
-  // Sileo-Styled Premium Modal Sheet Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
+  // Pricing Layouts
+  summaryCardPremium: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#F1F5F9' },
+  summaryTitlePremium: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginBottom: 12 },
+  summaryRowPremium: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  summaryLabel: { fontSize: 13, color: '#64748B' },
+  summaryValue: { fontSize: 13, fontWeight: '600', color: '#1E293B' },
+  summaryDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 8 },
+  totalLabelPremium: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  totalValuePremium: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+
+  // Footer Actions
+  footerPremium: { 
+    position: 'absolute', 
+    bottom: 0, 
+    left: 0, 
+    right: 0, 
+    backgroundColor: '#FFFFFF', 
+    padding: 16, 
+    borderTopWidth: 1, 
+    borderTopColor: '#F1F5F9', 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    shadowColor: '#0F172A', 
+    shadowOffset: { width: 0, height: -4 }, 
+    shadowOpacity: 0.04, 
+    shadowRadius: 8, 
+    elevation: 5 
   },
-  sileoModalContainer: {
-    width: '100%',
-    maxWidth: 340,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 24,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 24,
-    elevation: 10,
+  footerTotalLabel: { fontSize: 11, color: '#64748B', fontWeight: '500' },
+  footerTotalValue: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
+  checkoutButtonPremium: { 
+    flexDirection: 'row', 
+    backgroundColor: '#eff6ff', 
+    borderColor: '#3b82f6', 
+    borderWidth: 0.5, 
+    paddingHorizontal: 24, 
+    paddingVertical: 14, 
+    borderRadius: 12, 
+    alignItems: 'center', 
+    gap: 6 
   },
-  modalIconWrapper: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalIconSuccess: {
-    backgroundColor: '#E6F4EA',
-  },
-  modalIconError: {
-    backgroundColor: '#FCE8E6',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
-    textAlign: 'center',
-    marginBottom: 8,
-    letterSpacing: -0.2
-  },
-  modalMessage: {
-    fontSize: 14,
-    color: '#64748B',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
-  },
-  modalActionButton: {
-    width: '100%',
-    paddingVertical: 14,
-    borderRadius: 99,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-  },
-  modalActionSuccess: {
-    backgroundColor: '#E6F4EA',
-    borderColor: '#10B981',
-  },
-  modalActionError: {
-    backgroundColor: '#FCE8E6',
-    borderColor: '#EF4444',
-  },
-  modalActionText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  modalActionTextSuccess: {
-    color: '#10B981',
-  },
-  modalActionTextError: {
-    color: '#EF4444',
-  }
+  checkoutButtonDisabled: { opacity: 0.6 },
+  checkoutTextPremium: { color: '#3b82f6', fontSize: 14, fontWeight: '700' },
+
+  // Fallbacks
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#1E293B', marginTop: 16, marginBottom: 4 },
+  browseButtonPremium: { backgroundColor: '#0F172A', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24 },
+  browseTextPremium: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
+
+  // Sileo Sheet Overlay
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  sileoModalContainer: { width: '100%', maxWidth: 340, backgroundColor: '#FFFFFF', borderRadius: 24, padding: 28, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 10 },
+  modalIconWrapper: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  modalIconSuccess: { backgroundColor: '#DCFCE7' },
+  modalIconError: { backgroundColor: '#FCE8E6' },
+  modalTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', marginBottom: 10, textAlign: 'center' },
+  modalMessage: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  modalActionButton: { width: '100%', paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
+  modalActionSuccess: { backgroundColor: '#eff6ff', borderColor: '#3b82f6', borderWidth: 0.5 },
+  modalActionError: { backgroundColor: '#FCE8E6', borderColor: '#EF4444', borderWidth: 0.5 },
+  modalActionText: { fontSize: 15, fontWeight: '600' },
+  modalActionTextSuccess: { color: '#3b82f6' },
+  modalActionTextError: { color: '#EF4444' }
 });

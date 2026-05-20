@@ -37,6 +37,7 @@ import EditProfileUser from './src/screens/user/EditProfileUser';
 import BuyNow from './src/screens/user/BuyNow';
 import BuyNowCheckedOut from './src/screens/user/BuyNowCheckedOut';
 import ChatScreen from './src/screens/user/ChatScreen';
+import NotificationModal from './src/screens/user/NotificationModal';
 //Processing the buy product
 import OrdersDetails from './src/screens/user/OrdersDetails';
 import AddingCartModal from './src/screens/user/AddingCartModal';
@@ -73,6 +74,7 @@ import BuyNowModalCheckedout from './src/screens/user/BuyNowModalCheckedout';
 import ReportUserModal from './src/screens/vendor/components/ReportUserModal';
 import VendorNotificationModal from './src/screens/vendor/components/VendorNotificationModal';
 import ReportChat from './src/screens/user/ReportChat';
+import UserAddressMapView from './src/screens/user/UserAddressMapView';
 const Stack = createNativeStackNavigator();
 Text.defaultProps = Text.defaultProps || {};
 Text.defaultProps.style = {
@@ -151,6 +153,7 @@ export default function App() {
         <Stack.Screen name="ChatScreen" component={ChatScreen} options={{ headerTitle: 'Chat' }} />    
         <Stack.Screen name='AllReviews' component={AllReviews} />
         <Stack.Screen name='ReportChat' component={ReportChat} />
+        <Stack.Screen name='UserAddressMapView' component={UserAddressMapView} />
       
 
         {/* For Product */}
@@ -159,6 +162,7 @@ export default function App() {
         <Stack.Screen name='AddressSelection' component={AddressSelection} />
         <Stack.Screen name='AddAddress' component={AddAddress} />
         <Stack.Screen name='EditAddress' component={EditAddress} />
+        <Stack.Screen name='NotificationModal' component={NotificationModal} />
 
         {/* For Bidding */}
         <Stack.Screen name='ViewBiddingProduct' component={ViewBiddingProduct} />

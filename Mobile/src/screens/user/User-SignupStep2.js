@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,13 @@ import {
   Dimensions,
   Animated,
   Platform,
+  Modal,
+  FlatList,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Locations from './Locations.json';
 
-const { width } = Dimensions.get('window');
-const OTP_DURATION = 60;
+const { width, height } = Dimensions.get('window');
 
 const ProgressSteps = ({ currentStep = 2 }) => {
   const steps = ['Verify', 'Information', 'Selfie', 'Review'];
@@ -63,37 +63,74 @@ const ProgressSteps = ({ currentStep = 2 }) => {
   );
 };
 
+// --- PREMIUM CUSTOM PICKER MODAL ---
+const PremiumPickerModal = ({ visible, title, options, selectedValue, onSelect, onClose }) => {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <TouchableOpacity style={styles.modalDismissArea} activeOpacity={1} onPress={onClose} />
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalIndicator} />
+            <Text style={styles.modalTitle}>{title}</Text>
+          </View>
+          
+          <FlatList
+            data={options}
+            keyExtractor={(item) => item.value}
+            contentContainerStyle={styles.modalList}
+            renderItem={({ item }) => {
+              const isSelected = item.value === selectedValue;
+              return (
+                <TouchableOpacity
+                  style={[styles.modalItem, isSelected && styles.modalItemSelected]}
+                  onPress={() => {
+                    onSelect(item.value);
+                    onClose();
+                  }}
+                >
+                  <Text style={[styles.modalItemText, isSelected && styles.modalItemTextSelected]}>
+                    {item.label}
+                  </Text>
+                  {isSelected && <Text style={styles.modalCheckmark}>✓</Text>}
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 const UserSignupStep2 = ({ route, navigation }) => {
-const {
-  govIDFront,
-  govIDBack,
-} = route.params || {};
+  const { govIDFront, govIDBack } = route.params || {};
 
   // Personal details
-
   const [firstName, setFirstName] = useState('');
-const [middleName, setMiddleName] = useState('');
-const [lastName, setLastName] = useState('');
-
-const [birthDate, setBirthDate] = useState(new Date());
-const [birthDateString, setBirthDateString] = useState('');
-
-const [gender, setGender] = useState('');
-
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [middleName, setMiddleName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [birthDate, setBirthDate] = useState(new Date());
+  const [birthDateString, setBirthDateString] = useState('');
+  const [gender, setGender] = useState('');
 
   // Contact & address details
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-
   const [selectedCity, setSelectedCity] = useState('');
   const [selectedBarangay, setSelectedBarangay] = useState('');
   const [streetName, setStreetName] = useState('');
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Picker States
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [genderModalVisible, setGenderModalVisible] = useState(false);
+  const [cityModalVisible, setCityModalVisible] = useState(false);
+  const [barangayModalVisible, setBarangayModalVisible] = useState(false);
 
   const [status, setStatus] = useState({ message: '', type: '' });
   const fadeAnim = useState(new Animated.Value(0))[0];
@@ -117,8 +154,6 @@ const [gender, setGender] = useState('');
     return `${month}/${day}/${year}`;
   };
 
-
-
   const handleDateChange = (event, selectedDate) => {
     if (event.type === 'set' && selectedDate) {
       setBirthDate(selectedDate);
@@ -129,98 +164,46 @@ const [gender, setGender] = useState('');
     }
   };
 
+  const handleNext = () => {
+    if (!firstName.trim()) return showNotification('First name is required.');
+    if (!lastName.trim()) return showNotification('Last name is required.');
+    if (!birthDateString.trim()) return showNotification('Birth date is required.');
 
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDifference = today.getMonth() - birth.getMonth();
 
-  // TODO: OTP handlers to be repaired
-  // const handleSendOtp = async () => {
-  //   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-  //     return showNotification('Valid email is required.');
-  //   }
-  //   try {
-  //     setOtpSent(true);
-  //     setOtpTimer(OTP_DURATION);
-  //     setResendVisible(false);
-  //     const response = await fetch('https://e-baligya-mobile.onrender.com/send-otp', {
-  //       method: 'POST',
-  //       headers: { 'Content-Type': 'application/json' },
-  //       body: JSON.stringify({ email: email.trim().toLowerCase() }),
-  //     });
-  //     const data = await response.json();
-  //     if (response.ok && data.success) {
-  //       showNotification('OTP sent to your email.', 'success');
-  //     } else {
-  //       showNotification(data.message || data.error || 'Failed to send OTP.');
-  //     }
-  //   } catch {
-  //     showNotification('Error sending OTP. Check network.');
-  //   }
-  // };
+    if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
 
-  // const handleVerifyOtp = async () => {
-  //   if (otpTimer <= 0) return showNotification('OTP expired. Please resend.');
-  //   if (!userOtp || userOtp.length !== 6) return showNotification('Enter 6-digit OTP.');
-  //   try {
-  //     const response = await fetch('https://e-baligya-mobile.onrender.com/verify-otp', {
-  //       method: 'POST',
-  //       headers: { 'Content-Type': 'application/json' },
-  //       body: JSON.stringify({ email: email.trim().toLowerCase(), otp: userOtp }),
-  //     });
-  //     const data = await response.json();
-  //     if (response.ok && data.success) {
-  //       setOtpVerified(true);
-  //       showNotification('Email verified successfully!', 'success');
-  //     } else {
-  //       showNotification(data.message || data.error || 'Invalid OTP.');
-  //     }
-  //   } catch {
-  //     showNotification('Error verifying OTP.');
-  //   }
-  // };
+    if (age < 18) return showNotification('You must be at least 18 years old to register.');
+    if (!gender) return showNotification('Gender is required.');
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showNotification('Valid email is required.');
 
-const handleNext = () => {
-  // Validate personal details
-  if (!firstName.trim()) return showNotification('First name is required.');
-  if (!lastName.trim()) return showNotification('Last name is required.');
-  if (!birthDateString.trim()) return showNotification('Birth date is required.');
-  if (!gender) return showNotification('Gender is required.');
+    const phoneRegex = /^09\d{9}$/;
+    if (!phone || !phoneRegex.test(phone)) return showNotification('Enter a valid mobile number (09XXXXXXXXX).');
+    if (!password || password.length < 6) return showNotification('Password must be at least 6 characters.');
+    if (password !== confirmPassword) return showNotification('Passwords do not match.');
+    if (!selectedCity || !selectedBarangay || !streetName.trim()) return showNotification('Complete your address details.');
 
-  // Validate contact details
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-    return showNotification('Valid email is required.');
-
-  const phoneRegex = /^09\d{9}$/;
-  if (!phone || !phoneRegex.test(phone))
-    return showNotification('Enter a valid mobile number (09XXXXXXXXX).');
-
-  if (!password || password.length < 6)
-    return showNotification('Password must be at least 6 characters.');
-
-  if (password !== confirmPassword)
-    return showNotification('Passwords do not match.');
-
-  // Validate address details
-  if (!selectedCity || !selectedBarangay || !streetName.trim())
-    return showNotification('Complete your address details.');
-
-  navigation.navigate('UserSignupStep3', {
-    ...route.params,   // 👈 IMPORTANT: carry Step 1 data forward
-
-    // Step 2 data
-    firstName: firstName.trim(),
-    middleName: middleName.trim(),
-    lastName: lastName.trim(),
-    email: email.trim().toLowerCase(),
-    phone: phone.trim(),
-    password,
-    selectedCity,
-    selectedBarangay,
-    streetName: streetName.trim(),
-    birthDate: birthDateString,
-    gender,
-
-    currentStep: 3,
-  });
-};
+    navigation.navigate('UserSignupStep3', {
+      ...route.params,
+      firstName: firstName.trim(),
+      middleName: middleName.trim(),
+      lastName: lastName.trim(),
+      email: email.trim().toLowerCase(),
+      phone: phone.trim(),
+      password,
+      selectedCity,
+      selectedBarangay,
+      streetName: streetName.trim(),
+      birthDate: birthDateString,
+      gender,
+      currentStep: 3,
+    });
+  };
 
   return (
     <View style={styles.mainWrapper}>
@@ -253,6 +236,7 @@ const handleNext = () => {
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <ProgressSteps currentStep={2} />
 
+        {/* PERSONAL INFORMATION CARD */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Personal Information</Text>
 
@@ -284,30 +268,23 @@ const handleNext = () => {
           />
 
           <Text style={styles.label}>Date of Birth</Text>
-          <TouchableOpacity
-            style={styles.inputField}
-            onPress={() => setShowDatePicker(true)}
-          >
-            <Text style={{ color: birthDateString ? '#1E293B' : '#94A3B8', fontSize: 14 }}>
+          <TouchableOpacity style={styles.premiumPickerTrigger} onPress={() => setShowDatePicker(true)}>
+            <Text style={[styles.pickerTriggerText, birthDateString ? styles.textActive : styles.textPlaceholder]}>
               {birthDateString || 'Select date (MM/DD/YYYY)'}
             </Text>
+            <Text style={styles.chevronIcon}>📅</Text>
           </TouchableOpacity>
 
           <Text style={styles.label}>Gender</Text>
-          <View style={styles.pickerContainer}>
-<Picker
-  selectedValue={gender}
-  onValueChange={setGender}
-  style={{ color: '#000' }}   // IMPORTANT
->
-  <Picker.Item label="Select Gender" value="" color="#000" />
-<Picker.Item label="Male" value="Male" color="#000" />
-<Picker.Item label="Female" value="Female" color="#000" />
-<Picker.Item label="Other" value="Other" color="#000" />
-            </Picker>
-          </View>
+          <TouchableOpacity style={styles.premiumPickerTrigger} onPress={() => setGenderModalVisible(true)}>
+            <Text style={[styles.pickerTriggerText, gender ? styles.textActive : styles.textPlaceholder]}>
+              {gender || 'Select Gender'}
+            </Text>
+            <Text style={styles.chevronIcon}>▾</Text>
+          </TouchableOpacity>
         </View>
 
+        {/* CONTACT INFORMATION CARD */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Contact Information</Text>
 
@@ -319,6 +296,7 @@ const handleNext = () => {
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
+            placeholderTextColor="#94A3B8"
           />
 
           <Text style={styles.label}>Phone Number</Text>
@@ -329,6 +307,7 @@ const handleNext = () => {
             onChangeText={setPhone}
             keyboardType="phone-pad"
             maxLength={11}
+            placeholderTextColor="#94A3B8"
           />
 
           <Text style={styles.label}>Create Password</Text>
@@ -339,6 +318,7 @@ const handleNext = () => {
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
+              placeholderTextColor="#94A3B8"
             />
             <TouchableOpacity style={styles.inlineButton} onPress={() => setShowPassword(!showPassword)}>
               <Text style={styles.inlineButtonText}>{showPassword ? 'Hide' : 'Show'}</Text>
@@ -353,6 +333,7 @@ const handleNext = () => {
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry={!showConfirmPassword}
+              placeholderTextColor="#94A3B8"
             />
             <TouchableOpacity style={styles.inlineButton} onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
               <Text style={styles.inlineButtonText}>{showConfirmPassword ? 'Hide' : 'Show'}</Text>
@@ -360,42 +341,29 @@ const handleNext = () => {
           </View>
         </View>
 
-        {/* Personal Details card removed, as these are set in Step 1 */}
-
+        {/* HOME ADDRESS CARD */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Home Address</Text>
 
           <Text style={styles.label}>City</Text>
-          <View style={styles.pickerContainer}>
-            <Picker
-  selectedValue={selectedCity}
-  onValueChange={(value) => {
-    setSelectedCity(value);
-    setSelectedBarangay('');
-  }}
-  style={{ color: '#000' }}   // ✅ FORCE BLACK TEXT
->
-              <Picker.Item label="Select City" value="" color="#94A3B8" />
-              {cities.map((cityName) => (
-                <Picker.Item key={cityName} label={cityName} value={cityName} />
-              ))}
-            </Picker>
-          </View>
+          <TouchableOpacity style={styles.premiumPickerTrigger} onPress={() => setCityModalVisible(true)}>
+            <Text style={[styles.pickerTriggerText, selectedCity ? styles.textActive : styles.textPlaceholder]}>
+              {selectedCity || 'Select City'}
+            </Text>
+            <Text style={styles.chevronIcon}>▾</Text>
+          </TouchableOpacity>
 
           <Text style={styles.label}>Barangay</Text>
-          <View style={styles.pickerContainer}>
-<Picker
-  selectedValue={selectedBarangay}
-  onValueChange={setSelectedBarangay}
-  enabled={!!selectedCity}
-  style={{ color: '#000' }}   // ✅ FORCE BLACK TEXT
->
-                <Picker.Item label="Select Barangay" value="" color="#94A3B8" />
-              {(selectedCity && Locations[selectedCity] ? Locations[selectedCity] : []).map((barangayName) => (
-                <Picker.Item key={barangayName} label={barangayName} value={barangayName} />
-              ))}
-            </Picker>
-          </View>
+          <TouchableOpacity 
+            style={[styles.premiumPickerTrigger, !selectedCity && styles.disabledTrigger]} 
+            onPress={() => selectedCity && setBarangayModalVisible(true)}
+            disabled={!selectedCity}
+          >
+            <Text style={[styles.pickerTriggerText, selectedBarangay ? styles.textActive : styles.textPlaceholder]}>
+              {selectedBarangay || 'Select Barangay'}
+            </Text>
+            <Text style={styles.chevronIcon}>▾</Text>
+          </TouchableOpacity>
 
           <Text style={styles.label}>Street / House No.</Text>
           <TextInput
@@ -403,6 +371,7 @@ const handleNext = () => {
             placeholder="e.g. 143 Rizal St."
             value={streetName}
             onChangeText={setStreetName}
+            placeholderTextColor="#94A3B8"
           />
         </View>
 
@@ -411,12 +380,50 @@ const handleNext = () => {
 
       <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.nextButton, (!firstName || !lastName || !birthDateString || !gender || !email || !phone || !password || !confirmPassword || !selectedCity || !selectedBarangay || !streetName) && styles.nextButtonDisabled]}
+          style={[
+            styles.nextButton,
+            (!firstName || !lastName || !birthDateString || !gender || !email || !phone || !password || !confirmPassword || !selectedCity || !selectedBarangay || !streetName) && styles.nextButtonDisabled
+          ]}
           onPress={handleNext}
         >
           <Text style={styles.nextText}>Continue to Selfie</Text>
         </TouchableOpacity>
       </View>
+
+      {/* --- MODAL INSTANCES --- */}
+      <PremiumPickerModal
+        visible={genderModalVisible}
+        title="Select Gender"
+        options={[
+          { label: 'Male', value: 'Male' },
+          { label: 'Female', value: 'Female' },
+          { label: 'Other', value: 'Other' },
+        ]}
+        selectedValue={gender}
+        onSelect={setGender}
+        onClose={() => setGenderModalVisible(false)}
+      />
+
+      <PremiumPickerModal
+        visible={cityModalVisible}
+        title="Select City"
+        options={cities.map(c => ({ label: c, value: c }))}
+        selectedValue={selectedCity}
+        onSelect={(val) => {
+          setSelectedCity(val);
+          setSelectedBarangay('');
+        }}
+        onClose={() => setCityModalVisible(false)}
+      />
+
+      <PremiumPickerModal
+        visible={barangayModalVisible}
+        title="Select Barangay"
+        options={(selectedCity && Locations[selectedCity] ? Locations[selectedCity] : []).map(b => ({ label: b, value: b }))}
+        selectedValue={selectedBarangay}
+        onSelect={setSelectedBarangay}
+        onClose={() => setBarangayModalVisible(false)}
+      />
 
       {/* DATE PICKER */}
       {showDatePicker && (
@@ -455,43 +462,48 @@ const styles = StyleSheet.create({
   line: { height: 2, flex: 1, marginTop: -18, marginHorizontal: -5 },
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 20, marginBottom: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: '#1E293B', marginBottom: 14 },
-  infoBox: { backgroundColor: '#F1F5F9', borderRadius: 12, padding: 12 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  infoLabel: { fontSize: 12, color: '#64748B' },
-  infoValue: { fontSize: 12, fontWeight: '700', color: '#1E293B', maxWidth: '55%', textAlign: 'right' },
   label: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6, marginTop: 10 },
   inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden' },
-  inputWrapperVerified: { borderColor: '#10B981', backgroundColor: '#F0FDF4' },
-input: {
-  flex: 1,
-  padding: 12,
-  color: '#000', // FORCE BLACK
-  fontSize: 14,
-},
-inputField: {
-  backgroundColor: '#F8FAFC',
-  borderRadius: 10,
-  borderWidth: 1,
-  borderColor: '#E2E8F0',
-  padding: 12,
-  fontSize: 14,
-  color: '#000', // FORCE BLACK
-},
+  input: { flex: 1, padding: 12, color: '#0F172A', fontSize: 14 },
+  inputField: { backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', padding: 12, fontSize: 14, color: '#0F172A' },
   inlineButton: { paddingHorizontal: 12, borderLeftWidth: 1, borderLeftColor: '#E2E8F0' },
   inlineButtonText: { color: '#2563EB', fontWeight: '700', fontSize: 12 },
-  verifiedSealWrapper: { paddingHorizontal: 12, justifyContent: 'center' },
-  verifiedCircle: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center' },
-  verifiedCheckText: { color: '#FFF', fontSize: 12, fontWeight: '900' },
-  pickerContainer: { backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden' },
-  otpSection: { marginTop: 12, padding: 12, backgroundColor: '#EFF6FF', borderRadius: 10 },
-  verifyButton: { backgroundColor: '#2563EB', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6, marginRight: 8 },
-  verifyButtonText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  timerText: { fontSize: 11, color: '#64748B', marginTop: 6, textAlign: 'center' },
+  
+  // PREMIUM PICKER UI CHANGES
+  premiumPickerTrigger: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    backgroundColor: '#F8FAFC', 
+    borderRadius: 10, 
+    borderWidth: 1, 
+    borderColor: '#E2E8F0', 
+    padding: 14 
+  },
+  disabledTrigger: { opacity: 0.5, backgroundColor: '#E2E8F0' },
+  pickerTriggerText: { fontSize: 14, fontWeight: '500' },
+  textActive: { color: '#0F172A' },
+  textPlaceholder: { color: '#94A3B8' },
+  chevronIcon: { fontSize: 14, color: '#64748B' },
+
+  // BOTTOM SHEET SHELF MODAL STYLES
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
+  modalDismissArea: { flex: 1 },
+  modalSheet: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 40, maxHeight: height * 0.5 },
+  modalHeader: { alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  modalIndicator: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#E2E8F0', marginBottom: 10 },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  modalList: { paddingHorizontal: 20, paddingTop: 10 },
+  modalItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F8FAFC' },
+  modalItemSelected: { backgroundColor: '#EFF6FF', marginHorizontal: -20, paddingHorizontal: 20, borderRadius: 8 },
+  modalItemText: { fontSize: 15, color: '#334155', fontWeight: '500' },
+  modalItemTextSelected: { color: '#2563EB', fontWeight: '700' },
+  modalCheckmark: { color: '#2563EB', fontSize: 16, fontWeight: '700' },
+
   footer: { position: 'absolute', bottom: 0, width: width, padding: 20, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   nextButton: { backgroundColor: '#2563EB', padding: 16, borderRadius: 12, alignItems: 'center' },
   nextButtonDisabled: { backgroundColor: '#CBD5E1' },
   nextText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-
 });
 
 export default UserSignupStep2;

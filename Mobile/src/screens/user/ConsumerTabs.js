@@ -7,7 +7,7 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 // Screens
 import HomeScreen from './Home';
 import ProductScreen from './Product';
-import BiddingScreen from './BiddingProductScreen';
+import BiddingProductScreen from './BiddingProductScreen';
 import NotificationScreen from './Notification';
 import MeScreen from './Me';
 
@@ -64,7 +64,7 @@ export default function ConsumerTabs() {
 
       <Tab.Screen
         name="Bidding"
-        component={BiddingScreen}
+        component={BiddingProductScreen}
         options={{
           tabBarIcon: () => <Image source={BiddingIcon} style={{ width: 25, height: 25 }} />,
         }}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,12 @@ import {
   StatusBar,
   Dimensions,
   Platform,
+  Modal,
+  FlatList,
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-const { width } = Dimensions.get('window');
-const OTP_DURATION = 60;
+const { width, height } = Dimensions.get('window');
 
 /* ------------------------- PROGRESS STEPS UI ------------------------- */
 const ProgressSteps = ({ currentStep = 3 }) => {
@@ -62,7 +62,6 @@ const ProgressSteps = ({ currentStep = 3 }) => {
               </Text>
             </View>
 
-            {/* FIXED LINE LOGIC */}
             {idx < steps.length - 1 && (
               <View
                 style={[
@@ -81,26 +80,60 @@ const ProgressSteps = ({ currentStep = 3 }) => {
   );
 };
 
+/* ------------------------- PREMIUM BOTTOM SHEET DROPDOWN ------------------------- */
+const PremiumDropdownModal = ({ visible, title, options, selectedValue, onSelect, onClose }) => {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
+        <View style={styles.bottomSheet} onStartShouldSetResponder={() => true}>
+          <View style={styles.bottomSheetHeader}>
+            <View style={styles.notch} />
+            <Text style={styles.bottomSheetTitle}>{title}</Text>
+          </View>
+          <FlatList
+            data={options}
+            keyExtractor={(item) => item}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 30 }}
+            renderItem={({ item }) => {
+              const isSelected = item === selectedValue;
+              return (
+                <TouchableOpacity
+                  style={[styles.optionRow, isSelected && styles.optionRowSelected]}
+                  onPress={() => {
+                    onSelect(item);
+                    onClose();
+                  }}
+                >
+                  <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
+                    {item}
+                  </Text>
+                  {isSelected && <Text style={styles.optionCheck}>✓</Text>}
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
 const VendorSignupStep2 = ({ route, navigation }) => {
-const prevData = route.params?.formData || {};
-const {
-  businessType,
-  marketName,
-  latitude,
-  longitude,
-  govIDFront,
-  govIDBack,
-  permitImage,
-} = route.params || {};
-
-
+  const prevData = route.params?.formData || {};
 
   // Form State
-const [ownerName, setOwnerName] = useState('');
-const [dateOfBirth, setDateOfBirth] = useState(new Date());
-const [dateOfBirthString, setDateOfBirthString] = useState('');
-const [showDatePicker, setShowDatePicker] = useState(false);
-const [gender, setGender] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState(new Date());
+  const [dateOfBirthString, setDateOfBirthString] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  
+  // Custom dropdown states
+  const [gender, setGender] = useState('');
+  const [genderModalVisible, setGenderModalVisible] = useState(false);
+  const [selectedBarangay, setSelectedBarangay] = useState('');
+  const [barangayModalVisible, setBarangayModalVisible] = useState(false);
+
   const [businessName, setBusinessName] = useState('');
   const [permitNumber, setPermitNumber] = useState('');
   const [email, setEmail] = useState('');
@@ -108,24 +141,18 @@ const [gender, setGender] = useState('');
   const [password, setPassword] = useState('');
   const [selectedProvince, setSelectedProvince] = useState('Negros Occidental');
   const [selectedCity, setSelectedCity] = useState('Bacolod City');
-  const [selectedBarangay, setSelectedBarangay] = useState('');
   const [streetName, setStreetName] = useState('');
 
   const [showPassword, setShowPassword] = useState(false);
-
   const [sileoVisible, setSileoVisible] = useState(false);
-  const [sileoConfig, setSileoConfig] = useState({
-    title: '',
-    message: '',
-    buttonText: 'OK',
-    type: 'info',
-  });
+  const [sileoConfig, setSileoConfig] = useState({ title: '', message: '', buttonText: 'OK', type: 'info' });
 
+  const genderOptions = ['Male', 'Female', 'Other'];
   const barangaysByCity = {
     'Bacolod City': [
       "Alangilan", "Alijis", "Banago", "Bata", "Cabug", "Estefanía", "Felisa", "Granada", "Handumanan",
       "Mandalagan", "Mansilingan", "Montevista", "Pahanocoy", "Punta Taytay", "Singcang-Airport", "Sum-ag", "Taculing",
-      "Tangub", "Villamonte", "Vista Alegre", "Brgy 1", "Brgy 2", "Brgy 3", "Brgy 4" // ... add more as needed
+      "Tangub", "Villamonte", "Vista Alegre", "Brgy 1", "Brgy 2", "Brgy 3", "Brgy 4"
     ],
   };
 
@@ -146,8 +173,6 @@ const [gender, setGender] = useState('');
     return `${month}/${day}/${year}`;
   };
 
-
-
   const handleDateChange = (event, selectedDate) => {
     if (event.type === 'set' && selectedDate) {
       setDateOfBirth(selectedDate);
@@ -158,103 +183,57 @@ const [gender, setGender] = useState('');
     }
   };
 
+  const handleNext = () => {
+    if (!ownerName.trim()) return showNotification('Full name is required.');
+    if (!dateOfBirthString.trim()) return showNotification('Birth date is required.');
 
+    const today = new Date();
+    const birth = new Date(dateOfBirth);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDifference = today.getMonth() - birth.getMonth();
 
-// TODO: OTP handlers to be repaired
-// const handleSendOtp = async () => {
-//   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-//     return showNotification('Valid email is required.');
-//   }
-//   try {
-//     setOtpSent(true);
-//     setOtpTimer(OTP_DURATION);
-//     setResendVisible(false);
-//     const response = await fetch('https://e-baligya-mobile.onrender.com/send-otp', {
-//       method: 'POST',
-//       headers: { 'Content-Type': 'application/json' },
-//       body: JSON.stringify({ email }),
-//     });
-//     const data = await response.json();
-//     if (response.ok && data.success) {
-//       showNotification('OTP sent to your email.', 'success');
-//     } else {
-//       showNotification(data.message || data.error || 'Failed to send OTP.');
-//     }
-//   } catch (err) {
-//     showNotification('Error sending OTP. Check network.');
-//   }
-// };
+    if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
 
-// const handleVerifyOtp = async () => {
-//   if (otpTimer <= 0) return showNotification('OTP expired. Please resend.');
-//   if (!userOtp || userOtp.length !== 6) return showNotification('Enter 6-digit OTP.');
-//   try {
-//     const response = await fetch('https://e-baligya-mobile.onrender.com/verify-otp', {
-//       method: 'POST',
-//       headers: { 'Content-Type': 'application/json' },
-//       body: JSON.stringify({ email, otp: userOtp }),
-//     });
-//     const data = await response.json();
-//     if (response.ok && data.success) {
-//       setOtpVerified(true);
-//       showNotification('Email verified successfully!', 'success');
-//     } else {
-//       showNotification(data.message || data.error || 'Invalid OTP.');
-//     }
-//   } catch (err) {
-//     showNotification('Error verifying OTP.');
-//   }
-// };
+    if (age < 18) return showNotification('You must be at least 18 years old to register.');
+    if (!gender) return showNotification('Gender is required.');
+    if (!businessName.trim()) return showNotification('Business name is required.');
+    if (!permitNumber.trim()) return showNotification('Permit number is required.');
 
-const handleNext = () => {
-  // Validate personal information
-  if (!ownerName.trim()) return showNotification('Full name is required.');
-  if (!dateOfBirthString) return showNotification('Date of birth is required.');
-  if (!gender) return showNotification('Please select your gender.');
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return showNotification('Valid email is required.');
 
-  // Business info
-  if (!businessName.trim()) return showNotification('Business name is required.');
-  if (!permitNumber.trim()) return showNotification('Permit number is required.');
+    const phoneRegex = /^09\d{9}$/;
+    if (!phone || !phoneRegex.test(phone))
+      return showNotification('Enter a valid mobile number (09XXXXXXXXX).');
 
-  // Contact
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-    return showNotification('Valid email is required.');
+    if (!password || password.length < 6)
+      return showNotification('Password must be at least 6 characters.');
 
-  const phoneRegex = /^09\d{9}$/;
-  if (!phone || !phoneRegex.test(phone))
-    return showNotification('Enter a valid mobile number (09XXXXXXXXX).');
+    if (!selectedBarangay) return showNotification('Please select your barangay.');
+    if (!streetName.trim()) return showNotification('Street address is required.');
 
-  if (!password || password.length < 6)
-    return showNotification('Password must be at least 6 characters.');
+    const updatedData = {
+      ...prevData,
+      ownerName,
+      dateOfBirth: dateOfBirthString,
+      gender,
+      businessName,
+      permitNumber,
+      email,
+      phone,
+      password,
+      selectedProvince,
+      selectedCity,
+      selectedBarangay,
+      streetName,
+    };
 
-  // Address
-  if (!selectedBarangay)
-    return showNotification('Please select your barangay.');
-
-  if (!streetName.trim())
-    return showNotification('Street address is required.');
-
-  // 🔥 MERGE ALL DATA
-  const updatedData = {
-    ...prevData, // Step1 + BusPermit
-    ownerName,
-    dateOfBirth: dateOfBirthString,
-    gender,
-    businessName,
-    permitNumber,
-    email,
-    phone,
-    password,
-    selectedProvince,
-    selectedCity,
-    selectedBarangay,
-    streetName,
+    navigation.navigate('VendorSignupStep3', {
+      formData: updatedData,
+    });
   };
-
-  navigation.navigate('VendorSignupStep3', {
-    formData: updatedData,
-  });
-};
 
   return (
     <View style={styles.mainWrapper}>
@@ -298,14 +277,15 @@ const handleNext = () => {
           </TouchableOpacity>
 
           <Text style={styles.label}>Gender</Text>
-          <View style={styles.pickerContainer}>
-            <Picker selectedValue={gender} onValueChange={setGender}>
-              <Picker.Item label="Select Gender" value="" color="#94A3B8" />
-              <Picker.Item label="Male" value="Male" />
-              <Picker.Item label="Female" value="Female" />
-              <Picker.Item label="Other" value="Other" />
-            </Picker>
-          </View>
+          <TouchableOpacity
+            style={styles.premiumDropdownTrigger}
+            onPress={() => setGenderModalVisible(true)}
+          >
+            <Text style={[styles.premiumDropdownText, !gender && styles.premiumDropdownPlaceholder]}>
+              {gender || 'Select Gender'}
+            </Text>
+            <Text style={styles.premiumDropdownArrow}>▼</Text>
+          </TouchableOpacity>
         </View>
 
         {/* BUSINESS INFORMATION CARD */}
@@ -343,6 +323,7 @@ const handleNext = () => {
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
+            placeholderTextColor="#94A3B8"
           />
 
           <Text style={styles.label}>Phone Number</Text>
@@ -353,6 +334,7 @@ const handleNext = () => {
             onChangeText={setPhone}
             keyboardType="phone-pad"
             maxLength={11}
+            placeholderTextColor="#94A3B8"
           />
 
           <Text style={styles.label}>Create Password</Text>
@@ -363,6 +345,7 @@ const handleNext = () => {
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
+              placeholderTextColor="#94A3B8"
             />
             <TouchableOpacity style={styles.inlineButton} onPress={() => setShowPassword(!showPassword)}>
               <Text style={styles.inlineButtonText}>{showPassword ? 'Hide' : 'Show'}</Text>
@@ -380,12 +363,15 @@ const handleNext = () => {
           </View>
 
           <Text style={styles.label}>Barangay</Text>
-          <View style={styles.pickerContainer}>
-            <Picker selectedValue={selectedBarangay} onValueChange={setSelectedBarangay}>
-              <Picker.Item label="Select Barangay" value="" color="#94A3B8" />
-              {barangaysByCity['Bacolod City'].map((b, i) => (<Picker.Item key={i} label={b} value={b} />))}
-            </Picker>
-          </View>
+          <TouchableOpacity
+            style={styles.premiumDropdownTrigger}
+            onPress={() => setBarangayModalVisible(true)}
+          >
+            <Text style={[styles.premiumDropdownText, !selectedBarangay && styles.premiumDropdownPlaceholder]}>
+              {selectedBarangay || 'Select Barangay'}
+            </Text>
+            <Text style={styles.premiumDropdownArrow}>▼</Text>
+          </TouchableOpacity>
 
           <Text style={styles.label}>Street / House No.</Text>
           <TextInput
@@ -393,6 +379,7 @@ const handleNext = () => {
             placeholder="e.g. 143 Rizal St."
             value={streetName}
             onChangeText={setStreetName}
+            placeholderTextColor="#94A3B8"
           />
         </View>
 
@@ -421,6 +408,27 @@ const handleNext = () => {
         />
       )}
 
+      {/* PREMIUM GENDER DROPDOWN SHEET */}
+      <PremiumDropdownModal
+        visible={genderModalVisible}
+        title="Select Gender"
+        options={genderOptions}
+        selectedValue={gender}
+        onSelect={setGender}
+        onClose={() => setGenderModalVisible(false)}
+      />
+
+      {/* PREMIUM BARANGAY DROPDOWN SHEET */}
+      <PremiumDropdownModal
+        visible={barangayModalVisible}
+        title="Select Barangay"
+        options={barangaysByCity['Bacolod City']}
+        selectedValue={selectedBarangay}
+        onSelect={setSelectedBarangay}
+        onClose={() => setBarangayModalVisible(false)}
+      />
+
+      {/* NOTIFICATION MODAL */}
       {sileoVisible && (
         <View style={styles.sileoOverlay}>
           <View style={styles.sileoModal}>
@@ -451,72 +459,99 @@ const handleNext = () => {
 };
 
 const styles = StyleSheet.create({
-  sileoOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(36, 41, 46, 0.32)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 9999,
+  /* NEW PREMIUM DROPDOWN MODAL STYLES */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.4)', // Soft modern overlay blur
+    justifyContent: 'flex-end',
   },
-  sileoModal: {
-    width: '82%',
+  bottomSheet: {
     backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    shadowColor: '#2563EB',
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 8,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: height * 0.5, // Caps height at 50% screen so it looks like a clean sheet
+    paddingHorizontal: 24,
   },
-  sileoIconCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    justifyContent: 'center',
+  bottomSheetHeader: {
     alignItems: 'center',
-    marginBottom: 14,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
+  notch: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E2E8F0',
+    marginBottom: 12,
+  },
+  bottomSheetTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  optionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F8FAFC',
+  },
+  optionRowSelected: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+  },
+  optionText: {
+    fontSize: 15,
+    color: '#334155',
+    fontWeight: '500',
+  },
+  optionTextSelected: {
+    color: '#2563EB',
+    fontWeight: '700',
+  },
+  optionCheck: {
+    fontSize: 16,
+    color: '#2563EB',
+    fontWeight: '700',
+  },
+  premiumDropdownTrigger: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 12,
+  },
+  premiumDropdownText: {
+    fontSize: 14,
+    color: '#1E293B',
+    fontWeight: '500',
+  },
+  premiumDropdownPlaceholder: {
+    color: '#94A3B8',
+  },
+  premiumDropdownArrow: {
+    fontSize: 10,
+    color: '#64748B',
+  },
+
+  /* STANDARDIZED EXISTING STYLES */
+  sileoOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(36, 41, 46, 0.32)', justifyContent: 'center', alignItems: 'center', zIndex: 9999 },
+  sileoModal: { width: '82%', backgroundColor: '#fff', borderRadius: 20, padding: 24, alignItems: 'center', shadowColor: '#2563EB', shadowOpacity: 0.12, shadowRadius: 16, elevation: 8 },
+  sileoIconCircle: { width: 58, height: 58, borderRadius: 29, justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
   sileoSuccessCircle: { backgroundColor: '#10B981' },
   sileoWarningCircle: { backgroundColor: '#F59E0B' },
   sileoInfoCircle: { backgroundColor: '#2563EB' },
-  sileoIcon: {
-    color: '#fff',
-    fontSize: 30,
-    fontWeight: '900',
-  },
-  sileoTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  sileoMessage: {
-    fontSize: 14,
-    color: '#475569',
-    textAlign: 'center',
-    marginBottom: 20,
-    fontWeight: '500',
-    lineHeight: 20,
-  },
-  sileoButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 12,
-    paddingVertical: 11,
-    paddingHorizontal: 28,
-    alignItems: 'center',
-  },
-  sileoButtonText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 15,
-    letterSpacing: 0.2,
-  },
+  sileoIcon: { color: '#fff', fontSize: 30, fontWeight: '900' },
+  sileoTitle: { fontSize: 20, fontWeight: '800', color: '#0F172A', marginBottom: 8, textAlign: 'center' },
+  sileoMessage: { fontSize: 14, color: '#475569', textAlign: 'center', marginBottom: 20, fontWeight: '500', lineHeight: 20 },
+  sileoButton: { backgroundColor: '#2563EB', borderRadius: 12, paddingVertical: 11, paddingHorizontal: 28, alignItems: 'center' },
+  sileoButtonText: { color: '#fff', fontWeight: '800', fontSize: 15, letterSpacing: 0.2 },
   mainWrapper: { flex: 1, backgroundColor: '#F8FAFC' },
   header: { backgroundColor: '#fff', paddingTop: 60, paddingBottom: 20, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
   backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
@@ -536,30 +571,16 @@ const styles = StyleSheet.create({
   line: { height: 2, flex: 1, marginTop: -18, marginHorizontal: -5 },
   card: { backgroundColor: '#fff', borderRadius: 16, padding: 20, marginBottom: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: '#1E293B', marginBottom: 14 },
-  infoBox: { backgroundColor: '#F1F5F9', borderRadius: 12, padding: 12 },
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  infoLabel: { fontSize: 12, color: '#64748B' },
-  infoValue: { fontSize: 12, fontWeight: '700', color: '#1E293B' },
   label: { fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6, marginTop: 10 },
   inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden' },
-  inputWrapperVerified: { borderColor: '#10B981', backgroundColor: '#F0FDF4' },
   input: { flex: 1, padding: 12, color: '#1E293B', fontSize: 14 },
   inputField: { backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', padding: 12, fontSize: 14, color: '#1E293B' },
   inlineButton: { paddingHorizontal: 12, borderLeftWidth: 1, borderLeftColor: '#E2E8F0' },
   inlineButtonText: { color: '#2563EB', fontWeight: '700', fontSize: 12 },
-  verifiedSealWrapper: { paddingHorizontal: 12, justifyContent: 'center' },
-  verifiedCircle: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center' },
-  verifiedCheckText: { color: '#FFF', fontSize: 12, fontWeight: '900' },
-  pickerContainer: { backgroundColor: '#F8FAFC', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', overflow: 'hidden' },
-  otpSection: { marginTop: 12, padding: 12, backgroundColor: '#EFF6FF', borderRadius: 10 },
-  verifyButton: { backgroundColor: '#2563EB', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6, marginRight: 8 },
-  verifyButtonText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  timerText: { fontSize: 11, color: '#64748B', marginTop: 6, textAlign: 'center' },
   footer: { position: 'absolute', bottom: 0, width: width, padding: 20, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   nextButton: { backgroundColor: '#2563EB', padding: 16, borderRadius: 12, alignItems: 'center' },
   nextButtonDisabled: { backgroundColor: '#CBD5E1' },
   nextText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-
 });
 
 export default VendorSignupStep2;

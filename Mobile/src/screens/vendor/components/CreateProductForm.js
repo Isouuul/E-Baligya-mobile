@@ -46,6 +46,12 @@ const CreateProductForm = ({ onCancel, onSubmit, visible }) => {
     onPress: null,
   });
 
+  const [services, setServices] = useState({
+    cleaned: { label: 'Cleaned & Gutted', enabled: false, price: '' },
+    filleted: { label: 'Filleted', enabled: false, price: '' },
+    vacuum: { label: 'Vacuum Packed', enabled: false, price: '' },
+  });
+
   const showSileo = ({ title, message, buttonText = 'OK', type = 'info', onPress = null }) => {
     setSileoConfig({ title, message, buttonText, type, onPress });
     setSileoVisible(true);
@@ -177,6 +183,68 @@ const CreateProductForm = ({ onCancel, onSubmit, visible }) => {
     setPrediction(null);
     setIsClassifying(false);
     setFreshness(null);
+    // FIX: Clear down premium services configurations safely on reset
+    setServices({
+      cleaned: { label: 'Cleaned & Gutted', enabled: false, price: '' },
+      filleted: { label: 'Filleted', enabled: false, price: '' },
+      vacuum: { label: 'Vacuum Packed', enabled: false, price: '' },
+    });
+  };
+
+  const renderServiceRow = (serviceKey) => {
+    const isSelected = services[serviceKey].enabled;
+
+    return (
+      <View
+        key={serviceKey}
+        style={[styles.cardRow, isSelected && styles.activeRow]}
+      >
+        <TouchableOpacity
+          style={styles.checkboxContainer}
+          onPress={() =>
+            setServices((prev) => ({
+              ...prev,
+              [serviceKey]: {
+                ...prev[serviceKey],
+                enabled: !prev[serviceKey].enabled,
+              },
+            }))
+          }
+        >
+          <View
+            style={[
+              styles.customCheckbox,
+              isSelected && styles.customCheckboxChecked,
+            ]}
+          >
+            {isSelected && <View style={styles.checkmark} />}
+          </View>
+
+          <Text style={styles.rowLabel}>
+            {services[serviceKey].label}
+          </Text>
+        </TouchableOpacity>
+
+        {isSelected && (
+          <TextInput
+            style={styles.rowInput}
+            placeholder="Add-on ₱"
+            keyboardType="numeric"
+            placeholderTextColor="#94A3B8"
+            value={services[serviceKey].price}
+            onChangeText={(txt) =>
+              setServices((prev) => ({
+                ...prev,
+                [serviceKey]: {
+                  ...prev[serviceKey],
+                  price: txt,
+                },
+              }))
+            }
+          />
+        )}
+      </View>
+    );
   };
 
   const handleClose = () => {
@@ -220,6 +288,14 @@ const CreateProductForm = ({ onCancel, onSubmit, visible }) => {
       const warningTimestamp = Timestamp.fromDate(warningDate);
       const expiryTimestamp = Timestamp.fromDate(expiryDate);
 
+      const enabledServices = Object.keys(services)
+        .filter((key) => services[key].enabled)
+        .map((key) => ({
+          id: key,
+          label: services[key].label,
+          price: parseFloat(services[key].price) || 0,
+        }));
+
       const productData = {
         category,
         productName: productName.trim(),
@@ -230,7 +306,7 @@ const CreateProductForm = ({ onCancel, onSubmit, visible }) => {
         warningTime: warningTimestamp, 
         expiryTime: expiryTimestamp,  
         imageBase64,
-
+        premiumServices: enabledServices,
         location: {
           latitude: vendorData.latitude || null,
           longitude: vendorData.longitude || null,
@@ -240,7 +316,6 @@ const CreateProductForm = ({ onCancel, onSubmit, visible }) => {
           email: user.email,
           businessName: vendorData.businessName || 'Unknown',
           marketName: vendorData.marketName || 'Unknown Market',
-
           vendorProfileImage: vendorData.profileImage || null,
           freshness: freshness || 'Unknown',
         },
@@ -381,6 +456,13 @@ const CreateProductForm = ({ onCancel, onSubmit, visible }) => {
                 />
               </View>
 
+              <View style={styles.cardSection}>
+                <Text style={styles.sectionLabel}>
+                  Premium Services
+                </Text>
+                {Object.keys(services).map(renderServiceRow)}
+              </View>
+
               <TextInput 
                 style={[styles.premiumInput, { minHeight: 100, textAlignVertical: 'top' }]} 
                 placeholder="Product Description (optional)" 
@@ -463,14 +545,14 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.6)',
-    justifyContent: 'flex-end', // Aligns modal to the bottom like an elegant sheet/card
+    justifyContent: 'flex-end', 
     alignItems: 'center',
   },
   cardModalContainer: {
     width: '100%',
     maxWidth: 550,
     maxHeight: '90%',
-    backgroundColor: '#F8FAFC', // Slate background to separate content cards
+    backgroundColor: '#F8FAFC', 
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
     overflow: 'hidden',
@@ -643,6 +725,64 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   sileoButtonText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  cardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  activeRow: {
+    borderColor: '#1E3A8A',
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  customCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
+    marginRight: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customCheckboxChecked: {
+    backgroundColor: '#1E3A8A',
+    borderColor: '#1E3A8A',
+  },
+  checkmark: {
+    width: 10,
+    height: 5,
+    borderBottomWidth: 2,
+    borderLeftWidth: 2,
+    borderColor: '#FFF',
+    transform: [{ rotate: '-45deg' }],
+    marginTop: -2,
+  },
+  rowLabel: {
+    fontSize: 15,
+    color: '#334155',
+    fontWeight: '500',
+  },
+  rowInput: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    width: 110,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    color: '#1E293B',
+  },
 });
 
 export default CreateProductForm;

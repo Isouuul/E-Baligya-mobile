@@ -16,6 +16,7 @@ import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { auth, db } from '../../firebase';
 import Toast from 'react-native-toast-message';
+import MapView, { Marker } from 'react-native-maps'; 
 
 import {
   collection,
@@ -46,7 +47,7 @@ export default function CheckedOut() {
   const [deliveryMethod, setDeliveryMethod] = useState('Delivery');
   const [leaveNote, setLeaveNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false); // New state for success modal
+  const [showSuccessModal, setShowSuccessModal] = useState(false); // State for success modal
 
   const SHIPPING_FEE = 50;
 
@@ -88,6 +89,8 @@ export default function CheckedOut() {
                   fullName: `${docData.firstName || ''} ${docData.lastName || ''}`.trim(),
                   fullAddress: `${docData.streetName || ''}, ${docData.barangay || ''}, ${docData.city || ''}, ${docData.province || ''}, ${docData.region || ''}`,
                   contactNumber: docData.phoneNumber || '',
+                  latitude: docData.latitude || null,
+                  longitude: docData.longitude || null,
                 });
               } else {
                 setAddress(null);
@@ -139,6 +142,16 @@ export default function CheckedOut() {
 
   const totalAmount = subtotal + (deliveryMethod === 'Delivery' ? SHIPPING_FEE : 0);
 
+  // Switch dynamic payment values securely depending on delivery configurations
+  const handleDeliveryMethodChange = (method) => {
+    setDeliveryMethod(method);
+    if (method === 'Pickup') {
+      setPaymentMethod('Pay-On-Pickup');
+    } else {
+      setPaymentMethod('Cash-On-Delivery');
+    }
+  };
+
   const renderItemCard = item => {
     const displayPrice = item.totalPrice 
       ? item.totalPrice 
@@ -185,7 +198,7 @@ export default function CheckedOut() {
     );
   };
 
-const handlePlaceOrder = async () => {
+  const handlePlaceOrder = async () => {
     if (isSubmitting) return;
     const user = auth.currentUser;
     if (!user) return;
@@ -245,15 +258,14 @@ const handlePlaceOrder = async () => {
         createdAt: serverTimestamp(),
       };
 
-      // 1. Save order to FireStore
+      // 1. Save order to Firestore
       await addDoc(collection(db, 'Orders'), orderData);
 
-      // 2. NEW: Trigger Vendor Notifications for Cart Items
+      // 2. Trigger Vendor Notifications for Cart Items
       const uniqueVendorIds = new Set();
       const notificationPromises = [];
 
       selectedItems.forEach(item => {
-        // Extracting UID dynamically handling nested object layouts or raw string targets
         const vendorId = item.uploadedBy?.uid || item.uploadedBy;
         
         if (vendorId && !uniqueVendorIds.has(vendorId)) {
@@ -296,7 +308,7 @@ const handlePlaceOrder = async () => {
         );
       }
 
-      // Open the Success Modal emphasize highlight
+      // Open the Success Modal
       setShowSuccessModal(true);
 
     } catch (error) {
@@ -371,6 +383,33 @@ const handlePlaceOrder = async () => {
                 <Text style={styles.addressName}>{address.fullName}</Text>
                 <Text style={styles.addressPhone}><Feather name="phone" size={12} /> {address.contactNumber}</Text>
                 <Text style={styles.addressText}>{address.fullAddress}</Text>
+                
+                {/* Embedded Static Map View Preview */}
+                {address.latitude && address.longitude && (
+                  <View style={styles.mapContainer}>
+                    <MapView
+                      style={styles.mapPreview}
+                      scrollEnabled={false}
+                      zoomEnabled={false}
+                      rotateEnabled={false}
+                      pitchEnabled={false}
+                      initialRegion={{
+                        latitude: Number(address.latitude),
+                        longitude: Number(address.longitude),
+                        latitudeDelta: 0.005,
+                        longitudeDelta: 0.005,
+                      }}
+                    >
+                      <Marker
+                        coordinate={{
+                          latitude: Number(address.latitude),
+                          longitude: Number(address.longitude),
+                        }}
+                        pinColor="#3b82f6"
+                      />
+                    </MapView>
+                  </View>
+                )}
               </View>
             ) : (
               <Text style={styles.emptyTextNote}>No active address found. Please select one.</Text>
@@ -396,13 +435,13 @@ const handlePlaceOrder = async () => {
           <View style={styles.optionGrid}>
             <TouchableOpacity
               style={[styles.optionPill, deliveryMethod === 'Delivery' && styles.optionPillActive]}
-              onPress={() => setDeliveryMethod('Delivery')}
+              onPress={() => handleDeliveryMethodChange('Delivery')}
             >
               <Text style={[styles.optionPillText, deliveryMethod === 'Delivery' && styles.optionPillTextActive]}>Delivery</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.optionPill, deliveryMethod === 'Pickup' && styles.optionPillActive]}
-              onPress={() => setDeliveryMethod('Pickup')}
+              onPress={() => handleDeliveryMethodChange('Pickup')}
             >
               <Text style={[styles.optionPillText, deliveryMethod === 'Pickup' && styles.optionPillTextActive]}> Store Pickup</Text>
             </TouchableOpacity>
@@ -410,21 +449,37 @@ const handlePlaceOrder = async () => {
 
           <View style={styles.dividerPremium} />
 
-          <TouchableOpacity
-            style={styles.paymentMethodSelector}
-            onPress={() => setPaymentMethod('Cash-On-Delivery')}
-          >
-            <View style={styles.row}>
-              <View style={styles.iconCircleGreen}>
-                <MaterialCommunityIcons name="cash-multiple" size={20} color="#10B981" />
+          {/* Conditional Payment Method rendering logic */}
+          {deliveryMethod === 'Delivery' ? (
+            <TouchableOpacity
+              style={styles.paymentMethodSelector}
+              onPress={() => setPaymentMethod('Cash-On-Delivery')}
+            >
+              <View style={styles.row}>
+                <View style={styles.iconCircleGreen}>
+                  <MaterialCommunityIcons name="cash-multiple" size={20} color="#10B981" />
+                </View>
+                <View style={{ marginLeft: 12 }}>
+                  <Text style={styles.paymentMainText}>Cash on Delivery</Text>
+                  <Text style={styles.paymentSubText}>Pay when you receive the items</Text>
+                </View>
               </View>
-              <View style={{ marginLeft: 12 }}>
-                <Text style={styles.paymentMainText}>Cash on Delivery</Text>
-                <Text style={styles.paymentSubText}>Pay when you receive the items</Text>
+              <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.paymentMethodSelector, styles.paymentPickupSelector]}>
+              <View style={styles.row}>
+                <View style={styles.iconCircleBlue}>
+                  <MaterialCommunityIcons name="storefront-outline" size={20} color="#3b82f6" />
+                </View>
+                <View style={{ marginLeft: 12 }}>
+                  <Text style={styles.paymentMainTextBlue}>Pay at Counter</Text>
+                  <Text style={styles.paymentSubTextBlue}>Settle your payment directly at the store</Text>
+                </View>
               </View>
+              <Ionicons name="checkmark-circle" size={24} color="#3b82f6" />
             </View>
-            <Ionicons name="checkmark-circle" size={24} color="#10B981" />
-          </TouchableOpacity>
+          )}
         </View>
 
         {/* Note Card */}
@@ -529,13 +584,12 @@ const styles = StyleSheet.create({
   sectionHeaderPremium: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   titleIconRow: { flexDirection: 'row', alignItems: 'center' },
   sectionTitlePremium: { fontSize: 15, fontWeight: '700', color: '#0F172A', marginLeft: 8 },
-  editButton: { paddingVertical: 4, paddingHorizontal: 8,     backgroundColor: '#eff6ff',
-    borderColor: '#3b82f6', borderRadius: 6, borderWidth: 0.5},
+  editButton: { paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#eff6ff', borderColor: '#3b82f6', borderRadius: 6, borderWidth: 0.5},
   editButtonText: { color: '#0EA5E9', fontSize: 13, fontWeight: '600' },
   addressBox: { backgroundColor: '#F8FAFC', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#E2E8F0' },
   addressName: { fontSize: 14, fontWeight: '600', color: '#1E293B', marginBottom: 4 },
   addressPhone: { fontSize: 12, color: '#64748B', marginBottom: 4 },
-  addressText: { fontSize: 13, color: '#475569', lineHeight: 18 },
+  addressText: { fontSize: 13, color: '#475569', lineHeight: 18, marginBottom: 10 },
   emptyTextNote: { fontSize: 13, color: '#94A3B8', textAlign: 'center', paddingVertical: 8 },
   vendorGroup: { marginBottom: 16 },
   vendorHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, marginBottom: 8 },
@@ -557,8 +611,7 @@ const styles = StyleSheet.create({
   itemTotalPremium: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
   optionGrid: { flexDirection: 'row', gap: 10, marginBottom: 14, marginTop: 8 },
   optionPill: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' },
-  optionPillActive: {     backgroundColor: '#3b82f6',
-    borderColor: '#3b82f6', borderWidth: 1 },
+  optionPillActive: { backgroundColor: '#3b82f6', borderColor: '#3b82f6', borderWidth: 1 },
   optionPillText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
   optionPillTextActive: { color: '#FFFFFF' },
   dividerPremium: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 12 },
@@ -579,17 +632,51 @@ const styles = StyleSheet.create({
   footerPremium: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFFFFF', padding: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', shadowColor: '#0F172A', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 5 },
   footerTotalLabel: { fontSize: 11, color: '#64748B', fontWeight: '500' },
   footerTotalValue: { fontSize: 18, fontWeight: '800', color: '#0F172A' },
-  checkoutButtonPremium: { flexDirection: 'row',     backgroundColor: '#eff6ff',
-    borderColor: '#3b82f6', borderWidth: 0.5, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12, alignItems: 'center', gap: 6 },
+  checkoutButtonPremium: { flexDirection: 'row', backgroundColor: '#eff6ff', borderColor: '#3b82f6', borderWidth: 0.5, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12, alignItems: 'center', gap: 6 },
   checkoutButtonDisabled: { opacity: 0.6 },
   checkoutTextPremium: { color: '#3b82f6', fontSize: 14, fontWeight: '700' },
-  
-  // Modal Specific Styling
   modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   modalContent: { backgroundColor: '#FFFFFF', width: '100%', maxWidth: 340, borderRadius: 24, padding: 28, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 10 },
   successIconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#DCFCE7', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 22, fontWeight: '800', color: '#0F172A', marginBottom: 10, textAlign: 'center' },
   modalSubtitle: { fontSize: 14, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24 },
-  modalButton: {     backgroundColor: '#eff6ff', borderColor: '#3b82f6', borderWidth: 0.5, width: '100%', paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
-  modalButtonText: { color: '#3b82f6', fontSize: 15, fontWeight: '600' }
+  modalButton: { backgroundColor: '#eff6ff', borderColor: '#3b82f6', borderWidth: 0.5, width: '100%', paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
+  modalButtonText: { color: '#3b82f6', fontSize: 15, fontWeight: '600' },
+  
+  // Custom Map Container Styles
+  mapContainer: {
+    height: 120,
+    width: '100%',
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  mapPreview: {
+    ...StyleSheet.absoluteFillObject,
+  },
+
+  // Custom Store Pickup Payment Styles
+  paymentPickupSelector: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#bfdbfe',
+  },
+  iconCircleBlue: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#dbeafe',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paymentMainTextBlue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e3a8a',
+  },
+  paymentSubTextBlue: {
+    fontSize: 11,
+    color: '#1e40af',
+  },
 });

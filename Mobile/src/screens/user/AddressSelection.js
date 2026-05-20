@@ -15,7 +15,7 @@ import {
   Dimensions,
   StatusBar
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../../firebase';
 import {
   collection,
@@ -33,7 +33,7 @@ import * as Location from 'expo-location';
 import { Swipeable } from 'react-native-gesture-handler';
 import MapView, { Marker } from 'react-native-maps';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 export default function AddressSelection() {
   const user = auth.currentUser;
@@ -51,7 +51,6 @@ export default function AddressSelection() {
   const [locationLoading, setLocationLoading] = useState(false);
   const [mapModalVisible, setMapModalVisible] = useState(false);
   const [selectedCoords, setSelectedCoords] = useState(null);
-  const [mapLoading, setMapLoading] = useState(false);
   const [userInfo, setUserInfo] = useState({ firstName: '', lastName: '', phoneNumber: '' });
   const [phoneInput, setPhoneInput] = useState('');
 
@@ -65,15 +64,15 @@ export default function AddressSelection() {
       toValue: 1,
       duration: 400,
       useNativeDriver: true,
-      easing: Easing.bounce,
+      easing: Easing.out(Easing.back(1.5)),
     }).start(() => {
       setTimeout(() => {
         Animated.timing(scaleAnim, {
           toValue: 0,
-          duration: 300,
+          duration: 250,
           useNativeDriver: true,
         }).start(() => setSuccessVisible(false));
-      }, 1500);
+      }, 1600);
     });
   };
 
@@ -153,7 +152,6 @@ export default function AddressSelection() {
 
       const { latitude, longitude } = loc.coords;
       
-      // Validate coordinates
       if (typeof latitude !== 'number' || typeof longitude !== 'number' || 
           latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
         Alert.alert('Error', 'Invalid coordinates received. Please try again.');
@@ -161,11 +159,7 @@ export default function AddressSelection() {
         return;
       }
 
-      setSelectedCoords({
-        latitude,
-        longitude,
-      });
-
+      setSelectedCoords({ latitude, longitude });
       setMapModalVisible(true);
     } catch (error) {
       console.error('Pin location error:', error);
@@ -235,58 +229,66 @@ export default function AddressSelection() {
   };
 
   const renderRightActions = (addrId) => (
-    <TouchableOpacity style={styles.deleteSwipeBtn} onPress={() => handleDeleteAddress(addrId)}>
-      <Ionicons name="trash" size={24} color="#fff" />
+    <TouchableOpacity 
+      style={styles.deleteSwipeBtn} 
+      onPress={() => handleDeleteAddress(addrId)}
+      activeOpacity={0.9}
+    >
+      <Ionicons name="trash-outline" size={22} color="#fff" />
     </TouchableOpacity>
   );
 
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#1E3A8A" />
-        <Text style={styles.loadingText}>Loading addresses...</Text>
+        <ActivityIndicator size="small" color="#0F172A" />
+        <Text style={styles.loadingText}>Fetching profile details</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F9FAFB" />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
+      {/* Premium minimal header */}
       <View style={styles.customHeader}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconCircle}>
-          <Ionicons name="arrow-back" size={22} color="#1E3A8A" />
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconCircle} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={20} color="#0F172A" />
         </TouchableOpacity>
-        <Text style={styles.headerTitleText}>Delivery Addresses</Text>
-        <View style={{ width: 40 }} /> 
+        <Text style={styles.headerTitleText}>Saved Addresses</Text>
+        <TouchableOpacity style={styles.iconCircle} activeOpacity={0.7}>
+            <Ionicons name="location-outline" size={20} color="#0F172A" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-
         {addresses.length === 0 ? (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIconCircle}>
-              <Ionicons name="map-outline" size={50} color="#94A3B8" />
+              <Ionicons name="map-outline" size={38} color="#64748B" />
             </View>
-            <Text style={styles.emptyText}>No saved addresses yet</Text>
-            <Text style={styles.emptySubText}>Add an address to start ordering!</Text>
+            <Text style={styles.emptyText}>No addresses recorded</Text>
+            <Text style={styles.emptySubText}>Add a location baseline below to enable seamless checkouts.</Text>
           </View>
         ) : (
           addresses.map((addr) => (
-            <Swipeable key={addr.id} renderRightActions={() => renderRightActions(addr.id)}>
+            <Swipeable key={addr.id} renderRightActions={() => renderRightActions(addr.id)} containerStyle={styles.swipeContainer}>
               <TouchableOpacity
                 style={[styles.addressCard, addr.status === 'active' && styles.activeCard]}
                 onPress={() => handleSelectAddress(addr)}
-                activeOpacity={0.7}
+                activeOpacity={0.85}
               >
                 <View style={styles.cardMain}>
                   <View style={styles.cardHeader}>
                     <View style={styles.nameRow}>
-                      <Ionicons 
-                        name={addr.status === 'active' ? "location" : "location-outline"} 
-                        size={20} 
-                        color={addr.status === 'active' ? "#1E3A8A" : "#64748B"} 
-                      />
+                      <View style={[styles.addressIconWrapper, addr.status === 'active' && styles.activeIconWrapper]}>
+                        <Ionicons 
+                          name={addr.status === 'active' ? "home" : "home-outline"} 
+                          size={16} 
+                          color={addr.status === 'active' ? "#0F172A" : "#64748B"} 
+                        />
+                      </View>
                       <Text style={styles.nameText}>
                         {addr.firstName || userInfo.firstName} {addr.lastName || userInfo.lastName}
                       </Text>
@@ -299,61 +301,53 @@ export default function AddressSelection() {
                   </View>
 
                   <View style={styles.addressDetails}>
-                    <Text style={styles.infoText} numberOfLines={1}>
-                      {addr.streetName}
+                    <Text style={styles.infoTextPrimary} numberOfLines={1}>
+                      {addr.streetName || "Unspecified Street"}
                     </Text>
-                    <Text style={styles.infoText}>
-                      {addr.barangay}, {addr.city}
-                    </Text>
-                    <Text style={styles.infoText}>
-                      {addr.province}, {addr.region}
+                    <Text style={styles.infoTextSecondary}>
+                      {addr.barangay}, {addr.city}, {addr.province}
                     </Text>
                     <View style={styles.phoneRow}>
-                      <Ionicons name="call-outline" size={14} color="#64748B" />
+                      <Ionicons name="call-outline" size={12} color="#94A3B8" />
                       <Text style={styles.phoneText}>{addr.phoneNumber || userInfo.phoneNumber}</Text>
                     </View>
                   </View>
                 </View>
-
-                {addr.status === 'active' && (
-                  <View style={styles.checkIcon}>
-                    <Ionicons name="checkmark-circle" size={24} color="#1E3A8A" />
-                  </View>
-                )}
               </TouchableOpacity>
             </Swipeable>
           ))
         )}
       </ScrollView>
 
+      {/* Floating Bottom Action Section */}
       <View style={styles.bottomFooter}>
-        <TouchableOpacity style={styles.footerAddBtn} onPress={handleAddAddress}>
-          <Ionicons name="add" size={24} color="#fff" />
-          <Text style={styles.footerAddText}>Add New Address</Text>
+        <TouchableOpacity style={styles.footerAddBtn} onPress={handleAddAddress} activeOpacity={0.9}>
+          <Ionicons name="add" size={20} color="#fff" style={{ marginRight: 4 }} />
+          <Text style={styles.footerAddText}>Add Secure Address</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Success Modal */}
+      {/* Modernized Ultra-smooth Success Modal */}
       {successVisible && (
         <View style={styles.successOverlay}>
           <Animated.View style={[styles.successBox, { transform: [{ scale: scaleAnim }] }]}>
             <View style={styles.successCircle}>
-               <Ionicons name="checkmark" size={40} color="#fff" />
+               <Ionicons name="checkmark" size={28} color="#fff" />
             </View>
-            <Text style={styles.successTitle}>Updated!</Text>
-            <Text style={styles.successSub}>Your address has been saved.</Text>
+            <Text style={styles.successTitle}>Configuration Saved</Text>
+            <Text style={styles.successSub}>Your changes are secure and live.</Text>
           </Animated.View>
         </View>
       )}
 
-      {/* Map Modal */}
-      <Modal visible={mapModalVisible} animationType="slide" transparent>
+      {/* Contemporary Styled Map Sheets */}
+      <Modal visible={mapModalVisible} animationType="slide" transparent statusBarTranslucent>
         <View style={styles.mapModalOverlay}>
           <View style={styles.mapContainer}>
             <View style={styles.mapHeader}>
-                <Text style={styles.mapHeaderText}>Confirm Location</Text>
+                <Text style={styles.mapHeaderText}>Confirm Coordinates</Text>
                 <TouchableOpacity onPress={() => setMapModalVisible(false)} style={styles.mapCloseBtn}>
-                   <Ionicons name="close" size={24} color="#333" />
+                   <Ionicons name="close" size={20} color="#0F172A" />
                 </TouchableOpacity>
             </View>
 
@@ -364,41 +358,35 @@ export default function AddressSelection() {
                   initialRegion={{
                     latitude: selectedCoords.latitude,
                     longitude: selectedCoords.longitude,
-                    latitudeDelta: 0.01,
-                    longitudeDelta: 0.01,
+                    latitudeDelta: 0.006,
+                    longitudeDelta: 0.006,
                   }}
-                  zoomEnabled={true}
-                  scrollEnabled={true}
+                  zoomEnabled
+                  scrollEnabled
                   pitchEnabled={false}
                   rotateEnabled={false}
                   onPress={(e) => {
-                    if (e && e.nativeEvent && e.nativeEvent.coordinate) {
-                      setSelectedCoords(e.nativeEvent.coordinate);
-                    }
+                    if (e?.nativeEvent?.coordinate) setSelectedCoords(e.nativeEvent.coordinate);
                   }}
                 >
-                  {selectedCoords.latitude && selectedCoords.longitude && (
-                    <Marker 
-                      key={`${selectedCoords.latitude}-${selectedCoords.longitude}`}
-                      coordinate={selectedCoords} 
-                      draggable 
-                      onDragEnd={(e) => {
-                        if (e && e.nativeEvent && e.nativeEvent.coordinate) {
-                          setSelectedCoords(e.nativeEvent.coordinate);
-                        }
-                      }} 
-                    />
-                  )}
+                  <Marker 
+                    coordinate={selectedCoords} 
+                    draggable 
+                    onDragEnd={(e) => {
+                      if (e?.nativeEvent?.coordinate) setSelectedCoords(e.nativeEvent.coordinate);
+                    }} 
+                  />
                 </MapView>
 
                 <View style={styles.mapInputArea}>
-                  <Text style={styles.inputLabel}>Confirm Contact Number</Text>
+                  <Text style={styles.inputLabel}>Secure Contact Reference</Text>
                   <View style={styles.inputWrapper}>
-                    <Ionicons name="call-outline" size={20} color="#64748B" style={{marginRight: 10}} />
+                    <Ionicons name="call-outline" size={16} color="#64748B" style={{marginRight: 10}} />
                     <TextInput
                       style={styles.mapTextInput}
                       keyboardType="phone-pad"
                       placeholder="e.g. 09123456789"
+                      placeholderTextColor="#94A3B8"
                       value={phoneInput}
                       onChangeText={setPhoneInput}
                     />
@@ -406,7 +394,7 @@ export default function AddressSelection() {
                 </View>
               </>
             ) : (
-              <ActivityIndicator size="large" color="#1E3A8A" style={{ flex: 1 }} />
+              <ActivityIndicator size="small" color="#0F172A" style={{ flex: 1 }} />
             )}
 
             <View style={styles.mapActions}>
@@ -414,31 +402,30 @@ export default function AddressSelection() {
                 style={[styles.saveLocBtn, !isValidPhoneNumber(phoneInput) && styles.disabledBtn]}
                 disabled={!isValidPhoneNumber(phoneInput)}
                 onPress={handleSaveLocation}
+                activeOpacity={0.9}
               >
-                <Text style={styles.saveLocText}>Save Address</Text>
+                <Text style={styles.saveLocText}>Lock Dynamic Location</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
+      {/* Contextual Delete Confirmation Alert Alternative */}
       <Modal visible={deleteModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.deleteConfirmBox}>
-            <View style={styles.warnIcon}>
-                <Ionicons name="trash-outline" size={30} color="#EF4444" />
-            </View>
-            <Text style={styles.deleteTitle}>Delete Address?</Text>
-            <Text style={styles.deleteText}>This action cannot be undone.</Text>
+            <Text style={styles.deleteTitle}>Remove Address?</Text>
+            <Text style={styles.deleteText}>This clears data points permanently from checkout memory storage.</Text>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setDeleteModalVisible(false)}>
-                <Text style={styles.cancelBtnText}>Keep it</Text>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setDeleteModalVisible(false)} activeOpacity={0.7}>
+                <Text style={styles.cancelBtnText}>Discard</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.confirmDelBtn}
+                activeOpacity={0.9}
                 onPress={async () => {
                   try {
                     setLoading(true);
@@ -451,7 +438,7 @@ export default function AddressSelection() {
                   }
                 }}
               >
-                <Text style={styles.confirmDelText}>Delete</Text>
+                <Text style={styles.confirmDelText}>Confirm</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -462,111 +449,119 @@ export default function AddressSelection() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8FAFC', marginTop: 35},
+  container: { flex: 1, backgroundColor: '#FAFAFA' },
   customHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 15,
+    paddingHorizontal: 20,
+    paddingTop: 50, // Styled elegant height padding spacing matching iOS status bars smoothly
+    paddingBottom: 16,
     backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderColor: '#F1F5F9',
   },
   iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F1F5F9',
+    width: 38,
+    height: 38,
+    borderRadius: 12, // Contemporary soft square look instead of extreme circular style
+    backgroundColor: '#F8FAFC',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F1F5F9'
   },
-  headerTitleText: { fontSize: 18, fontWeight: '800', color: '#1E293B' },
-  scrollContent: { padding: 16, paddingBottom: 100 },
-  pinLocationBtn: {
-    backgroundColor: '#1E3A8A',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+  headerTitleText: { fontSize: 16, fontWeight: '700', color: '#0F172A', letterSpacing: -0.3 },
+  scrollContent: { padding: 20, paddingBottom: 120 },
+  swipeContainer: {
+    marginBottom: 12,
     borderRadius: 16,
-    paddingVertical: 14,
-    marginBottom: 20,
-    shadowColor: '#1E3A8A',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    overflow: 'hidden'
   },
-  pinBtnText: { color: '#fff', fontWeight: '700', fontSize: 15, marginLeft: 8 },
   addressCard: {
     backgroundColor: '#fff',
-    borderRadius: 20,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOpacity: 0.02,
-    shadowOffset: { width: 0, height: 2 },
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.015,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
     elevation: 2,
   },
-  activeCard: { borderColor: '#1E3A8A', backgroundColor: '#F0F7FF' },
+  activeCard: { 
+    borderColor: '#0F172A', 
+    backgroundColor: '#FFF',
+    borderWidth: 1.5 
+  },
   cardMain: { flex: 1 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  nameRow: { flexDirection: 'row', alignItems: 'center' },
-  nameText: { fontSize: 16, fontWeight: '700', color: '#1E293B', marginLeft: 8 },
-  activePill: { backgroundColor: '#1E3A8A', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  activePillText: { color: '#fff', fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
-  addressDetails: { marginLeft: 28 },
-  infoText: { fontSize: 13, color: '#64748B', lineHeight: 18 },
-  phoneRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
-  phoneText: { fontSize: 13, color: '#64748B', marginLeft: 4, fontWeight: '500' },
-  checkIcon: { marginLeft: 10 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  addressIconWrapper: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  activeIconWrapper: {
+    backgroundColor: '#F1F5F9',
+  },
+  nameText: { fontSize: 15, fontWeight: '600', color: '#0F172A', letterSpacing: -0.1 },
+  activePill: { backgroundColor: '#0F172A', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  activePillText: { color: '#fff', fontSize: 9, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  addressDetails: { marginLeft: 2 },
+  infoTextPrimary: { fontSize: 14, color: '#334155', fontWeight: '500', marginBottom: 2 },
+  infoTextSecondary: { fontSize: 13, color: '#64748B', lineHeight: 18, marginBottom: 8 },
+  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  phoneText: { fontSize: 13, color: '#64748B', fontWeight: '400' },
   deleteSwipeBtn: {
     backgroundColor: '#EF4444',
     justifyContent: 'center',
     alignItems: 'center',
-    width: 80,
-    borderRadius: 20,
-    marginVertical: 1,
-    marginBottom: 12,
+    width: 70,
+    height: '100%',
+    borderRadius: 16,
   },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' },
-  loadingText: { marginTop: 12, color: '#64748B', fontWeight: '500' },
-  emptyContainer: { alignItems: 'center', marginTop: 80 },
-  emptyIconCircle: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  emptyText: { color: '#1E293B', fontSize: 18, fontWeight: '700' },
-  emptySubText: { color: '#64748B', fontSize: 14, marginTop: 4 },
-  bottomFooter: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: '#fff', padding: 16, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
-  footerAddBtn: { backgroundColor: '#1E3A8A', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', borderRadius: 16, paddingVertical: 15 },
-  footerAddText: { color: '#fff', fontWeight: '800', fontSize: 16, marginLeft: 8 },
-  successOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15, 23, 42, 0.7)', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
-  successBox: { backgroundColor: '#fff', padding: 30, borderRadius: 30, alignItems: 'center', width: '80%' },
-  successCircle: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  successTitle: { fontSize: 22, fontWeight: '800', color: '#1E293B' },
-  successSub: { fontSize: 14, color: '#64748B', marginTop: 4, textAlign: 'center' },
-  mapModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  mapContainer: { backgroundColor: '#fff', borderTopLeftRadius: 30, borderTopRightRadius: 30, height: '85%', padding: 20 },
-  mapHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  mapHeaderText: { fontSize: 18, fontWeight: '800', color: '#1E293B' },
-  mapCloseBtn: { padding: 5 },
-  mapView: { flex: 1, borderRadius: 20, marginBottom: 15 },
-  mapInputArea: { marginBottom: 20 },
-  inputLabel: { fontSize: 14, fontWeight: '700', color: '#475569', marginBottom: 8 },
-  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 12, paddingHorizontal: 12 },
-  mapTextInput: { flex: 1, paddingVertical: 12, fontSize: 16, color: '#1E293B' },
-  mapActions: { marginBottom: 10 },
-  saveLocBtn: { backgroundColor: '#1E3A8A', paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
-  saveLocText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  disabledBtn: { backgroundColor: '#94A3B8' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'center', alignItems: 'center' },
-  deleteConfirmBox: { width: '85%', backgroundColor: '#fff', borderRadius: 25, padding: 25, alignItems: 'center' },
-  warnIcon: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
-  deleteTitle: { fontSize: 20, fontWeight: '800', color: '#1E293B' },
-  deleteText: { fontSize: 14, color: '#64748B', textAlign: 'center', marginTop: 6, marginBottom: 20 },
-  modalButtons: { flexDirection: 'row', gap: 12 },
-  cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: '#F1F5F9', alignItems: 'center' },
-  cancelBtnText: { color: '#475569', fontWeight: '700' },
-  confirmDelBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: '#EF4444', alignItems: 'center' },
-  confirmDelText: { color: '#fff', fontWeight: '700' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff', gap: 12 },
+  loadingText: { color: '#64748B', fontSize: 13, fontWeight: '400', letterSpacing: -0.1 },
+  emptyContainer: { alignItems: 'center', marginTop: 100, paddingHorizontal: 30 },
+  emptyIconCircle: { width: 74, height: 74, borderRadius: 24, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  emptyText: { color: '#0F172A', fontSize: 16, fontWeight: '600', letterSpacing: -0.2 },
+  emptySubText: { color: '#64748B', fontSize: 13, marginTop: 6, textAlign: 'center', lineHeight: 18 },
+  bottomFooter: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: 'rgba(255,255,255,0.85)', padding: 20, paddingBottom: 32, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  footerAddBtn: { backgroundColor: '#0F172A', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', borderRadius: 14, paddingVertical: 14, shadowColor: '#0F172A', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 5 } },
+  footerAddText: { color: '#fff', fontWeight: '600', fontSize: 15, letterSpacing: -0.1 },
+  successOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15, 23, 42, 0.3)', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
+  successBox: { backgroundColor: '#fff', padding: 24, borderRadius: 24, alignItems: 'center', width: '75%', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 20 },
+  successCircle: { width: 54, height: 54, borderRadius: 27, backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
+  successTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  successSub: { fontSize: 13, color: '#64748B', marginTop: 4, textAlign: 'center' },
+  mapModalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.4)', justifyContent: 'flex-end' },
+  mapContainer: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, height: '88%', padding: 24 },
+  mapHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  mapHeaderText: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  mapCloseBtn: { width: 30, height: 30, backgroundColor: '#F1F5F9', borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  mapView: { flex: 1, borderRadius: 16, marginBottom: 20 },
+  mapInputArea: { marginBottom: 24 },
+  inputLabel: { fontSize: 13, fontWeight: '600', color: '#334155', marginBottom: 8 },
+  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 12, paddingHorizontal: 14, borderWidth: 1, borderColor: '#E2E8F0' },
+  mapTextInput: { flex: 1, paddingVertical: 12, fontSize: 14, color: '#0F172A', fontWeight: '500' },
+  mapActions: { marginBottom: 15 },
+  saveLocBtn: { backgroundColor: '#0F172A', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  saveLocText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  disabledBtn: { backgroundColor: '#CBD5E1' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.2)', justifyContent: 'center', alignItems: 'center' },
+  deleteConfirmBox: { width: '80%', backgroundColor: '#fff', borderRadius: 20, padding: 20, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 15 },
+  deleteTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  deleteText: { fontSize: 13, color: '#64748B', textAlign: 'center', marginTop: 6, marginBottom: 20, lineHeight: 18 },
+  modalButtons: { flexDirection: 'row', gap: 10 },
+  cancelBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#F1F5F9', alignItems: 'center' },
+  cancelBtnText: { color: '#475569', fontWeight: '600', fontSize: 13 },
+  confirmDelBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#EF4444', alignItems: 'center' },
+  confirmDelText: { color: '#fff', fontWeight: '600', fontSize: 13 },
 });
