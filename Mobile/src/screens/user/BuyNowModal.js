@@ -1,5 +1,5 @@
 // src/screens/Users/BuyNowModal.js
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,6 @@ import {
   TouchableOpacity,
   Image,
   ScrollView,
-  Animated,
-  Easing,
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
@@ -39,7 +37,7 @@ const Base64Image = ({ base64, productId, style }) => {
       }
     };
     saveToFile();
-  }, [base64]);
+  }, [base64, productId]);
 
   if (!localUri) {
     return (
@@ -55,12 +53,12 @@ export default function BuyNowModal({ visible, onClose, product }) {
   const navigation = useNavigation();
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
-const [selectedServices, setSelectedServices] = useState([]);
+  const [selectedServices, setSelectedServices] = useState([]);
+
+  // FIXED: Safely maps your creation form's array layout structure directly
   const enabledServices = useMemo(() => {
-    if (!product?.services) return [];
-    return Object.keys(product.services)
-      .map(key => product.services[key])
-      .filter(s => s.enabled);
+    if (!product || !Array.isArray(product.premiumServices)) return [];
+    return product.premiumServices;
   }, [product]);
 
   // Reset state when modal opens/closes
@@ -74,14 +72,19 @@ const [selectedServices, setSelectedServices] = useState([]);
 
   if (!product) return null;
 
-  const toggleService = (label) => {
+  const toggleService = (serviceId) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (selectedServices.some(s => s.label === label)) {
-      setSelectedServices(selectedServices.filter(s => s.label !== label));
+    
+    // Check selection presence using unique identification parameters ('id') instead of display strings
+    if (selectedServices.some(s => s.id === serviceId)) {
+      setSelectedServices(selectedServices.filter(s => s.id !== serviceId));
     } else {
-      const serviceObj = enabledServices.find(s => s.label === label);
+      const serviceObj = enabledServices.find(s => s.id === serviceId);
       if (serviceObj) {
-        setSelectedServices([...selectedServices, { label: serviceObj.label, price: serviceObj.price }]);
+        setSelectedServices([
+          ...selectedServices, 
+          { id: serviceObj.id, label: serviceObj.label, price: serviceObj.price }
+        ]);
       }
     }
   };
@@ -101,7 +104,6 @@ const [selectedServices, setSelectedServices] = useState([]);
   const handleBuyNow = () => {
     setLoading(true);
     
-    // Prepare the checkout data
     const checkoutItem = {
       productId: product.id,
       productName: product.productName,
@@ -109,15 +111,14 @@ const [selectedServices, setSelectedServices] = useState([]);
       selectedServices,
       quantity,
       totalPrice: parseFloat(totalPrice()),
-      imageBase64: product.imageBase64, // Pass image for checkout display
+      imageBase64: product.imageBase64, 
       category: product.category
     };
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     
-    // Close modal and navigate to Checkout with the data
     onClose();
-    navigation.navigate('BuyNowCheckedOut', { checkoutItem });
+    navigation.navigate('BuyNowModalCheckedout', { checkoutItem });
     setLoading(false);
   };
 
@@ -154,13 +155,13 @@ const [selectedServices, setSelectedServices] = useState([]);
               </View>
 
               <View style={styles.miniQtyContainer}>
-                  <TouchableOpacity style={styles.miniQtyBtn} onPress={() => updateQuantity('dec')}>
-                      <Feather name="minus" size={16} color="#1E293B" />
-                  </TouchableOpacity>
-                  <Text style={styles.miniQtyText}>{quantity}</Text>
-                  <TouchableOpacity style={styles.miniQtyBtn} onPress={() => updateQuantity('inc')}>
-                      <Feather name="plus" size={16} color="#1E293B" />
-                  </TouchableOpacity>
+                <TouchableOpacity style={styles.miniQtyBtn} onPress={() => updateQuantity('dec')}>
+                  <Feather name="minus" size={16} color="#1E293B" />
+                </TouchableOpacity>
+                <Text style={styles.miniQtyText}>{quantity}</Text>
+                <TouchableOpacity style={styles.miniQtyBtn} onPress={() => updateQuantity('inc')}>
+                  <Feather name="plus" size={16} color="#1E293B" />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -169,22 +170,22 @@ const [selectedServices, setSelectedServices] = useState([]);
             {enabledServices.length > 0 && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Available Services</Text>
-                {enabledServices.map((s, idx) => {
-                  const isSelected = selectedServices.some(sel => sel.label === s.label);
+                {enabledServices.map((s) => {
+                  const isSelected = selectedServices.some(sel => sel.id === s.id);
                   return (
                     <TouchableOpacity 
-                      key={idx} 
+                      key={s.id} 
                       activeOpacity={0.7}
                       style={[styles.serviceRow, isSelected && styles.serviceRowActive]} 
-                      onPress={() => toggleService(s.label)}
+                      onPress={() => toggleService(s.id)}
                     >
                       <View style={styles.serviceInfo}>
-                         <View style={[styles.radio, isSelected && styles.radioActive]}>
-                           {isSelected && <View style={styles.radioInner} />}
-                         </View>
-                         <Text style={[styles.serviceLabel, isSelected && styles.textActive]}>{s.label}</Text>
+                        <View style={[styles.radio, isSelected && styles.radioActive]}>
+                          {isSelected && <View style={styles.radioInner} />}
+                        </View>
+                        <Text style={[styles.serviceLabel, isSelected && styles.textActive]}>{s.label}</Text>
                       </View>
-                      <Text style={[styles.servicePrice, isSelected && styles.textActive]}>+₱{s.price}</Text>
+                      <Text style={[styles.servicePrice, isSelected && styles.textActive]}>+₱{parseFloat(s.price).toLocaleString()}</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -204,7 +205,7 @@ const [selectedServices, setSelectedServices] = useState([]);
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator color="#FFF" />
+                <ActivityIndicator color="#3b82f6" />
               ) : (
                 <Text style={styles.primaryButtonText}>Checkout Now</Text>
               )}
@@ -245,7 +246,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 15,
   },
-  categoryLabel: { fontSize: 12, fontWeight: '600', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: 0.5 },
+  categoryLabel: { fontSize: 12, fontWeight: '600', color: '#3b82f6', textTransform: 'uppercase', letterSpacing: 0.5 },
   productName: { fontSize: 20, fontWeight: '700', color: '#0F172A'},
   closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
   scrollContent: { paddingHorizontal: 24 },
@@ -271,14 +272,14 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 20 },
   sectionTitle: { fontSize: 13, fontWeight: '700', color: '#475569', marginBottom: 12, textTransform: 'uppercase' },
   serviceRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 14, marginBottom: 4 },
-  serviceRowActive: { backgroundColor: '#FFF7ED' }, // Amber tint for Buy Now
+  serviceRowActive: { backgroundColor: '#eff6ff' }, 
   serviceInfo: { flexDirection: 'row', alignItems: 'center' },
   radio: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#CBD5E1', marginRight: 12, justifyContent: 'center', alignItems: 'center' },
-  radioActive: { backgroundColor: '#fff7ed', borderColor: '#f59e0b' },
-  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#f59e0b' },
+  radioActive: { backgroundColor: '#eff6fd', borderColor: '#3b82f6' },
+  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#3b82f6' },
   serviceLabel: { fontSize: 14, fontWeight: '500', color: '#000' },
-  servicePrice: { fontSize: 14, fontWeight: '600', color: '#f59e0b' },
-  textActive: { color: '#b45309', fontWeight: '700' },
+  servicePrice: { fontSize: 14, fontWeight: '600', color: '#3b82f6' },
+  textActive: { color: '#3b82f6', fontWeight: '700' },
   footer: {
     flexDirection: 'row',
     paddingHorizontal: 24,
@@ -291,13 +292,17 @@ const styles = StyleSheet.create({
   totalSub: { fontSize: 11, fontWeight: '600', color: '#94A3B8', textTransform: 'uppercase' },
   totalAmount: { fontSize: 22, fontWeight: '800', color: '#0F172A' },
   primaryButton: {
-    backgroundColor: '#1E293B', // Darker theme for "Commitment" button
-    height: 52,
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
+    borderWidth: 1,
+    flex: 1,
+   height: 52,
     paddingHorizontal: 28,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  primaryButtonText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  primaryButtonText: { color: '#3b82f6', fontSize: 15, fontWeight: '700' },
+  buttonDisabled: { opacity: 0.5 },
   noImagePlaceholder: { justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
 });

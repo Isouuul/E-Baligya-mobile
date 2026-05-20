@@ -282,45 +282,49 @@ export default function NotificationModal({ visible, onClose, navigation }) {
 
       </TouchableOpacity>
 
-      <Modal visible={detailModalVisible} transparent={true} animationType="fade" onRequestClose={() => setDetailModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {selectedNotification && (
-              <>
-                <Image source={getProductImage(selectedNotification)} style={[styles.modalImage, isOrderTaken && { opacity: 0.5 }]}/>
-                <Text style={styles.modalTitle}>{selectedNotification.productName || selectedNotification.title}</Text>
-                {selectedNotification.vendorBusinessName && <Text style={styles.modalVendor}>{selectedNotification.vendorBusinessName}</Text>}
-                
-                <Text style={styles.modalMessage}>
-                  {isOrderTaken ? "Another customer has taken this order." : selectedNotification.message}
-                </Text>
+<Modal visible={detailModalVisible} transparent={true} animationType="fade" onRequestClose={() => setDetailModalVisible(false)}>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContent}>
+      
+      {/* MODERNIZED CLOSE BUTTON POSITIONED AT THE TOP RIGHT CORNER */}
+      <TouchableOpacity 
+        style={styles.floatingCloseButton} 
+        onPress={() => setDetailModalVisible(false)}
+        activeOpacity={0.7}
+      >
+        <Feather name="x" size={20} color="#64748B" />
+      </TouchableOpacity>
 
-                {selectedNotification.totalAmount > 0 && (
-                  <Text style={styles.modalAmount}>{formatPeso(selectedNotification.totalAmount)}</Text>
-                )}
+      {selectedNotification && (
+        <>
+          <Image source={getProductImage(selectedNotification)} style={[styles.modalImage, isOrderTaken && { opacity: 0.5 }]}/>
+          <Text style={styles.modalTitle}>{selectedNotification.productName || selectedNotification.title}</Text>
+          {selectedNotification.vendorBusinessName && <Text style={styles.modalVendor}>{selectedNotification.vendorBusinessName}</Text>}
+          
+          <Text style={styles.modalMessage}>
+            {isOrderTaken ? "Another customer has taken this order." : selectedNotification.message}
+          </Text>
 
-                <View style={styles.modalActions}>
-                  {isBidNotification && (
-                    <TouchableOpacity 
-                      style={[styles.modalButton, styles.acceptButton, isOrderTaken && styles.disabledButton]} 
-                      onPress={() => handleAccept(selectedNotification)}
-                      disabled={isOrderTaken}
-                    >
-                      <Text style={styles.modalButtonText}>{isOrderTaken ? "Order Taken" : "Accept Bid"}</Text>
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity 
-                    style={[styles.modalButton, styles.cancelButton, (!isBidNotification || isOrderTaken) && { flex: 1 }]} 
-                    onPress={() => setDetailModalVisible(false)}
-                  >
-                    <Text style={styles.cancelButtonText}>Close</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
+          {selectedNotification.totalAmount > 0 && (
+            <Text style={styles.modalAmount}>{formatPeso(selectedNotification.totalAmount)}</Text>
+          )}
+
+          <View style={styles.modalActions}>
+            {isBidNotification && (
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.acceptButton, isOrderTaken && styles.disabledButton]} 
+                onPress={() => handleAccept(selectedNotification)}
+                disabled={isOrderTaken}
+              >
+                <Text style={styles.modalButtonText}>{isOrderTaken ? "Order Taken" : "Accept Bid"}</Text>
+              </TouchableOpacity>
             )}
           </View>
-        </View>
-      </Modal>
+        </>
+      )}
+    </View>
+  </View>
+</Modal>
     </Modal>
   );
 }
@@ -564,5 +568,18 @@ const styles = StyleSheet.create({
     color: "#475569",
     fontSize: 14,
     fontWeight: "700",
+  },
+  // Add this new style rule:
+  floatingCloseButton: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    zIndex: 10, // Ensures it stays clickable above other layered elements
+    backgroundColor: "#F1F5F9",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

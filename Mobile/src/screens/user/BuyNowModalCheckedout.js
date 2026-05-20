@@ -9,14 +9,17 @@ import {
   ScrollView,
   ActivityIndicator,
   TextInput,
-  Modal,
-  Dimensions
+  Dimensions,
+  SafeAreaView,
+  StatusBar,
+  Modal
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { auth, db } from '../../firebase';
 import * as FileSystem from 'expo-file-system';
 import Toast from 'react-native-toast-message';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import MapView, { Marker } from 'react-native-maps';
 
 import {
   collection,
@@ -54,20 +57,30 @@ const Base64Image = ({ base64, productId, style }) => {
   return <Image source={{ uri: localUri }} style={style} />;
 };
 
-export default function BuyNowModalCheckedout() {  const [paymentMethod, setPaymentMethod] = useState('Cash-On-Delivery');
+export default function BuyNowModalCheckedout() {
+  const route = useRoute();
+  const navigation = useNavigation();
+
+  // Keep original parameters profile safely
+  const { checkoutItem, visible } = route.params || {};
+
+  const [paymentMethod, setPaymentMethod] = useState('Cash-On-Delivery');
   const [deliveryMethod, setDeliveryMethod] = useState('Delivery');
   const [leaveNote, setLeaveNote] = useState('');
   const [address, setAddress] = useState(null);
   const [loadingAddress, setLoadingAddress] = useState(true);
   const [loadingCheckout, setLoadingCheckout] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const SHIPPING_FEE = 50;
   const generateOrderNumber = () => `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
   useEffect(() => {
-    if (!visible) return;
     const user = auth.currentUser;
-    if (!user) return;
+    if (!user) {
+      setLoadingAddress(false);
+      return;
+    }
 
     const addressesRef = collection(db, 'Users-Address', user.uid, 'addresses');
     const q = query(addressesRef, where('status', '==', 'active'));
@@ -79,6 +92,8 @@ export default function BuyNowModalCheckedout() {  const [paymentMethod, setPaym
           fullName: `${docData.firstName || ''} ${docData.lastName || ''}`.trim(),
           fullAddress: `${docData.streetName || ''}, ${docData.barangay || ''}, ${docData.city || ''}, ${docData.province || ''}, ${docData.region || ''}`,
           contactNumber: docData.phoneNumber || '',
+          latitude: docData.latitude || null,
+          longitude: docData.longitude || null,
         });
       } else {
         setAddress(null);
@@ -102,6 +117,16 @@ export default function BuyNowModalCheckedout() {  const [paymentMethod, setPaym
   const totalAmount = useMemo(() => {
     return subtotal + (deliveryMethod === 'Delivery' ? SHIPPING_FEE : 0);
   }, [subtotal, deliveryMethod]);
+
+  // Sync payment selection parameters relative to chosen shipping workflows
+  const handleDeliveryMethodChange = (method) => {
+    setDeliveryMethod(method);
+    if (method === 'Pickup') {
+      setPaymentMethod('Pay-On-Pickup');
+    } else {
+      setPaymentMethod('Cash-On-Delivery');
+    }
+  };
 
   const handleCheckout = async () => {
     if (loadingCheckout || !checkoutItem) return;
@@ -146,8 +171,7 @@ export default function BuyNowModalCheckedout() {  const [paymentMethod, setPaym
       };
 
       await addDoc(collection(db, 'Orders'), orderData);
-      Toast.show({ type: 'success', text1: 'Success', text2: 'Order Placed Successfully!' });
-setTimeout(() => navigation.goBack(), 1000);
+      setShowSuccessModal(true);
     } catch (error) {
       Toast.show({ type: 'error', text1: 'Checkout Failed', text2: 'Please verify entry values.' });
     } finally {
@@ -155,114 +179,263 @@ setTimeout(() => navigation.goBack(), 1000);
     }
   };
 
+  const handleCloseSuccessModal = () => {
+    setShowSuccessModal(false);
+    navigation.goBack();
+  };
+
   return (
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContainer}>
-          <View style={styles.dragHandle} />
-          
-          <View style={styles.headerPremium}>
-            <TouchableOpacity onPress={navigation.goBack} style={styles.backButtonCircle}>
-              <Feather name="arrow-left" size={20} color="#0F172A" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitlePremium}>Finalize Checkout</Text>
-            <View style={{ width: 36 }} />
-          </View>
+    <SafeAreaView style={styles.safeContainer}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      
+      {/* Premium Header */}
+      <View style={styles.headerPremium}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButtonCircle}>
+          <Feather name="chevron-left" size={24} color="#0F172A" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitlePremium}>Finalize Order</Text>
+        <View style={{ width: 40 }} />
+      </View>
 
-          {checkoutItem && (
-            <>
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-                {/* Address Section */}
-                <View style={styles.sectionCardPremium}>
-                  <View style={styles.sectionHeaderPremium}>
-                    <View style={styles.titleIconRow}>
-                      <Feather name="map-pin" size={16} color="#0F172A" />
-                      <Text style={styles.sectionTitlePremium}>Delivery Address</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => navigation.navigate("AddressScreen")}style={styles.editButton}>
-                      <Text style={styles.editButtonText}>Change</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={styles.addressBox}>
-                    {loadingAddress ? (
-                      <ActivityIndicator size="small" color="#0F172A" />
-                    ) : address ? (
-                      <View>
-                        <Text style={styles.addressName}>{address.fullName}</Text>
-                        <Text style={styles.addressText}>{address.fullAddress}</Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.emptyTextNote}>No active address found.</Text>
-                    )}
-                  </View>
+      {checkoutItem && (
+        <>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+            
+            {/* Address Card Container */}
+            <View style={styles.sectionCardPremium}>
+              <View style={styles.sectionHeaderPremium}>
+                <View style={styles.titleIconRow}>
+                  <Feather name="map-pin" size={18} color="#0F172A" />
+                  <Text style={styles.sectionTitlePremium}>Delivery Address</Text>
                 </View>
-
-                {/* Item Details */}
-                <View style={styles.vendorGroup}>
-                  <Text style={styles.vendorNameText}>{checkoutItem.uploadedBy?.businessName || 'Merchant Shop'}</Text>
-                  <View style={styles.itemCardPremium}>
-                    <View style={styles.productRow}>
-                      <Base64Image base64={checkoutItem.imageBase64 || checkoutItem.productImage} productId={checkoutItem.id} style={styles.productImagePremium} />
-                      <View style={styles.productDetailsPremium}>
-                        <Text style={styles.productTextPremium}>{checkoutItem.productName}</Text>
-                        {checkoutItem.selectedServices?.map((s, i) => (
-                          <Text key={i} style={styles.serviceText}>+ {s.label} (₱{s.price})</Text>
-                        ))}
-                        <View style={styles.qtyPriceRowPremium}>
-                          <Text style={styles.qtyTextPremium}>Qty: {checkoutItem.quantity}kg</Text>
-                          <Text style={styles.itemTotalPremium}>₱{subtotal.toLocaleString()}</Text>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Methods Toggle Grid */}
-                <View style={styles.sectionCardPremium}>
-                  <Text style={styles.sectionTitlePremium}>Shipping Method</Text>
-                  <View style={styles.optionGrid}>
-                    <TouchableOpacity style={[styles.optionPill, deliveryMethod === 'Delivery' && styles.optionPillActive]} onPress={() => setDeliveryMethod('Delivery')}>
-                      <Text style={[styles.optionPillText, deliveryMethod === 'Delivery' && styles.optionPillTextActive]}>Delivery</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.optionPill, deliveryMethod === 'Pickup' && styles.optionPillActive]} onPress={() => setDeliveryMethod('Pickup')}>
-                      <Text style={[styles.optionPillText, deliveryMethod === 'Pickup' && styles.optionPillTextActive]}>Pickup</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Order Notes input */}
-                <View style={styles.sectionCardPremium}>
-                  <Text style={styles.sectionTitlePremium}>Instructions</Text>
-                  <TextInput style={styles.premiumInput} placeholder="Leave a note for the vendor..." value={leaveNote} onChangeText={setLeaveNote} multiline />
-                </View>
-
-                {/* Calculation breakdown */}
-                <View style={styles.summaryCardPremium}>
-                  <View style={styles.summaryRowPremium}><Text>Subtotal</Text><Text>₱{subtotal.toLocaleString()}</Text></View>
-                  <View style={styles.summaryRowPremium}><Text>Shipping</Text><Text>₱{deliveryMethod === 'Delivery' ? SHIPPING_FEE.toFixed(2) : '0.00'}</Text></View>
-                  <View style={styles.summaryDivider} />
-                  <View style={styles.summaryRowPremium}><Text style={styles.totalLabelPremium}>Total</Text><Text style={styles.totalValuePremium}>₱{totalAmount.toLocaleString()}</Text></View>
-                </View>
-              </ScrollView>
-
-              <View style={styles.footerPremium}>
-                <View><Text style={styles.footerTotalLabel}>Total Pay</Text><Text style={styles.footerTotalValue}>₱{totalAmount.toLocaleString()}</Text></View>
-                <TouchableOpacity style={styles.checkoutButtonPremium} onPress={handleCheckout} disabled={loadingCheckout}>
-                  {loadingCheckout ? <ActivityIndicator color="#fff" /> : <Text style={styles.checkoutTextPremium}>Place Order</Text>}
+                <TouchableOpacity onPress={() => navigation.navigate("AddressScreen")} style={styles.editButton}>
+                  <Text style={styles.editButtonText}>Change</Text>
                 </TouchableOpacity>
               </View>
-            </>
-          )}
+              
+              <View style={styles.addressBox}>
+                {loadingAddress ? (
+                  <ActivityIndicator size="small" color="#3b82f6" />
+                ) : address ? (
+                  <View>
+                    <Text style={styles.addressName}>{address.fullName}</Text>
+                    {address.contactNumber ? (
+                      <Text style={styles.addressPhone}><Feather name="phone" size={12} /> {address.contactNumber}</Text>
+                    ) : null}
+                    <Text style={styles.addressText}>{address.fullAddress}</Text>
+                    
+                    {/* Embedded Map Preview Rendering block */}
+                    {address.latitude && address.longitude && (
+                      <View style={styles.mapContainer}>
+                        <MapView
+                          style={styles.mapPreview}
+                          scrollEnabled={false}
+                          zoomEnabled={false}
+                          rotateEnabled={false}
+                          pitchEnabled={false}
+                          initialRegion={{
+                            latitude: Number(address.latitude),
+                            longitude: Number(address.longitude),
+                            latitudeDelta: 0.005,
+                            longitudeDelta: 0.005,
+                          }}
+                        >
+                          <Marker
+                            coordinate={{
+                              latitude: Number(address.latitude),
+                              longitude: Number(address.longitude),
+                            }}
+                            pinColor="#3b82f6"
+                          />
+                        </MapView>
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  <Text style={styles.emptyTextNote}>No active address found. Please select one.</Text>
+                )}
+              </View>
+            </View>
+
+            {/* Item Details Card Container */}
+            <View style={styles.vendorGroup}>
+              <View style={styles.vendorHeader}>
+                <Feather name="shopping-bag" size={16} color="#64748B" />
+                <Text style={styles.vendorNameText}>{checkoutItem.uploadedBy?.businessName || 'Merchant Shop'}</Text>
+              </View>
+              
+              <View style={styles.itemCardPremium}>
+                <View style={styles.productRow}>
+                  <Base64Image base64={checkoutItem.imageBase64 || checkoutItem.productImage} productId={checkoutItem.id} style={styles.productImagePremium} />
+                  <View style={styles.productDetailsPremium}>
+                    <Text style={styles.productTextPremium} numberOfLines={1}>{checkoutItem.productName}</Text>
+                    
+                    <View style={styles.tagRow}>
+                      {checkoutItem.category && (
+                        <View style={styles.categoryBadgePremium}>
+                          <Text style={styles.categoryBadgeTextPremium}>{checkoutItem.category.toUpperCase()}</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {checkoutItem.selectedServices?.map((s, i) => (
+                      <View key={i} style={styles.serviceItem}>
+                        <Ionicons name="add-circle-outline" size={12} color="#64748B" />
+                        <Text style={styles.serviceTextPremium}> {s.label} (₱{Number(s.price).toFixed(2)})</Text>
+                      </View>
+                    ))}
+                    
+                    <View style={styles.qtyPriceRowPremium}>
+                      <Text style={styles.qtyTextPremium}>Quantity: {checkoutItem.quantity}kg</Text>
+                      <Text style={styles.itemTotalPremium}>₱{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* Payment & Shipping Combined Panel UI */}
+            <View style={styles.sectionCardPremium}>
+              <Text style={styles.sectionTitlePremium}>Payment & Shipping</Text>
+
+              <View style={styles.optionGrid}>
+                <TouchableOpacity 
+                  style={[styles.optionPill, deliveryMethod === 'Delivery' && styles.optionPillActive]} 
+                  onPress={() => handleDeliveryMethodChange('Delivery')}
+                >
+                  <Text style={[styles.optionPillText, deliveryMethod === 'Delivery' && styles.optionPillTextActive]}>Delivery</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.optionPill, deliveryMethod === 'Pickup' && styles.optionPillActive]} 
+                  onPress={() => handleDeliveryMethodChange('Pickup')}
+                >
+                  <Text style={[styles.optionPillText, deliveryMethod === 'Pickup' && styles.optionPillTextActive]}>Store Pickup</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.dividerPremium} />
+
+              {/* Dynamic Payment Selection Panel UI */}
+              {deliveryMethod === 'Delivery' ? (
+                <TouchableOpacity style={styles.paymentMethodSelector} activeOpacity={1}>
+                  <View style={styles.row}>
+                    <View style={styles.iconCircleGreen}>
+                      <MaterialCommunityIcons name="cash-multiple" size={20} color="#10B981" />
+                    </View>
+                    <View style={{ marginLeft: 12 }}>
+                      <Text style={styles.paymentMainText}>Cash on Delivery</Text>
+                      <Text style={styles.paymentSubText}>Pay when you receive the items</Text>
+                    </View>
+                  </View>
+                  <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+                </TouchableOpacity>
+              ) : (
+                <View style={[styles.paymentMethodSelector, styles.paymentPickupSelector]}>
+                  <View style={styles.row}>
+                    <View style={styles.iconCircleBlue}>
+                      <MaterialCommunityIcons name="storefront-outline" size={20} color="#3b82f6" />
+                    </View>
+                    <View style={{ marginLeft: 12 }}>
+                      <Text style={styles.paymentMainTextBlue}>Pay at Counter</Text>
+                      <Text style={styles.paymentSubTextBlue}>Settle your payment directly at the store</Text>
+                    </View>
+                  </View>
+                  <Ionicons name="checkmark-circle" size={24} color="#3b82f6" />
+                </View>
+              )}
+            </View>
+
+            {/* Order Notes Container */}
+            <View style={styles.sectionCardPremium}>
+              <Text style={styles.sectionTitlePremium}>Order Instructions</Text>
+              <TextInput 
+                style={styles.premiumInput} 
+                placeholder="E.g. Please leave the parcel at the gate..." 
+                placeholderTextColor="#94A3B8"
+                value={leaveNote} 
+                onChangeText={setLeaveNote} 
+                multiline 
+              />
+            </View>
+
+            {/* Total Balance Breakdown Calculations Card */}
+            <View style={styles.summaryCardPremium}>
+              <Text style={styles.summaryTitlePremium}>Summary</Text>
+              <View style={styles.summaryRowPremium}>
+                <Text style={styles.summaryLabel}>Subtotal</Text>
+                <Text style={styles.summaryValue}>₱{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+              </View>
+              <View style={styles.summaryRowPremium}>
+                <Text style={styles.summaryLabel}>Delivery Fee</Text>
+                <Text style={styles.summaryValue}>₱{deliveryMethod === 'Delivery' ? SHIPPING_FEE.toFixed(2) : '0.00'}</Text>
+              </View>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryRowPremium}>
+                <Text style={styles.totalLabelPremium}>Total Amount</Text>
+                <Text style={styles.totalValuePremium}>₱{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+              </View>
+            </View>
+          </ScrollView>
+
+          {/* Persistent Screen Modern Action Footer Section */}
+          <View style={styles.footerPremium}>
+            <View>
+              <Text style={styles.footerTotalLabel}>Grand Total</Text>
+              <Text style={styles.footerTotalValue}>₱{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
+            </View>
+            <TouchableOpacity 
+              style={[styles.checkoutButtonPremium, loadingCheckout && styles.checkoutButtonDisabled]} 
+              activeOpacity={0.8}
+              onPress={handleCheckout} 
+              disabled={loadingCheckout}
+            >
+              {loadingCheckout ? (
+                <ActivityIndicator color="#3b82f6" />
+              ) : (
+                <>
+                  <Text style={styles.checkoutTextPremium}>Place Order</Text>
+                  <Ionicons name="chevron-forward" size={18} color="#3b82f6" />
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
+      {/* Success Modal Container popup UI */}
+      <Modal
+        visible={showSuccessModal}
+        transparent={true}
+        animationType="fade"
+        statusBarTranslucent
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.successIconCircle}>
+              <Ionicons name="checkmark" size={44} color="#10B981" />
+            </View>
+            <Text style={styles.modalTitle}>Order Placed!</Text>
+            <Text style={styles.modalSubtitle}>
+              Your fresh order has been posted successfully and is waiting vendor confirmation.
+            </Text>
+            <TouchableOpacity 
+              style={styles.modalButton} 
+              onPress={handleCloseSuccessModal}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalButtonText}>Continue Shopping</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.4)', justifyContent: 'flex-end' },
-  modalContainer: { height: SCREEN_HEIGHT * 0.85, backgroundColor: '#FAFAFA', borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
-  dragHandle: { width: 40, height: 5, borderRadius: 2.5, backgroundColor: '#CBD5E1', alignSelf: 'center', marginTop: 10, marginBottom: 2 },
-  scrollContent: { paddingBottom: 140, paddingTop: 8 },
-  headerPremium: { height: 56, backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  safeContainer: { flex: 1, backgroundColor: '#FAFAFA' },
+  scrollContent: { paddingBottom: 140, paddingTop: 16 },
+  headerPremium: { marginTop: 35,height: 60, backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', paddingTop: 10 },
   backButtonCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#F8FAFC', justifyContent: 'center', alignItems: 'center' },
   headerTitlePremium: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
   sectionCardPremium: { backgroundColor: '#FFFFFF', borderRadius: 20, marginHorizontal: 16, padding: 18, marginBottom: 16, borderWidth: 1.5, borderColor: '#F1F5F9' },
@@ -273,33 +446,75 @@ const styles = StyleSheet.create({
   editButtonText: { color: '#0F172A', fontSize: 11, fontWeight: '700' },
   addressBox: { backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14 },
   addressName: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
+  addressPhone: { fontSize: 12, color: '#64748B', fontWeight: '500', marginTop: 2, marginBottom: 2 },
   addressText: { fontSize: 12, color: '#475569', marginTop: 4 },
   emptyTextNote: { fontSize: 12, color: '#94A3B8', textAlign: 'center' },
+  
+  // Map Container Configurations
+  mapContainer: { height: 120, width: '100%', borderRadius: 12, overflow: 'hidden', marginTop: 12, borderWidth: 1, borderColor: '#E2E8F0' },
+  mapPreview: { flex: 1 },
+  
   vendorGroup: { marginHorizontal: 16, marginBottom: 16 },
-  vendorNameText: { fontSize: 11, fontWeight: '700', color: '#64748B', textTransform: 'uppercase', marginBottom: 6, paddingLeft: 4 },
+  vendorHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, paddingLeft: 4 },
+  vendorNameText: { fontSize: 11, fontWeight: '700', color: '#64748B', textTransform: 'uppercase' },
   itemCardPremium: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 16, borderWidth: 1.5, borderColor: '#F1F5F9' },
   productRow: { flexDirection: 'row' },
   productImagePremium: { width: 80, height: 80, borderRadius: 12 },
   productDetailsPremium: { flex: 1, marginLeft: 16, justifyContent: 'space-between' },
   productTextPremium: { fontSize: 14, fontWeight: '700', color: '#0F172A' },
-  serviceText: { fontSize: 11, color: '#64748B', marginTop: 2 },
+  
+  tagRow: { flexDirection: 'row', marginTop: 4, marginBottom: 4 },
+  categoryBadgePremium: { backgroundColor: '#F1F5F9', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  categoryBadgeTextPremium: { fontSize: 9, fontWeight: '700', color: '#64748B' },
+  
+  serviceItem: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  serviceTextPremium: { fontSize: 11, color: '#64748B' },
   qtyPriceRowPremium: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
   qtyTextPremium: { fontSize: 12, fontWeight: '700', color: '#64748B' },
   itemTotalPremium: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  
   optionGrid: { flexDirection: 'row', gap: 10, marginTop: 8 },
   optionPill: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 14, backgroundColor: '#F8FAFC', borderWidth: 1.5, borderColor: '#E2E8F0' },
   optionPillActive: { backgroundColor: '#0F172A', borderColor: '#0F172A' },
   optionPillText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
   optionPillTextActive: { color: '#FFF', fontWeight: '700' },
-  premiumInput: { backgroundColor: '#F8FAFC', borderRadius: 14, padding: 12, height: 64, fontSize: 13, color: '#0F172A', textAlignVertical: 'top', marginTop: 8 },
-  summaryCardPremium: { marginHorizontal: 16, padding: 16, backgroundColor: '#FFFFFF', borderRadius: 20, borderWidth: 1.5, borderColor: '#F1F5F9' },
+  dividerPremium: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 16 },
+  
+  // Payment Module Selectors Style
+  row: { flexDirection: 'row', alignItems: 'center' },
+  paymentMethodSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderRadius: 16, backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0' },
+  paymentPickupSelector: { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
+  iconCircleGreen: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#D1FAE5', justifyContent: 'center', alignItems: 'center' },
+  iconCircleBlue: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#DBEAFE', justifyContent: 'center', alignItems: 'center' },
+  paymentMainText: { fontSize: 14, fontWeight: '700', color: '#065F46' },
+  paymentSubText: { fontSize: 11, color: '#047857', marginTop: 1 },
+  paymentMainTextBlue: { fontSize: 14, fontWeight: '700', color: '#1E40AF' },
+  paymentSubTextBlue: { fontSize: 11, color: '#1D4ED8', marginTop: 1 },
+  
+  premiumInput: { backgroundColor: '#F8FAFC', borderRadius: 14, padding: 12, height: 64, fontSize: 13, color: '#0F172A', textAlignVertical: 'top', marginTop: 8, borderWidth: 1, borderColor: '#E2E8F0' },
+  
+  summaryCardPremium: { marginHorizontal: 16, padding: 16, backgroundColor: '#FFFFFF', borderRadius: 20, borderWidth: 1.5, borderColor: '#F1F5F9', marginBottom: 20 },
+  summaryTitlePremium: { fontSize: 14, fontWeight: '800', color: '#0F172A', marginBottom: 12, textTransform: 'uppercase' },
   summaryRowPremium: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  summaryLabel: { fontSize: 13, color: '#64748B', fontWeight: '500' },
+  summaryValue: { fontSize: 13, color: '#0F172A', fontWeight: '600' },
   summaryDivider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 8, borderStyle: 'dashed' },
-  totalLabelPremium: { fontWeight: '700' },
+  totalLabelPremium: { fontWeight: '700', fontSize: 14, color: '#0F172A' },
   totalValuePremium: { fontSize: 16, fontWeight: '800', color: '#0F172A' },
+  
   footerPremium: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: '#FFFFFF', paddingHorizontal: 24, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#F1F5F9' },
   footerTotalLabel: { fontSize: 10, color: '#94A3B8', fontWeight: '700', textTransform: 'uppercase' },
   footerTotalValue: { fontSize: 20, fontWeight: '900', color: '#0F172A' },
-  checkoutButtonPremium: { backgroundColor: '#0F172A', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 99 },
-  checkoutTextPremium: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 }
+  checkoutButtonPremium: { backgroundColor: '#0F172A', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 99, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  checkoutButtonDisabled: { opacity: 0.6 },
+  checkoutTextPremium: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
+  
+  // Success Overlay Modal UI Styles
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalContent: { width: '100%', backgroundColor: '#FFFFFF', borderRadius: 24, padding: 28, alignItems: 'center', elevation: 5 },
+  successIconCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#D1FAE5', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 20, fontWeight: '900', color: '#0F172A', marginBottom: 8 },
+  modalSubtitle: { fontSize: 13, color: '#64748B', textAlign: 'center', lineHeight: 20, marginBottom: 24, paddingHorizontal: 10 },
+  modalButton: { width: '100%', backgroundColor: '#0F172A', paddingVertical: 14, borderRadius: 16, alignItems: 'center' },
+  modalButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' }
 });

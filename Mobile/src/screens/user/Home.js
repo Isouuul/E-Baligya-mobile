@@ -20,8 +20,10 @@ import Swiper from "react-native-swiper";
 import * as Location from "expo-location";
 import { auth, db } from "../../firebase";
 import { collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
-import BuyNowModal from "./BuyNow";
-import NotificationModal from './NotificationModal'; // Connected here
+
+// FIXED: Corrected import to accurately target BuyNowModal.js file layout structure
+import BuyNowModal from "./BuyNowModal";
+import NotificationModal from './NotificationModal';
 
 const { width } = Dimensions.get("window");
 const ITEMS_PER_PAGE = 4;
@@ -43,7 +45,7 @@ export default function Home({ navigation }) {
   const [buyNowProduct, setBuyNowProduct] = useState(null);
   const [cartCount, setCartCount] = useState(0);
   const [notificationCount, setNotificationCount] = useState(0); 
-  const [notifVisible, setNotifVisible] = useState(false); // Controls Notification Overlay state
+  const [notifVisible, setNotifVisible] = useState(false);
 
   const categories = [
     { name: "All", icon: require("../../../assets/all.png") },
@@ -66,6 +68,33 @@ export default function Home({ navigation }) {
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
     return arr;
+  };
+
+  // Helper function to evaluate product decay timeline
+  const getProductStatus = (product) => {
+    if (product.status && product.status.toLowerCase() === 'restricted') {
+      return 'restricted';
+    }
+    if (!product.warningTime || !product.expiryTime) {
+      return 'fresh';
+    }
+
+    try {
+      const now = new Date();
+      const warning = typeof product.warningTime.toDate === 'function' 
+        ? product.warningTime.toDate() 
+        : new Date(product.warningTime);
+      const expiry = typeof product.expiryTime.toDate === 'function' 
+        ? product.expiryTime.toDate() 
+        : new Date(product.expiryTime);
+
+      if (now >= expiry) return 'expired';
+      if (now >= warning) return 'warning'; 
+    } catch (e) {
+      console.error("Error parsing timestamps: ", e);
+    }
+
+    return 'fresh';
   };
 
   // Real-time Cart Badge Logic
@@ -138,25 +167,35 @@ export default function Home({ navigation }) {
     return () => sub?.remove();
   }, []);
 
-const fetchAllData = async () => {
+  const fetchAllData = async () => {
     try {
       const qProducts = query(collection(db, "Products"));
       const snapshotProducts = await getDocs(qProducts);
       
       const rawProductsList = snapshotProducts.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      const compliantProducts = rawProductsList.filter(item => item.status !== 'restricted');
+      
+      // Compliance filter: checks both explicit status and real-time freshness context
+      const compliantProducts = rawProductsList.filter(item => {
+        const lifeStatus = getProductStatus(item);
+        if (lifeStatus === 'restricted' || lifeStatus === 'expired') {
+          return false;
+        }
+        return true;
+      });
 
       setProducts(shuffleArray(compliantProducts));
       
-      const listTrend = compliantProducts.filter((i) => i.category === "Trend");
+      // FIXED: Case-insensitive check on product categories to make sure seasonal trends never drop out of bounds
+      const listTrend = compliantProducts.filter((i) => i.category?.toLowerCase() === "trend" || i.category === "Seasonal");
       setTrendFish(shuffleArray(listTrend));
     } catch (err) { 
       console.error(err); 
-    } finally { // <-- Fixed the typo here
+    } finally { 
       setLoading(false); 
       setRefreshing(false); 
     }
   };
+
   useEffect(() => { fetchAllData(); }, []);
 
   const handleRefresh = () => { setRefreshing(true); fetchAllData(); };
@@ -171,6 +210,8 @@ const fetchAllData = async () => {
     useEffect(() => {
       Animated.timing(fadeAnim, { toValue: 1, duration: 400, delay: index * 80, useNativeDriver: true }).start();
     }, [index, fadeAnim]);
+
+    const timelineStatus = getProductStatus(item);
 
     return (
       <Animated.View style={[styles.productCard, { opacity: fadeAnim }]}>
@@ -187,10 +228,18 @@ const fetchAllData = async () => {
                 <Feather name="image" size={24} color="#94A3B8" />
               </View>
             )}
-            {item.category && (
-              <View style={styles.cardBadge}>
-                <Text style={styles.cardBadgeText}>{item.category.toUpperCase()}</Text>
+            
+            {/* Conditional badging for categories and freshness urgency updates */}
+            {timelineStatus === 'warning' ? (
+              <View style={[styles.cardBadge, styles.warningBadge]}>
+                <Text style={[styles.cardBadgeText, styles.warningBadgeText]}>NEAR EXPIRY</Text>
               </View>
+            ) : (
+              item.category && (
+                <View style={styles.cardBadge}>
+                  <Text style={styles.cardBadgeText}>{item.category.toUpperCase()}</Text>
+                </View>
+              )
             )}
           </View>
           
@@ -288,7 +337,6 @@ const fetchAllData = async () => {
     <View style={{ flex: 1, backgroundColor: "#FCFCFC" }}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
-      {/* PREMIUM HEADER */}
       <SafeAreaView style={styles.headerSafe}>
         <View style={styles.topHeader}>
           <View>
@@ -322,7 +370,6 @@ const fetchAllData = async () => {
               <Image source={MessageIcon} style={styles.customHeaderIcon} />
             </TouchableOpacity>
 
-            {/* NOTIFICATION BELL ICON (MODAL VISIBILITY ONPRESS ACTION) */}
             <TouchableOpacity 
               onPress={() => setNotifVisible(true)} 
               style={[styles.iconCircle, { marginLeft: 12 }]}
@@ -341,7 +388,7 @@ const fetchAllData = async () => {
 
       <ScrollView 
         showsVerticalScrollIndicator={false} 
-        refreshControl={
+        refreshControl = {
           <RefreshControl 
             refreshing={refreshing} 
             onRefresh={handleRefresh} 
@@ -395,14 +442,13 @@ const fetchAllData = async () => {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* REUSABLE PRODUCT BUY-NOW INJECTION OVERLAYS */}
+      {/* FIXED: The component references will now parse flawlessly from the updated path target */}
       <BuyNowModal
         visible={buyNowModalVisible}
         onClose={() => setBuyNowModalVisible(false)}
         product={buyNowProduct}
       />
 
-      {/* NOTIFICATION CENTER INJECTION OVERLAYS */}
       <NotificationModal 
         visible={notifVisible}
         onClose={() => setNotifVisible(false)}
@@ -545,6 +591,13 @@ const styles = StyleSheet.create({
     borderRadius: 8 
   },
   cardBadgeText: { fontSize: 8, fontWeight: '900', color: '#3b82f6', letterSpacing: 0.5 },
+  warningBadge: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#D97706',
+  },
+  warningBadgeText: {
+    color: '#D97706',
+  },
   cardContent: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
   productName: { fontSize: 14, fontWeight: "800", color: "#0F172A" },
   cardBottomMeta: { marginTop: 4, gap: 2 },
