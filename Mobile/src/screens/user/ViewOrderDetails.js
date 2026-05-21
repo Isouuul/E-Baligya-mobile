@@ -95,9 +95,9 @@ export default function ViewOrderDetails() {
 
   const groupedItems = useMemo(() => {
     const groups = {};
-    if (order && Array.isArray(order.items)) {
+    if (order && Array.isArray(order.items) && order.items.length > 0) {
       order.items.forEach(item => {
-        const businessName = item.uploadedBy?.businessName || item.businessName || 'Unknown Vendor';
+        const businessName = item?.uploadedBy?.businessName || item?.businessName || 'Unknown Vendor';
         if (!groups[businessName]) groups[businessName] = [];
         groups[businessName].push(item);
       });
@@ -115,37 +115,37 @@ export default function ViewOrderDetails() {
 
     if (isPickupOrder) {
       const typicalItem = order.items?.[0] || {};
-      const vendorInfo = typicalItem.uploadedBy || typicalItem;
+      const vendorInfo = typicalItem?.uploadedBy || typicalItem || {};
 
       // Extract your custom field parameters
-      const street = vendorInfo.streetName || '';
-      const brgy = vendorInfo.selectedBarangay || '';
-      const city = vendorInfo.selectedCity || '';
-      const prov = vendorInfo.selectedProvince || '';
+      const street = vendorInfo?.streetName || '';
+      const brgy = vendorInfo?.selectedBarangay || '';
+      const city = vendorInfo?.selectedCity || '';
+      const prov = vendorInfo?.selectedProvince || '';
       
-      const phoneNum = vendorInfo.phone || "No contact listed";
-      const bizType = vendorInfo.businessType ? ` (${vendorInfo.businessType})` : '';
-      const market = vendorInfo.marketName ? ` [${vendorInfo.marketName}]` : '';
+      const phoneNum = vendorInfo?.phone || "No contact listed";
+      const bizType = vendorInfo?.businessType ? ` (${vendorInfo.businessType})` : '';
+      const market = vendorInfo?.marketName ? ` [${vendorInfo.marketName}]` : '';
 
-      const fullStoreAddress = [street, brgy, city, prov].filter(Boolean).join(', ') || vendorInfo.fullAddress;
+      const fullStoreAddress = [street, brgy, city, prov].filter(Boolean).join(', ') || vendorInfo?.fullAddress;
 
       return {
         title: "Store Pickup Address",
-        name: `${vendorInfo.businessName || "Vendor Storefront"}${bizType}`,
+        name: `${vendorInfo?.businessName || "Vendor Storefront"}${bizType}`,
         contact: `Phone: ${phoneNum}`,
         details: fullStoreAddress ? `${fullStoreAddress}${market}`.trim() : "Proceed to vendor location to collect.",
-        lat: Number(vendorInfo.latitude || order.latitude || DEFAULT_LATITUDE),
-        lng: Number(vendorInfo.longitude || order.longitude || DEFAULT_LONGITUDE)
+        lat: Number(vendorInfo?.latitude || order?.latitude || DEFAULT_LATITUDE),
+        lng: Number(vendorInfo?.longitude || order?.longitude || DEFAULT_LONGITUDE)
       };
     } else {
-      const addr = order.address || {};
+      const addr = order?.address || {};
       return {
         title: "Delivery Destination Address",
-        name: addr.fullName || "Recipient Name",
-        contact: addr.contactNumber ? `Phone: ${addr.contactNumber}` : "No contact number listed",
-        details: addr.fullAddress || (typeof order.address === 'string' ? order.address : "No delivery coordinates provided."),
-        lat: Number(addr.latitude || order.latitude || DEFAULT_LATITUDE),
-        lng: Number(addr.longitude || order.longitude || DEFAULT_LONGITUDE)
+        name: addr?.fullName || "Recipient Name",
+        contact: addr?.contactNumber ? `Phone: ${addr.contactNumber}` : "No contact number listed",
+        details: addr?.fullAddress || (typeof order?.address === 'string' ? order.address : "No delivery coordinates provided."),
+        lat: Number(addr?.latitude || order?.latitude || DEFAULT_LATITUDE),
+        lng: Number(addr?.longitude || order?.longitude || DEFAULT_LONGITUDE)
       };
     }
   }, [order, isPickupOrder]);
@@ -190,16 +190,17 @@ export default function ViewOrderDetails() {
   };
 
   const renderItemCard = item => {
-    const base = Number(item.basePrice || 0);
-    const variationPrice = Number(item.selectedVariationPrice || 0);
-    const servicesTotal = (item.services || []).reduce((a, s) => a + Number(s.price || 0), 0);
-    const itemTotal = (base + variationPrice + servicesTotal) * (item.quantity || 1);
-    const itemCategory = item.category || item.productCategory || 'Product';
+    if (!item) return null;
+    const base = Number(item?.basePrice || 0);
+    const variationPrice = Number(item?.selectedVariationPrice || 0);
+    const servicesTotal = (item?.services || []).reduce((a, s) => a + Number(s?.price || 0), 0);
+    const itemTotal = (base + variationPrice + servicesTotal) * (item?.quantity || 1);
+    const itemCategory = item?.category || item?.productCategory || 'Product';
 
     return (
-      <View key={item.productId || Math.random().toString()} style={styles.itemCardNew}>
+      <View key={item?.productId || Math.random().toString()} style={styles.itemCardNew}>
         <View style={styles.productRow}>
-          {item.productImage ? (
+          {item?.productImage ? (
             <Image source={{ uri: item.productImage }} style={styles.productImageNew} />
           ) : (
             <View style={styles.placeholderImageNew}>
@@ -209,21 +210,21 @@ export default function ViewOrderDetails() {
           <View style={styles.productDetailsNew}>
             <View>
               <View style={styles.categoryBadgeContainer}>
-                <Text style={styles.categoryBadgeText}>{itemCategory.toUpperCase()}</Text>
+                <Text style={styles.categoryBadgeText}>{itemCategory?.toUpperCase?.() || 'PRODUCT'}</Text>
               </View>
 
-              <Text style={styles.productTextNew} numberOfLines={1}>{item.productName}</Text>
+              <Text style={styles.productTextNew} numberOfLines={1}>{item?.productName || 'Product'}</Text>
               
               <View style={styles.variationRow}>
                 <Ionicons name="pricetag-outline" size={11} color="#64748B" />
-                <Text style={styles.variationText}>{item.selectedVariation || 'Standard'}</Text>
+                <Text style={styles.variationText}>{item?.selectedVariation || 'Standard'}</Text>
               </View>
 
-              {item.services && item.services.length > 0 && (
+              {item?.services && Array.isArray(item.services) && item.services.length > 0 && (
                 <View style={styles.servicesContainer}>
                   {item.services.map((s, idx) => (
                     <Text key={idx} style={styles.serviceTextNew}>
-                      • {s.label} <Text style={styles.servicePrice}>(+₱{Number(s.price).toFixed(2)})</Text>
+                      • {s?.label || 'Service'} <Text style={styles.servicePrice}>(+₱{Number(s?.price || 0).toFixed(2)})</Text>
                     </Text>
                   ))}
                 </View>
@@ -232,7 +233,7 @@ export default function ViewOrderDetails() {
             
             <View style={styles.qtyPriceRow}>
               <View style={styles.qtyBadge}>
-                <Text style={styles.qtyTextNew}>× {item.quantity}</Text>
+                <Text style={styles.qtyTextNew}>× {item?.quantity || 1}</Text>
               </View>
               <Text style={styles.itemTotalNew}>₱{itemTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
             </View>

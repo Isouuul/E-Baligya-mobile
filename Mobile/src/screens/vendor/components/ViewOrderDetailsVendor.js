@@ -86,9 +86,9 @@ export default function ViewOrderDetailsVendor() {
 
   const groupedItems = useMemo(() => {
     const groups = {};
-    if (order && Array.isArray(order.items)) {
+    if (order && Array.isArray(order.items) && order.items.length > 0) {
       order.items.forEach(item => {
-        const businessName = item.uploadedBy?.businessName || 'Unknown Vendor';
+        const businessName = item?.uploadedBy?.businessName || item?.businessName || 'Unknown Vendor';
         if (!groups[businessName]) groups[businessName] = [];
         groups[businessName].push(item);
       });
@@ -97,7 +97,7 @@ export default function ViewOrderDetailsVendor() {
   }, [order?.items]);
 
   const handleCancelOrder = async () => {
-    if (isCancelling) return;
+    if (isCancelling || !order?.id) return;
     Alert.alert(
       "Cancel Order",
       "Are you sure you want to cancel this order?",
@@ -130,17 +130,18 @@ export default function ViewOrderDetailsVendor() {
   };
 
 const renderItemCard = item => {
-  const base = Number(item.basePrice || 0);
-  const servicesTotal = (item.services || []).reduce((a, s) => a + Number(s.price || 0), 0);
-  const itemTotal = (base + servicesTotal) * (item.quantity || 1);
+  if (!item) return null;
+  const base = Number(item?.basePrice || 0);
+  const servicesTotal = (item?.services || []).reduce((a, s) => a + Number(s?.price || 0), 0);
+  const itemTotal = (base + servicesTotal) * (item?.quantity || 1);
   
   // Fallback to 'Product' if category doesn't exist in the document object
-  const itemCategory = item.category || item.productCategory || 'Product';
+  const itemCategory = item?.category || item?.productCategory || 'Product';
 
   return (
-    <View key={item.productId} style={styles.itemCardNew}>
+    <View key={item?.productId || Math.random().toString()} style={styles.itemCardNew}>
       <View style={styles.productRow}>
-        {item.productImage ? (
+        {item?.productImage ? (
           <Image source={{ uri: item.productImage }} style={styles.productImageNew} />
         ) : (
           <View style={styles.placeholderImageNew}>
@@ -151,23 +152,23 @@ const renderItemCard = item => {
           <View>
             {/* Premium Category Tag */}
             <View style={styles.categoryBadgeContainer}>
-              <Text style={styles.categoryBadgeText}>{itemCategory.toUpperCase()}</Text>
+              <Text style={styles.categoryBadgeText}>{itemCategory?.toUpperCase?.() || 'PRODUCT'}</Text>
             </View>
 
-            <Text style={styles.productTextNew} numberOfLines={1}>{item.productName}</Text>
+            <Text style={styles.productTextNew} numberOfLines={1}>{item?.productName || 'Product'}</Text>
             
-            {item.selectedVariation && (
+            {item?.selectedVariation && (
               <View style={styles.variationRow}>
                 <Ionicons name="pricetag-outline" size={11} color="#64748B" />
                 <Text style={styles.variationText}>{item.selectedVariation}</Text>
               </View>
             )}
 
-            {item.services && item.services.length > 0 && (
+            {item?.services && Array.isArray(item.services) && item.services.length > 0 && (
               <View style={styles.servicesContainer}>
                 {item.services.map((s, idx) => (
                   <Text key={idx} style={styles.serviceTextNew}>
-                    • {s.label} <Text style={styles.servicePrice}>(+₱{Number(s.price).toFixed(2)})</Text>
+                    • {s?.label || 'Service'} <Text style={styles.servicePrice}>(+₱{Number(s?.price || 0).toFixed(2)})</Text>
                   </Text>
                 ))}
               </View>
@@ -176,7 +177,7 @@ const renderItemCard = item => {
           
           <View style={styles.qtyPriceRow}>
             <View style={styles.qtyBadge}>
-              <Text style={styles.qtyTextNew}>× {item.quantity}</Text>
+              <Text style={styles.qtyTextNew}>× {item?.quantity || 1}</Text>
             </View>
             <Text style={styles.itemTotalNew}>₱{itemTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
           </View>
@@ -202,7 +203,7 @@ const renderItemCard = item => {
     );
   }
 
-  const isBiddingOrder = Array.isArray(order.items) && order.items.some(i => i.source === 'notification' || i.productType === 'bidding');
+  const isBiddingOrder = Array.isArray(order?.items) && order.items.some(i => i?.source === 'notification' || i?.productType === 'bidding');
 
   return (
     <View style={styles.container}>
@@ -219,7 +220,7 @@ const renderItemCard = item => {
             <Text style={styles.headerTitle}>Order Details</Text>
             
             {/* Store Pickup / Courier Distribution Dynamic Badge Wrapper */}
-            {order.deliveryMethod === 'Pickup' ? (
+            {order?.deliveryMethod === 'Pickup' ? (
               <View style={styles.pickupBadge}>
                 <Ionicons name="storefront-outline" size={10} color="#1E3A8A" style={{ marginRight: 3 }} />
                 <Text style={styles.pickupBadgeText}>PICKUP</Text>
@@ -238,7 +239,7 @@ const renderItemCard = item => {
               </View>
             )}
           </View>
-          <Text style={styles.headerSubtitle}>#{order.orderNumber}</Text>
+          <Text style={styles.headerSubtitle}>#{order?.orderNumber || 'N/A'}</Text>
         </View>
         
         {/* Dynamic Alert Icon State Management */}
@@ -265,21 +266,21 @@ const renderItemCard = item => {
         
         {/* Unified Status Visual Showcase */}
         <View style={styles.statusSection}>
-          <View style={[styles.statusBadgeGlobal, { backgroundColor: getStatusBadgeStyle(order.status).backgroundColor }]}>
+          <View style={[styles.statusBadgeGlobal, { backgroundColor: getStatusBadgeStyle(order?.status).backgroundColor }]}>
             <MaterialCommunityIcons 
-              name={getStatusBadgeStyle(order.status).icon} 
+              name={getStatusBadgeStyle(order?.status).icon} 
               size={16} 
-              color={getStatusBadgeStyle(order.status).color} 
+              color={getStatusBadgeStyle(order?.status).color} 
             />
-            <Text style={[styles.statusTextGlobal, { color: getStatusBadgeStyle(order.status).color }]}>
-              {order.status}
+            <Text style={[styles.statusTextGlobal, { color: getStatusBadgeStyle(order?.status).color }]}>
+              {order?.status || 'Unknown'}
             </Text>
           </View>
           <Text style={styles.orderDateText}>Placed on {new Date().toLocaleDateString()}</Text>
         </View>
 
         {/* Dynamic Delivery Destination Address Block */}
-        {order.address && (
+        {order?.address && (
           <View style={styles.cardWrapper}>
             <View style={styles.cardHeader}>
               <View style={styles.headerIconContainer}>
@@ -289,18 +290,18 @@ const renderItemCard = item => {
             </View>
             
             <View style={styles.addressInfo}>
-              <Text style={styles.addressNameText}>{order.address.fullName}</Text>
-              <Text style={styles.addressContactText}>{order.address.contactNumber}</Text>
-              <Text style={styles.addressFullText}>{order.address.fullAddress}</Text>
+              <Text style={styles.addressNameText}>{order.address?.fullName || 'N/A'}</Text>
+              <Text style={styles.addressContactText}>{order.address?.contactNumber || 'No contact'}</Text>
+              <Text style={styles.addressFullText}>{order.address?.fullAddress || 'No address'}</Text>
             </View>
             
-            {order.address.latitude && order.address.longitude && (
+            {order.address?.latitude && order.address?.longitude && (
               <View style={styles.mapContainer}>
                 <MapView
                   style={styles.map}
                   initialRegion={{
-                    latitude: order.address.latitude,
-                    longitude: order.address.longitude,
+                    latitude: Number(order.address.latitude),
+                    longitude: Number(order.address.longitude),
                     latitudeDelta: 0.005,
                     longitudeDelta: 0.005,
                   }}
@@ -309,7 +310,7 @@ const renderItemCard = item => {
                   pitchEnabled={false}
                   rotateEnabled={false}
                 >
-                  <Marker coordinate={{ latitude: order.address.latitude, longitude: order.address.longitude }} />
+                  <Marker coordinate={{ latitude: Number(order.address.latitude), longitude: Number(order.address.longitude) }} />
                 </MapView>
               </View>
             )}
@@ -317,15 +318,17 @@ const renderItemCard = item => {
         )}
 
         {/* Grouped Products/Items Stack */}
-        {groupedItems.map(group => (
-          <View key={group.shopName} style={styles.vendorSection}>
-            <View style={styles.vendorHeader}>
-              <MaterialCommunityIcons name="storefront-outline" size={16} color="#475569" />
-              <Text style={styles.shopNameNew}>{group.shopName}</Text>
+        {groupedItems.length > 0 ? (
+          groupedItems.map(group => (
+            <View key={group?.shopName} style={styles.vendorSection}>
+              <View style={styles.vendorHeader}>
+                <MaterialCommunityIcons name="storefront-outline" size={16} color="#475569" />
+                <Text style={styles.shopNameNew}>{group?.shopName || 'Unknown Shop'}</Text>
+              </View>
+              {group?.items?.map(item => renderItemCard(item))}
             </View>
-            {group.items.map(item => renderItemCard(item))}
-          </View>
-        ))}
+          ))
+        ) : null}
 
         {/* Financial Accounting Breakdown Card */}
         <View style={styles.cardWrapper}>
@@ -333,24 +336,24 @@ const renderItemCard = item => {
           
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Subtotal</Text>
-            <Text style={styles.summaryValue}>₱{(order.subtotal || 0).toFixed(2)}</Text>
+            <Text style={styles.summaryValue}>₱{(order?.subtotal || 0).toFixed(2)}</Text>
           </View>
 
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Delivery Fee</Text>
-            <Text style={styles.summaryValue}>₱{(order.shippingFee || 0).toFixed(2)}</Text>
+            <Text style={styles.summaryValue}>₱{(order?.shippingFee || 0).toFixed(2)}</Text>
           </View>
           
           <View style={styles.divider} />
           
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total Amount</Text>
-            <Text style={styles.totalValue}>₱{(order.totalAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
+            <Text style={styles.totalValue}>₱{(order?.totalAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</Text>
           </View>
         </View>
 
         {/* Context-Driven Cancel Action Directive */}
-        {order.status === 'Pending' && (
+        {order?.status === 'Pending' && (
           <TouchableOpacity
             disabled={isCancelling}
             style={[styles.cancelButton, isCancelling && { opacity: 0.6 }]}
@@ -374,7 +377,7 @@ const renderItemCard = item => {
       <ReportUserModal
         visible={reportVisible}
         onClose={(wasSubmitted) => handleModalClose(wasSubmitted)}
-        orderId={order.id}
+        orderId={order?.id}
         orderData={order}
       />
     </View>
@@ -395,8 +398,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
-        marginTop: 35
-
+    marginTop: 35
   },
   backButton: { 
     width: 38,

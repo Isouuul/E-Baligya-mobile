@@ -161,7 +161,7 @@ const handleCheckout = async () => {
       userFirstName: userData.firstName || '',
       userLastName: userData.lastName || '',
       items: [{
-        productId: checkoutItem.id || '',
+        productId: checkoutItem.id || checkoutItem.productId || '',
         productName: checkoutItem.productName || '',
         productImage: checkoutItem.imageBase64 || checkoutItem.productImage || null,
         quantity: checkoutItem.quantity || 1,

@@ -229,6 +229,7 @@ export default function BuyNowModal({ visible, onClose, product }) {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
       const checkoutItem = {
+        id: product.id,
         productId: product.id,
         productName: product.productName,
         productImage: product.imageBase64 || product.productImage || null,

@@ -106,6 +106,7 @@ const handleBuyNow = () => {
     
     // Create a sanitized object with fallbacks
     const checkoutItem = {
+      id: product.id || "N/A",
       productId: product.id || "N/A",
       productName: product.productName || product.name || "Unknown Product",
       basePrice: parseFloat(product.basePrice || product.price) || 0,
