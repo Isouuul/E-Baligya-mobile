@@ -63,11 +63,16 @@ export default function CheckedOut() {
   useEffect(() => {
     const fetchAddress = () => {
       const user = auth.currentUser;
-      if (!user) return;
+      if (!user) {
+        setLoadingAddress(false);
+        return;
+      }
 
       try {
         const addressesRef = collection(db, 'Users-Address', user.uid, 'addresses');
         const q = query(addressesRef, where('status', '==', 'active'));
+        let unsubscribeAll = null;
+        
         const unsubscribe = onSnapshot(q, snapshot => {
           if (!snapshot.empty) {
             const docData = snapshot.docs[0].data();
@@ -79,9 +84,10 @@ export default function CheckedOut() {
               latitude: docData.latitude || null,
               longitude: docData.longitude || null,
             });
+            setLoadingAddress(false);
           } else {
             const allQ = query(addressesRef);
-            onSnapshot(allQ, allSnapshot => {
+            unsubscribeAll = onSnapshot(allQ, allSnapshot => {
               if (!allSnapshot.empty) {
                 const docData = allSnapshot.docs[0].data();
                 setAddress({
@@ -95,14 +101,20 @@ export default function CheckedOut() {
               } else {
                 setAddress(null);
               }
+              setLoadingAddress(false);
+            }, error => {
+              console.error('Error fetching all addresses:', error);
+              setLoadingAddress(false);
             });
           }
-          setLoadingAddress(false);
         }, error => {
           console.error('Error fetching address:', error);
           setLoadingAddress(false);
         });
-        return () => unsubscribe();
+        return () => {
+          unsubscribe();
+          if (unsubscribeAll) unsubscribeAll();
+        };
       } catch (error) {
         console.error('Error fetching address:', error);
         setLoadingAddress(false);

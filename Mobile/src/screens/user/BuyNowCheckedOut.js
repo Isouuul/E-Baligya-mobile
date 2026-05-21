@@ -104,11 +104,17 @@ export default function BuyNowCheckedOut() {
 
   useEffect(() => {
     const user = auth.currentUser;
-    if (!user) return;
+    if (!user) {
+      setLoadingAddress(false);
+      return;
+    }
 
     const addressesRef = collection(db, 'Users-Address', user.uid, 'addresses');
     const q = query(addressesRef, where('status', '==', 'active'));
-    const unsubscribe = onSnapshot(q, snapshot => {
+    
+    let unsubscribeAll = null;
+    
+    const unsubscribeActive = onSnapshot(q, snapshot => {
       if (!snapshot.empty) {
         const docData = snapshot.docs[0].data();
         setAddress({
@@ -119,31 +125,42 @@ export default function BuyNowCheckedOut() {
           latitude: docData.latitude || null,
           longitude: docData.longitude || null,
         });
+        setLoadingAddress(false);
       } else {
+        // No active address, fetch all addresses
         const allQ = query(addressesRef);
-        onSnapshot(allQ, allSnapshot => {
-          if (!allSnapshot.empty) {
-            const docData = allSnapshot.docs[0].data();
-            setAddress({
-              id: allSnapshot.docs[0].id,
-              fullName: `${docData.firstName || ''} ${docData.lastName || ''}`.trim(),
-              fullAddress: `${docData.streetName || ''}, ${docData.barangay || ''}, ${docData.city || ''}, ${docData.province || ''}, ${docData.region || ''}`,
-              contactNumber: docData.phoneNumber || '',
-              latitude: docData.latitude || null,
-              longitude: docData.longitude || null,
-            });
-          } else {
-            setAddress(null);
+        unsubscribeAll = onSnapshot(allQ, 
+          allSnapshot => {
+            if (!allSnapshot.empty) {
+              const docData = allSnapshot.docs[0].data();
+              setAddress({
+                id: allSnapshot.docs[0].id,
+                fullName: `${docData.firstName || ''} ${docData.lastName || ''}`.trim(),
+                fullAddress: `${docData.streetName || ''}, ${docData.barangay || ''}, ${docData.city || ''}, ${docData.province || ''}, ${docData.region || ''}`,
+                contactNumber: docData.phoneNumber || '',
+                latitude: docData.latitude || null,
+                longitude: docData.longitude || null,
+              });
+            } else {
+              setAddress(null);
+            }
+            setLoadingAddress(false);
+          },
+          error => {
+            console.error('Error fetching all addresses:', error);
+            setLoadingAddress(false);
           }
-        });
+        );
       }
-      setLoadingAddress(false);
     }, error => {
-      console.error('Error fetching address:', error);
+      console.error('Error fetching active address:', error);
       setLoadingAddress(false);
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribeActive();
+      if (unsubscribeAll) unsubscribeAll();
+    };
   }, []);
 
   useEffect(() => {
