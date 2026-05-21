@@ -128,56 +128,74 @@ export default function BuyNowModalCheckedout() {
     }
   };
 
-  const handleCheckout = async () => {
-    if (loadingCheckout || !checkoutItem) return;
-    const user = auth.currentUser;
-    if (!user) return;
+// Inside src/screens/Users/BuyNowModalCheckedout.js
 
-    if (deliveryMethod === 'Delivery' && !address) {
-      Toast.show({ type: 'error', text1: 'Address Required', text2: 'Please configure a delivery target.' });
-      return;
-    }
+const handleCheckout = async () => {
+  if (loadingCheckout || !checkoutItem) return;
+  const user = auth.currentUser;
+  if (!user) return;
 
-    setLoadingCheckout(true);
-    try {
-      const userSnap = await getDoc(doc(db, 'Users', user.uid));
-      const userData = userSnap.exists() ? userSnap.data() : {};
+  if (deliveryMethod === 'Delivery' && !address) {
+    Toast.show({ type: 'error', text1: 'Address Required', text2: 'Please configure a delivery target.' });
+    return;
+  }
 
-      const orderData = {
-        orderNumber: generateOrderNumber(),
-        userId: user.uid,
-        userFirstName: userData.firstName || '',
-        userLastName: userData.lastName || '',
-        userProfileImage: userData.profileImage || null,
-        items: [{
-          productId: checkoutItem.id || checkoutItem.docId,
-          productName: checkoutItem.productName,
-          productImage: checkoutItem.productImage || checkoutItem.imageBase64 || null,
-          quantity: checkoutItem.quantity || 1,
-          basePrice: checkoutItem.basePrice,
-          services: checkoutItem.selectedServices || [],
-          uploadedBy: checkoutItem.uploadedBy || null,
-          category: checkoutItem.category || 'Uncategorized',
-        }],
-        deliveryMethod,
-        shippingFee: deliveryMethod === 'Delivery' ? SHIPPING_FEE : 0,
-        subtotal,
-        totalAmount,
-        paymentMethod,
-        leaveNote,
-        address: deliveryMethod === 'Delivery' ? address : null,
-        status: 'Pending',
-        createdAt: serverTimestamp(),
-      };
+  setLoadingCheckout(true);
+  try {
+    const userSnap = await getDoc(doc(db, 'Users', user.uid));
+    const userData = userSnap.exists() ? userSnap.data() : {};
 
-      await addDoc(collection(db, 'Orders'), orderData);
-      setShowSuccessModal(true);
-    } catch (error) {
-      Toast.show({ type: 'error', text1: 'Checkout Failed', text2: 'Please verify entry values.' });
-    } finally {
-      setLoadingCheckout(false);
-    }
-  };
+    // 1. Sanitize address: ensure we don't pass complex objects
+    const addressData = address ? {
+      fullName: address.fullName,
+      fullAddress: address.fullAddress,
+      contactNumber: address.contactNumber,
+      latitude: address.latitude || null,
+      longitude: address.longitude || null,
+    } : null;
+
+    // 2. Build the order object with proper defaults to avoid undefined values
+    const orderData = {
+      orderNumber: generateOrderNumber(),
+      userId: user.uid,
+      userFirstName: userData.firstName || '',
+      userLastName: userData.lastName || '',
+      items: [{
+        productId: checkoutItem.id || '',
+        productName: checkoutItem.productName || '',
+        productImage: checkoutItem.imageBase64 || checkoutItem.productImage || null,
+        quantity: checkoutItem.quantity || 1,
+        basePrice: checkoutItem.basePrice || 0,
+        services: checkoutItem.selectedServices || [],
+        businessName: checkoutItem.businessName || checkoutItem.uploadedBy?.businessName || '',
+        Phone: checkoutItem.vendorPhone || checkoutItem.uploadedBy?.phone || '',
+        category: checkoutItem.category || '',
+      }],
+      deliveryMethod: deliveryMethod || 'Delivery',
+      shippingFee: deliveryMethod === 'Delivery' ? SHIPPING_FEE : 0,
+      subtotal: subtotal || 0,
+      totalAmount: totalAmount || 0,
+      paymentMethod: paymentMethod || 'Cash-On-Delivery',
+      leaveNote: leaveNote || '',
+      address: addressData || null,
+      status: 'Pending',
+      createdAt: serverTimestamp(),
+    };
+
+    // 3. Attempt the write
+    await addDoc(collection(db, 'Orders'), orderData);
+    setShowSuccessModal(true);
+  } catch (error) {
+    console.log("Checkout Error:", error); // Check your terminal for specific details
+    Toast.show({ 
+      type: 'error', 
+      text1: 'Checkout Failed', 
+      text2: 'Error occurred while saving to database.' 
+    });
+  } finally {
+    setLoadingCheckout(false);
+  }
+};
 
   const handleCloseSuccessModal = () => {
     setShowSuccessModal(false);
@@ -261,7 +279,16 @@ export default function BuyNowModalCheckedout() {
             <View style={styles.vendorGroup}>
               <View style={styles.vendorHeader}>
                 <Feather name="shopping-bag" size={16} color="#64748B" />
-                <Text style={styles.vendorNameText}>{checkoutItem.uploadedBy?.businessName || 'Merchant Shop'}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.vendorNameText}>
+                    {checkoutItem.businessName || checkoutItem.uploadedBy?.businessName || 'Merchant Shop'}
+                  </Text>
+                  {checkoutItem.uploadedBy?.phone && (
+                    <Text style={styles.vendorPhoneText}>
+                      <Feather name="phone" size={10} /> {checkoutItem.uploadedBy.phone}
+                    </Text>
+                  )}
+                </View>
               </View>
               
               <View style={styles.itemCardPremium}>
@@ -457,6 +484,7 @@ const styles = StyleSheet.create({
   vendorGroup: { marginHorizontal: 16, marginBottom: 16 },
   vendorHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, paddingLeft: 4 },
   vendorNameText: { fontSize: 11, fontWeight: '700', color: '#64748B', textTransform: 'uppercase' },
+  vendorPhoneText: { fontSize: 10, color: '#94A3B8', marginTop: 2 },
   itemCardPremium: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 16, borderWidth: 1.5, borderColor: '#F1F5F9' },
   productRow: { flexDirection: 'row' },
   productImagePremium: { width: 80, height: 80, borderRadius: 12 },

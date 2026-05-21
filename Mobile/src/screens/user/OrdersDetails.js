@@ -1,14 +1,30 @@
+// OrdersDetails.js
 import React, { useEffect, useState } from 'react';
 import { 
-  View, Text, StatusBar, FlatList, ActivityIndicator, StyleSheet, 
-  SafeAreaView, TouchableOpacity, Image, TextInput, Dimensions,
-  KeyboardAvoidingView, Platform
+  View, 
+  Text, 
+  StatusBar, 
+  FlatList, 
+  ActivityIndicator, 
+  StyleSheet, 
+  SafeAreaView, 
+  TouchableOpacity, 
+  Image, 
+  TextInput, 
+  Dimensions,
+  Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { db, auth } from '../../firebase';
 import { 
-  collection, query, where, onSnapshot, doc, 
-  setDoc, deleteDoc, serverTimestamp, getDocs, runTransaction 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  doc, 
+  serverTimestamp, 
+  getDocs, 
+  runTransaction 
 } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 
@@ -23,6 +39,42 @@ const statusColors = {
   'To Pickup': '#8B5CF6',
   Complete: '#6366F1',
   Cancelled: '#EF4444',
+};
+
+// --- Native JavaScript Relative Time Helper ---
+const getRelativeTime = (seconds) => {
+  if (!seconds) return 'Recently';
+  
+  const now = new Date();
+  const orderDate = new Date(seconds * 1000);
+  const diffInSeconds = Math.floor((now - orderDate) / 1000);
+  
+  if (diffInSeconds < 60) {
+    return 'Just now';
+  }
+  
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) {
+    return `${diffInMinutes} mins ago`;
+  }
+  
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) {
+    return `${diffInHours} ${diffInHours === 1 ? 'hr ago' : 'hrs ago'}`;
+  }
+  
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays === 1) {
+    return 'Yesterday';
+  }
+  return `${diffInDays} days ago`;
+};
+
+// --- Format Absolute Date Helper ---
+const getAbsoluteDate = (seconds) => {
+  if (!seconds) return '';
+  const orderDate = new Date(seconds * 1000);
+  return orderDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
 const OrdersDetails = () => {
@@ -42,12 +94,15 @@ const OrdersDetails = () => {
   const navigation = useNavigation();
   const userId = auth.currentUser?.uid;
 
-  // --- Listeners ---
+  // --- Real-time Firestore Listeners ---
   useEffect(() => {
     if (!userId) return;
     const q = query(collection(db, 'Orders'), where('userId', '==', userId));
     const unsubscribe = onSnapshot(q, snapshot => {
       setOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, error => {
+      console.error("Orders listener error:", error);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -80,6 +135,7 @@ const OrdersDetails = () => {
     return () => unsubscribe();
   }, [userId]);
 
+  // --- Input & Feedback Handlers ---
   const handleStarPress = (orderId, value) => {
     setRatings(prev => ({ ...prev, [orderId]: { ...prev[orderId], stars: value } }));
   };
@@ -93,7 +149,7 @@ const OrdersDetails = () => {
     setSileoVisible(true);
   };
 
-  // --- UPDATED: Handles Moving & Submitting Reviews simultaneously ---
+  // --- Atomic Strategy Fix: Separating Query Reads from Atomic Writes ---
   const handleSubmitRating = async (order) => {
     const currentRating = ratings[order.id]?.stars || 0;
     const currentFeedback = ratings[order.id]?.feedback || '';
@@ -109,6 +165,18 @@ const OrdersDetails = () => {
       const currentUser = auth.currentUser;
       const uniqueVendorUids = [...new Set((order.items || []).map(item => item.uploadedBy?.uid).filter(Boolean))];
 
+      const vendorDocPaths = [];
+      for (const vUid of uniqueVendorUids) {
+        const vendorQuery = query(collection(db, "ApprovedVendors"), where("userId", "==", vUid));
+        const vendorSnap = await getDocs(vendorQuery);
+        if (!vendorSnap.empty) {
+          vendorDocPaths.push({
+            vendorDocId: vendorSnap.docs[0].id,
+            vUid
+          });
+        }
+      }
+
       const reviewData = {
         orderId: order.id,
         orderNumber: order.orderNumber,
@@ -117,32 +185,24 @@ const OrdersDetails = () => {
         userProfileImage: order.userProfileImage || null, 
         rating: currentRating,
         feedback: currentFeedback,
-        createdAt: new Date(), // Using local Date object inside Atomic Transactions
+        createdAt: new Date(), 
       };
 
-      // Atomic execution using transaction strategy
       await runTransaction(db, async (transaction) => {
-        // 1. Submit global review document
+        const completedRef = doc(db, 'Completed_Orders', order.id);
+        const pickupRef = doc(db, 'To_Pickup_Orders', order.id);
+        
+        const pickupSnap = await transaction.get(pickupRef);
+
         const reviewDocRef = doc(db, 'Reviews', reviewId);
         transaction.set(reviewDocRef, { ...reviewData, vendorIds: uniqueVendorUids, createdAt: serverTimestamp() });
 
-        // 2. Submit review document down to individual vendors sub-collections
-        for (const vUid of uniqueVendorUids) {
-          const vendorQuery = query(collection(db, "ApprovedVendors"), where("userId", "==", vUid));
-          const vendorSnap = await getDocs(vendorQuery);
-          if (!vendorSnap.empty) {
-            const vendorDocId = vendorSnap.docs[0].id;
-            const subRatingRef = doc(db, 'ApprovedVendors', vendorDocId, 'Rating', reviewId);
-            transaction.set(subRatingRef, reviewData);
-          }
+        for (const path of vendorDocPaths) {
+          const subRatingRef = doc(db, 'ApprovedVendors', path.vendorDocId, 'Rating', reviewId);
+          transaction.set(subRatingRef, reviewData);
         }
 
-        // 3. Conditional Migration paths
-        const completedRef = doc(db, 'Completed_Orders', order.id);
-        
-        if (activeStatus === 'To Pickup') {
-          // If rated directly from Pickup tab: Migrate document, mark true, update label state
-          const pickupRef = doc(db, 'To_Pickup_Orders', order.id);
+        if (activeStatus === 'To Pickup' && pickupSnap.exists()) {
           transaction.set(completedRef, { 
             ...order, 
             status: 'Complete', 
@@ -151,7 +211,6 @@ const OrdersDetails = () => {
           });
           transaction.delete(pickupRef);
         } else {
-          // Standard execution layer if already inside complete
           transaction.set(completedRef, { isRated: true }, { merge: true });
         }
       });
@@ -162,7 +221,6 @@ const OrdersDetails = () => {
         type: 'success' 
       });
 
-      // Clear input fields for this specific card
       setRatings(prev => {
         const copy = { ...prev };
         delete copy[order.id];
@@ -170,21 +228,19 @@ const OrdersDetails = () => {
       });
 
     } catch (error) {
-      console.error(error);
+      console.error("Structural Write Failure:", error);
       showSileo({ title: 'Error', message: 'Failed to submit rating and complete order.', type: 'error' });
     } finally {
       setSubmittingRating(false);
     }
   };
 
+  // --- Filter and Calculation Engines ---
   const sourceOrders =
-    activeStatus === 'To Deliver'
-      ? toDeliverOrders
-      : activeStatus === 'To Pickup'
-      ? toPickupOrders
-      : activeStatus === 'Complete'
-      ? completedOrders
-      : orders;
+    activeStatus === 'To Deliver' ? toDeliverOrders
+    : activeStatus === 'To Pickup' ? toPickupOrders
+    : activeStatus === 'Complete' ? completedOrders
+    : orders;
 
   const checkDateMatch = (orderDateSeconds) => {
     if (activeDateFilter === 'All') return true;
@@ -214,9 +270,7 @@ const OrdersDetails = () => {
       
   const filteredOrders = sourceOrders.filter(o => {
     const matchesStatus =
-      activeStatus === 'To Deliver' ||
-      activeStatus === 'To Pickup' ||
-      activeStatus === 'Complete'
+      activeStatus === 'To Deliver' || activeStatus === 'To Pickup' || activeStatus === 'Complete'
         ? true
         : o.status === activeStatus;
 
@@ -236,9 +290,17 @@ const OrdersDetails = () => {
     return baseList.filter(o => checkDateMatch(o.createdAt?.seconds)).length;
   };
 
-  // --- UI Rendering ---
+  // --- UI Card Render Implementation ---
   const renderOrderItem = ({ item }) => {
-    const total = (item.items || []).reduce((sum, i) => sum + (Number(i.basePrice || 0) * (i.quantity || 1)), 0);
+    const total = (item.items || []).reduce((sum, i) => {
+      const base = Number(i.basePrice || 0);
+      const variation = Number(i.selectedVariationPrice || 0);
+      const services = (i.services || []).reduce((a, s) => a + Number(s.price || 0), 0);
+      return sum + (base + variation + services) * (i.quantity || 1);
+    }, 0);
+
+    // Calculate if order is less than 30 minutes old for "NEW" status tag
+    const isNewOrder = item.createdAt?.seconds && (Math.floor((new Date() - new Date(item.createdAt.seconds * 1000)) / 1000) < 1800);
 
     return (
       <View style={styles.orderCard}>
@@ -247,14 +309,36 @@ const OrdersDetails = () => {
             <View style={styles.orderIdContainer}>
               <Text style={styles.orderNumberValue}>#{item.orderNumber}</Text>
             </View>
-            <Text style={styles.orderDateText}>
-              {item.createdAt?.seconds 
-                ? new Date(item.createdAt.seconds * 1000).toLocaleDateString() 
-                : 'Recently'}
-            </Text>
-            {item.deliveryMethod === 'Pickup' && (
+            
+            {/* Horizontal Timeline Layout: [Icon] [Date String] • [Time Ago String] [New Badge] */}
+            <View style={styles.timeContainer}>
+              <Ionicons name="calendar-outline" size={12} color="#64748B" style={{ marginRight: 4 }} />
+              <Text style={styles.orderDateText}>
+                {item.createdAt?.seconds ? getAbsoluteDate(item.createdAt.seconds) : 'Recently'}
+              </Text>
+              
+              <Text style={styles.timeDivider}>•</Text>
+              
+              <Text style={styles.relativeTimeText}>
+                {getRelativeTime(item.createdAt?.seconds)}
+              </Text>
+              
+              {isNewOrder && (
+                <View style={styles.newBadge}>
+                  <Text style={styles.newBadgeText}>NEW</Text>
+                </View>
+              )}
+            </View>
+            
+            {item.deliveryMethod === 'Pickup' ? (
               <View style={styles.pickupBadge}>
+                <Ionicons name="storefront-outline" size={11} color="#4338CA" style={{ marginRight: 3 }} />
                 <Text style={styles.pickupBadgeText}>PICKUP</Text>
+              </View>
+            ) : (
+              <View style={styles.deliveryBadge}>
+                <Ionicons name="car-outline" size={12} color="#047857" style={{ marginRight: 3 }} />
+                <Text style={styles.deliveryBadgeText}>DELIVERY</Text>
               </View>
             )}
           </View>
@@ -265,15 +349,33 @@ const OrdersDetails = () => {
         </View>
 
         <View style={styles.itemsContainer}>
-          {(item.items || []).map((i, idx) => (
-            <View key={idx} style={styles.itemRow}>
-              <Image source={i.productImage ? { uri: i.productImage } : null} style={styles.itemImage} />
-              <View style={{ flex: 1, justifyContent: 'center' }}>
-                <Text style={styles.itemName} numberOfLines={1}>{i.productName}</Text>
-                <Text style={styles.itemDetails}>Qty: {i.quantity} × ₱{Number(i.basePrice).toLocaleString()}</Text>
+          {(item.items || []).map((i, idx) => {
+            const itemBase = Number(i.basePrice || 0);
+            const itemVar = Number(i.selectedVariationPrice || 0);
+            const itemServ = (i.services || []).reduce((a, s) => a + Number(s.price || 0), 0);
+            const absoluteUnitPrice = itemBase + itemVar + itemServ;
+
+            return (
+              <View key={idx} style={styles.itemRow}>
+                {i.productImage ? (
+                  <Image source={{ uri: i.productImage }} style={styles.itemImage} />
+                ) : (
+                  <View style={[styles.itemImage, { alignItems: 'center', justifyContent: 'center' }]}>
+                    <Ionicons name="cube-outline" size={20} color="#94A3B8" />
+                  </View>
+                )}
+                <View style={{ flex: 1, justifyContent: 'center' }}>
+                  <Text style={styles.itemName} numberOfLines={1}>{i.productName}</Text>
+                  <Text style={styles.itemDetails}>
+                    Qty: {i.quantity} × ₱{absoluteUnitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </Text>
+                  {i.selectedVariation && (
+                    <Text style={styles.variationText}><Ionicons name="pricetag-outline" size={10}/> {i.selectedVariation}</Text>
+                  )}
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
 
         <View style={styles.cardFooter}>
@@ -287,11 +389,10 @@ const OrdersDetails = () => {
           
           <View style={{ alignItems: 'flex-end' }}>
             <Text style={styles.totalLabel}>Total Amount</Text>
-            <Text style={styles.totalValue}>₱{total.toLocaleString()}</Text>
+            <Text style={styles.totalValue}>₱{total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</Text>
           </View>
         </View>
 
-        {/* --- MODIFIED RENDERING BLOCK: Show rating structure for both tabs --- */}
         {(activeStatus === 'Complete' || activeStatus === 'To Pickup') && (
           <View style={styles.ratingWrapper}>
             {item.isRated ? (
@@ -301,7 +402,7 @@ const OrdersDetails = () => {
               </View>
             ) : (
               <View style={styles.ratingBox}>
-                <Text style={styles.ratingTitle}>How was your pickup order?</Text>
+                <Text style={styles.ratingTitle}>How was your experience?</Text>
                 <View style={styles.starRow}>
                   {[1, 2, 3, 4, 5].map(num => (
                     <TouchableOpacity key={num} onPress={() => handleStarPress(item.id, num)} activeOpacity={0.7}>
@@ -434,7 +535,6 @@ const OrdersDetails = () => {
         />
       )}
 
-      {/* SILEO MODAL */}
       {sileoVisible && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -456,7 +556,6 @@ const OrdersDetails = () => {
     </SafeAreaView>
   );
 };
-
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
@@ -492,7 +591,6 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, marginLeft: 10, fontSize: 15, color: '#1E293B' },
 
-  // NEW: Date Filter Styles
   dateFilterContainer: { marginBottom: 12 },
   dateTabItem: {
     paddingHorizontal: 14,
@@ -542,18 +640,30 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 },
   orderIdContainer: { flexDirection: 'row', alignItems: 'center' },
   orderNumberValue: { fontSize: 17, fontWeight: '800', color: '#1E293B' },
-  orderDateText: { fontSize: 12, color: '#94A3B8', marginTop: 2, fontWeight: '500' },
+  
+  // Custom Inline Time Structure Elements
+  timeContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 3, marginBottom: 2 },
+  orderDateText: { fontSize: 12, color: '#1E293B', fontWeight: '700' },
+  timeDivider: { fontSize: 12, color: '#94A3B8', marginHorizontal: 6 },
+  relativeTimeText: { fontSize: 12, color: '#64748B', fontWeight: '500' },
+  newBadge: { backgroundColor: '#EF4444', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4, marginLeft: 6 },
+  newBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.2 },
+
   statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
   statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
   statusBadgeText: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
-  pickupBadge: { marginLeft: 8, backgroundColor: '#F3E8FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, width: 60,height: 20, alignItems: 'center', justifyContent: 'center', marginTop: 5, marginLeft: -2 },
-  pickupBadgeText: { color: '#7C3AED', fontWeight: '800', fontSize: 10 },
+  
+  pickupBadge: { backgroundColor: '#E0E7FF', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginTop: 5, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center' },
+  pickupBadgeText: { color: '#4338CA', fontWeight: '800', fontSize: 10, letterSpacing: 0.3 },
+  deliveryBadge: { backgroundColor: '#D1FAE5', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginTop: 5, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center' },
+  deliveryBadgeText: { color: '#047857', fontWeight: '800', fontSize: 10, letterSpacing: 0.3 },
 
   itemsContainer: { borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#F1F5F9', paddingVertical: 12, marginBottom: 12 },
   itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   itemImage: { width: 50, height: 50, borderRadius: 12, backgroundColor: '#F8FAFC' },
   itemName: { fontSize: 15, fontWeight: '700', color: '#334155', marginLeft: 15 },
   itemDetails: { fontSize: 13, color: '#64748B', marginLeft: 15, marginTop: 3 },
+  variationText: { fontSize: 11, color: '#64748B', marginLeft: 15, marginTop: 2, fontWeight: '600' },
 
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   detailsBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#EFF6FF' },

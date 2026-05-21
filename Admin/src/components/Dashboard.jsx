@@ -26,7 +26,7 @@ import menuEmployee from "../analytics_png/employee.png";
 import menuRegistration from "../analytics_png/Register.png";
 import menuOrders from "../analytics_png/request.png";
 import menuProducts from "../analytics_png/customer.png";
-
+import UsersConsumer from "./UsersConsumer"; // Adjust the path as needed
 export default function Dashboard({ onLogout }) {
   const [page, setPage] = useState("analytics");
   const [loading, setLoading] = useState(true);
@@ -114,9 +114,10 @@ export default function Dashboard({ onLogout }) {
     { key: "products", label: "Products", icon: menuProducts, roles: [isSuperAdmin, isEmployee] },
   ];
 
-  const accountManagementItems = [
+const accountManagementItems = [
     { key: "customers", label: "Vendors", icon: menuCustomers, roles: [isSuperAdmin, isEmployee] },
-    { key: "vendors", label: "Requests", icon: menuVendors, roles: [isSuperAdmin, isComplianceOfficer, isEmployee] },
+    { key: "usersConsumer", label: "Consumers", icon: menuCustomers, roles: [isSuperAdmin, isEmployee] }, // Add this line
+    { key: "vendors", label: "Approvals For Vendor", icon: menuVendors, roles: [isSuperAdmin, isComplianceOfficer, isEmployee] },
     { key: "employee", label: "Staff", icon: menuEmployee, roles: [isSuperAdmin, isEmployee] },
     { key: "registration", label: "Register", icon: menuRegistration, roles: [isSuperAdmin, isEmployee] },
   ];
@@ -332,19 +333,20 @@ export default function Dashboard({ onLogout }) {
         </div>
       </header>
 
-      <main className="main-viewport">
-        <div className="content-shell">
-          {page === "analytics" && <Analytics />}
-          {page === "orders" && <OrdersManagement />}
-          {page === "customers" && <Customers />}
-          {page === "vendors" && <VendorsRequest />}
-          {page === "products" && <Products />}
-          {page === "reviewReports" && <ReviewReports />}
-          {page === "employee" && <Employee />}
-          {page === "registration" && <Registration />}
-          {page === "helpdesk" && <HelpDesk />} {/* Added matching logic for Help Desk */}
-        </div>
-      </main>
+<main className="main-viewport">
+  <div className="content-shell">
+    {page === "analytics" && <Analytics />}
+    {page === "orders" && <OrdersManagement />}
+    {page === "customers" && <Customers />}
+    {page === "usersConsumer" && <UsersConsumer />} {/* Add this line */}
+    {page === "vendors" && <VendorsRequest />}
+    {page === "products" && <Products />}
+    {page === "reviewReports" && <ReviewReports />}
+    {page === "employee" && <Employee />}
+    {page === "registration" && <Registration />}
+    {page === "helpdesk" && <HelpDesk />}
+  </div>
+</main>
     </div>
   );
 }

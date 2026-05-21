@@ -56,6 +56,29 @@ export default function VendorOrdersScreen() {
 
   const DATE_FILTERS = ['All', 'Today', 'Yesterday', 'Last Week', 'Last Month'];
 
+  const getRelativeTime = (timestamp) => {
+  if (!timestamp) return '';
+  const now = new Date();
+  const date = new Date(timestamp.seconds * 1000);
+  const diffInSeconds = Math.floor((now - date) / 1000);
+
+  const units = [
+    { name: 'year', seconds: 31536000 },
+    { name: 'month', seconds: 2592000 },
+    { name: 'day', seconds: 86400 },
+    { name: 'hour', seconds: 3600 },
+    { name: 'minute', seconds: 60 },
+  ];
+
+  for (let unit of units) {
+    const interval = Math.floor(diffInSeconds / unit.seconds);
+    if (interval >= 1) {
+      return `${interval} ${unit.name}${interval > 1 ? 's' : ''} ago`;
+    }
+  }
+  return 'Just now';
+};
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'Pending': return '#F59E0B'; 
@@ -482,17 +505,28 @@ export default function VendorOrdersScreen() {
     return orders.filter(o => o.status === status).length;
   };
 
-  const checkDateMatch = (orderDateSeconds) => {
-    if (activeDateFilter === 'All') return true;
+const checkDateMatch = (orderDateSeconds) => {
     if (!orderDateSeconds) return false;
 
     const orderDate = new Date(orderDateSeconds * 1000);
     const now = new Date();
+    
+    // Calculate 12 hours ago
+    const twelveHoursAgo = new Date(now.getTime() - (12 * 60 * 60 * 1000));
+
+    // Handle "Today" filter: 
+    // Now it checks if it's within the last 12 hours
+    if (activeDateFilter === 'Today') {
+      return orderDate >= twelveHoursAgo;
+    }
+
+    // Existing filters
+    if (activeDateFilter === 'All') return true;
+
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterdayStart = new Date(todayStart);
     yesterdayStart.setDate(yesterdayStart.getDate() - 1);
 
-    if (activeDateFilter === 'Today') return orderDate >= todayStart;
     if (activeDateFilter === 'Yesterday') return orderDate >= yesterdayStart && orderDate < todayStart;
     
     if (activeDateFilter === 'Last Week') {
@@ -545,6 +579,7 @@ export default function VendorOrdersScreen() {
                 <Text style={styles.orderIDLabel}>ORDER REFERENCE</Text>
               </View>
               
+              
               {/* Delivery / Store Pickup Dynamic Badge */}
               {item.deliveryMethod === 'Pickup' ? (
                 <View style={styles.pickupBadge}>
@@ -567,11 +602,26 @@ export default function VendorOrdersScreen() {
             </View>
             <Text style={styles.orderNumber}>#{item.orderNumber}</Text>
           </View>
+
+
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '15' }]}>
             <View style={[styles.statusDot, { backgroundColor: getStatusColor(item.status) }]} />
             <Text style={[styles.statusBadgeText, { color: getStatusColor(item.status) }]}>{item.status}</Text>
           </View>
         </View>
+                
+<View style={styles.dateContainer}>
+  <Text style={styles.relativeTimeText}>
+    {getRelativeTime(item.createdAt)}
+  </Text>
+  <Text style={styles.actualDateText}>
+    • {new Date(item.createdAt.seconds * 1000).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    })}
+  </Text>
+</View>
 
         <View style={styles.cardContent}>
           {item.items.map((i, idx) => (
@@ -834,4 +884,25 @@ const styles = StyleSheet.create({
   sileoMessage: { fontSize: 14, color: '#475569', textAlign: 'center', marginBottom: 24, lineHeight: 20 },
   sileoButton: { backgroundColor: '#1E3A8A', width: '100%', paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
   sileoButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  timestampText: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+    fontStyle: 'italic',
+  },
+  dateContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginTop: 2,
+},
+relativeTimeText: {
+  fontSize: 12,
+  fontWeight: '600',
+  color: '#334155',
+},
+actualDateText: {
+  fontSize: 12,
+  color: '#94A3B8',
+  marginLeft: 4,
+},
 });

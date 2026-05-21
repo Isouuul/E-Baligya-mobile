@@ -232,6 +232,7 @@ export default function BuyNowCheckedOut() {
           basePrice: Number(product.basePrice || 0),
           services: product.selectedServices || [],
           uploadedBy: product.uploadedBy || null,
+          Phone: product.vendorPhone || product.uploadedBy?.phone || '',
           category: product.category || 'Uncategorized',
         }],
         deliveryMethod,
@@ -372,7 +373,14 @@ export default function BuyNowCheckedOut() {
         <View style={styles.vendorGroup}>
           <View style={styles.vendorHeader}>
             <Feather name="shopping-bag" size={16} color="#64748B" />
-            <Text style={styles.vendorNameText}>{product.uploadedBy?.businessName || product.uploadedBy?.marketName || 'Unknown Vendor'}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.vendorNameText}>{product.uploadedBy?.businessName || product.uploadedBy?.marketName || 'Unknown Vendor'}</Text>
+              {product.uploadedBy?.phone && (
+                <Text style={styles.vendorPhoneText}>
+                  <Feather name="phone" size={10} /> {product.uploadedBy.phone}
+                </Text>
+              )}
+            </View>
           </View>
 
           <View style={styles.itemCardPremium}>
@@ -638,6 +646,8 @@ const styles = StyleSheet.create({
   vendorGroup: { marginBottom: 16 },
   vendorHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, marginBottom: 8 },
   vendorNameText: { fontSize: 13, fontWeight: '600', color: '#64748B', marginLeft: 6 },
+  vendorPhoneText: { fontSize: 11, color: '#94A3B8', marginLeft: 6, marginTop: 2 },
+  vendorPhoneText: { fontSize: 11, color: '#94A3B8', marginLeft: 6, marginTop: 2 },
   itemCardPremium: { 
     backgroundColor: '#FFFFFF', 
     borderRadius: 14, 

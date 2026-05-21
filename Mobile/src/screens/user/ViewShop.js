@@ -30,6 +30,8 @@ import * as FileSystem from "expo-file-system";
 import AddingCartModal from "./AddingCartModal";
 import ReportShop from "./ReportShop"; // Update path if placed elsewhere
 
+// Custom Asset Imports
+import BasketIcon from '../../../assets/basket.png';
 
 const { width } = Dimensions.get('window');
 // Calculate width dynamically for 2 columnrs with appropriate spacing
@@ -47,7 +49,7 @@ export default function ViewShop() {
   const [followersCount, setFollowersCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
   const [businessName, setBusinessName] = useState(null);
-const [shopReportVisible, setShopReportVisible] = useState(false);
+  const [shopReportVisible, setShopReportVisible] = useState(false);
   // Split states for distinct overlays
   const [cartModalVisible, setCartModalVisible] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -183,9 +185,28 @@ const [shopReportVisible, setShopReportVisible] = useState(false);
       
       {/* HEADER */}
       <View style={styles.customHeader}>
-        <TouchableOpacity style={styles.iconCircle} onPress={() => navigation.goBack()}><Ionicons name="arrow-back" size={22} color="#1E3A8A" /></TouchableOpacity>
-        <View style={styles.headerTitleWrap}><Text style={styles.headerTitleText}>{businessName}</Text><Text style={styles.headerSubTitle}>Vendor Profile</Text></View>
-        <TouchableOpacity style={styles.iconCircle} onPress={() => setShopReportVisible(true)}><Image source={require("../../../assets/Alert.png")} style={styles.headerIcon} resizeMode="contain" /></TouchableOpacity>
+        <TouchableOpacity style={styles.iconCircle} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={22} color="#1E3A8A" />
+        </TouchableOpacity>
+        
+        <View style={styles.headerTitleWrap}>
+          <Text style={styles.headerTitleText}>{businessName}</Text>
+          <Text style={styles.headerSubTitle}>Vendor Profile</Text>
+        </View>
+        
+        {/* Actions Container (Alert + Basket) */}
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.iconCircle} onPress={() => setShopReportVisible(true)}>
+            <Image source={require("../../../assets/Alert.png")} style={styles.headerIcon} resizeMode="contain" />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.iconCircle, { marginLeft: 8 }]} 
+            onPress={() => navigation.navigate("CartShop")} // Links to your CartShop view
+          >
+            <Image source={BasketIcon} style={styles.headerIcon} resizeMode="contain" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
@@ -328,16 +349,16 @@ const [shopReportVisible, setShopReportVisible] = useState(false);
         setSelectedServices={setSelectedServices} 
       />
 
-{/* Product Reporting Modal Container */}
-<ReportShop 
-  visible={shopReportVisible} 
-  onClose={() => {
-    setShopReportVisible(false);
-  }} 
-  vendorId={vendorId}
-  businessName={businessName}
-  vendorProfileImage={vendorProfileImage}
-/>
+      {/* Product Reporting Modal Container */}
+      <ReportShop 
+        visible={shopReportVisible} 
+        onClose={() => {
+          setShopReportVisible(false);
+        }} 
+        vendorId={vendorId}
+        businessName={businessName}
+        vendorProfileImage={vendorProfileImage}
+      />
     </SafeAreaView>
   );
 }
@@ -346,9 +367,10 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFFFFF", marginTop: 30 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   customHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
-  headerTitleWrap: { alignItems: 'center' },
+  headerTitleWrap: { flex: 1, alignItems: 'center', marginLeft: 40 }, 
   headerTitleText: { fontSize: 18, fontWeight: '800', color: '#1E3A8A' },
   headerSubTitle: { fontSize: 10, color: '#64748B', textTransform: 'uppercase', letterSpacing: 1 },
+  headerActions: { flexDirection: 'row', alignItems: 'center' }, 
   iconCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
   headerIcon: { width: 20, height: 20 },
   vendorSection: { padding: 16 },

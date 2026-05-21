@@ -101,27 +101,29 @@ export default function BuyNowModal({ visible, onClose, product }) {
     return ((basePrice * quantity) + servicesPrice).toFixed(2);
   };
 
-  const handleBuyNow = () => {
+const handleBuyNow = () => {
     setLoading(true);
     
+    // Create a sanitized object with fallbacks
     const checkoutItem = {
-      productId: product.id,
-      productName: product.productName,
-      basePrice: parseFloat(product.basePrice),
-      selectedServices,
-      quantity,
-      totalPrice: parseFloat(totalPrice()),
-      imageBase64: product.imageBase64, 
-      category: product.category
+      productId: product.id || "N/A",
+      productName: product.productName || product.name || "Unknown Product",
+      basePrice: parseFloat(product.basePrice || product.price) || 0,
+      selectedServices: selectedServices || [],
+      quantity: quantity || 1,
+      totalPrice: parseFloat(totalPrice()) || 0,
+      imageBase64: product.imageBase64 || null,
+      category: product.category || "General",
+      // ADD THESE LINES TO PASS THE BUSINESS DATA
+      businessName: product.businessName || product.uploadedBy?.businessName || 'Merchant Shop',
+      vendorPhone: product.vendorPhone || product.uploadedBy?.phone || '',
+      uploadedBy: product.uploadedBy || null 
     };
 
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    
-    onClose();
+    // ... rest of your validation and navigation logic
     navigation.navigate('BuyNowModalCheckedout', { checkoutItem });
     setLoading(false);
-  };
-
+};
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
